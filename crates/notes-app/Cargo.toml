@@ -1,0 +1,13 @@
+[package]
+name = "notes-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "libcosmic notes client (localhost ship first)"
+
+[dependencies]
+cosmic = { workspace = true }
+notes-sync = { path = "../notes-sync" }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+open = "5"
+pulldown-cmark = "0.13"

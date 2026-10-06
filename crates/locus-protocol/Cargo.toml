@@ -1,0 +1,12 @@
+[package]
+name = "locus-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "HTTP client for the %locus household command plane"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ureq = { version = "2.12", features = ["json", "cookies"] }

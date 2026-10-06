@@ -1,0 +1,20 @@
+Locus notes desk
+===================================
+
+%notes on this desk is a hard fork of Tlon Messenger's %notes agent
+(MIT License, tloncorp/tlon-apps). We do not install the Tlon
+Messenger / %groups desk.
+
+Tlon source pin: tloncorp/tlon-apps@af8dcce277493ce72058d579a79825283fc16014
+  files: app/notes.hoon, sur/notes.hoon, lib/notes/, mar/notes/,
+         tests/app/notes.hoon, app/notes/openapi.json,
+         lib/test-agent.hoon, mar/loob.hoon
+  license: LICENSE.tlon.md (Copyright (c) 2022-present Tlon Corporation)
+
+Kernel helpers (default-agent, skeleton, dbug, server, test, standard
+marks) are copied from urbit/urbit 192187b2975c6a06840c9630fae9394aac09a8e8 (408k-rc2).
+license: LICENSE.urbit.md (Copyright (c) 2015 Urbit)
+See https://github.com/urbit/urbit
+
+Messenger pieces (groups watch, %activity, %mcp-proxy, group-notebook,
+Tlon glob / ui.html) are stubbed or deleted in this fork.

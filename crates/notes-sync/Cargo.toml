@@ -1,0 +1,19 @@
+[package]
+name = "notes-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Named-function plane for notes: live HTTP plus local copy-on-write history"
+
+[dependencies]
+dirs = "6"
+notes-protocol = { path = "../notes-protocol" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[[bin]]
+name = "notes"
+path = "src/bin/notes.rs"

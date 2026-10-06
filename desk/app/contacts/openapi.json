@@ -1,0 +1,21 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus contacts",
+    "version": "1.0.0",
+    "description": "P4: canonical household contacts on the ship."
+  },
+  "paths": {
+    "/contacts/openapi.json": {
+      "get": { "summary": "This spec (unauthenticated)" }
+    },
+    "/contacts/~/v1/contacts": {
+      "get": { "summary": "List contacts" },
+      "post": { "summary": "Create a contact" }
+    },
+    "/contacts/~/v1/contacts/{id}": {
+      "get": { "summary": "Get one contact" },
+      "put": { "summary": "Patch; expectedRevision required" }
+    }
+  }
+}

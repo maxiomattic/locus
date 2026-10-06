@@ -1,0 +1,48 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus household command plane",
+    "version": "1.0.0",
+    "description": "P1: map Urbit ships onto household members, wrap OS-mutating commands behind human approval, append-only audit. history.purge and zfs.destroy are always denied. escape.launch queues steam/blender (P6)."
+  },
+  "paths": {
+    "/locus/openapi.json": {
+      "get": {
+        "summary": "This spec (unauthenticated)"
+      }
+    },
+    "/locus/~/v1/whoami": {
+      "get": { "summary": "Authenticated principal (cookie or X-Api-Key)" }
+    },
+    "/locus/~/v1/members": {
+      "get": { "summary": "List household members" }
+    },
+    "/locus/~/v1/audit": {
+      "get": { "summary": "Append-only function-call log" }
+    },
+    "/locus/~/v1/pending": {
+      "get": { "summary": "OS commands waiting for human approval" }
+    },
+    "/locus/~/v1/call": {
+      "post": {
+        "summary": "Invoke a named function",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["fn"],
+                "properties": {
+                  "fn": { "type": "string" },
+                  "as": { "type": "string", "description": "Act as this member (owner running an agent)" },
+                  "args": { "type": "object" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

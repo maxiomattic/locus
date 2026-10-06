@@ -1,0 +1,21 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus calendar store",
+    "version": "1.0.0",
+    "description": "P2: canonical calendar events on the ship. Host CalDAV is a bridge into this agent, not a second database. Writes use expectedRevision; stale saves return conflict."
+  },
+  "paths": {
+    "/calendar/openapi.json": {
+      "get": { "summary": "This spec (unauthenticated)" }
+    },
+    "/calendar/~/v1/events": {
+      "get": { "summary": "List events" },
+      "post": { "summary": "Create an event" }
+    },
+    "/calendar/~/v1/events/{id}": {
+      "get": { "summary": "Get one event" },
+      "put": { "summary": "Patch an event; expectedRevision required" }
+    }
+  }
+}

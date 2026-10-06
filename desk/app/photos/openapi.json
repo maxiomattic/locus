@@ -1,0 +1,21 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus photo catalog",
+    "version": "1.0.0",
+    "description": "P4: catalog on the ship. JPEG/PNG bytes stay on ZFS under /var/lib/locus/photos. Writes use expectedRevision; stale saves return conflict."
+  },
+  "paths": {
+    "/photos/openapi.json": {
+      "get": { "summary": "This spec (unauthenticated)" }
+    },
+    "/photos/~/v1/photos": {
+      "get": { "summary": "List catalog entries" },
+      "post": { "summary": "Add a catalog entry (path is ZFS-relative)" }
+    },
+    "/photos/~/v1/photos/{id}": {
+      "get": { "summary": "Get one entry" },
+      "put": { "summary": "Patch; expectedRevision required" }
+    }
+  }
+}

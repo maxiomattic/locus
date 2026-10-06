@@ -1,0 +1,13 @@
+[package]
+name = "mail-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Host SMTP/IMAP edge for %mail — ingest RFC822, dry-run send. Not a mailbox."
+
+[dependencies]
+mail-protocol = { path = "../mail-protocol" }
+
+[[bin]]
+name = "mail-bridge"
+path = "src/main.rs"

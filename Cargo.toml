@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+# libcosmic (pop-os/libcosmic @ 1f8d878, 2026-08-10). Pinned independently of other projects.
+# wgpu is required for Wayland menu popups (COSMIC Text does the same).
+cosmic = { package = "libcosmic", git = "https://github.com/pop-os/libcosmic", rev = "1f8d8786940cc6db59d412153c5a03f69a20375c", features = ["wgpu"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3

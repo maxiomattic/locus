@@ -1,0 +1,15 @@
+[package]
+name = "photos-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Client thumbnail cache for the %photos catalog (bytes stay on the server ZFS dataset)"
+
+[dependencies]
+dirs = "6"
+photos-protocol = { path = "../photos-protocol" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
