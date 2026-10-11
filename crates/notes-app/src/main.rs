@@ -1,4 +1,4 @@
-//! Notes window: login to the household ship, then list / open / edit.
+//! Notes window: login to the clan ship, then list / open / edit.
 //!
 //! Markdown stays visible in Editor (`**bold**` keeps the stars) and is styled
 //! in place as GitHub Flavored Markdown plus `[[wikilinks]]`. View → Write

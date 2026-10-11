@@ -1,4 +1,4 @@
-::  Household calendar store (P2). Canonical events live here.
+::  Clan calendar store. Canonical events live here.
 ::  Host CalDAV/ICS is a bridge into this map, not a second database.
 ::
 |%

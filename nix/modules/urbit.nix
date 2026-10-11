@@ -5,7 +5,7 @@
   ...
 }:
 let
-  cfg = config.digitalWorkspace.server;
+  cfg = config.locus.server;
   urbitCfg = cfg.urbit;
   pierDataset = "${cfg.poolName}/urbit/pier";
   verePier = "${cfg.pierMountpoint}/${urbitCfg.verePierName}";
@@ -54,15 +54,15 @@ let
       fi
 
       ${
-        if urbitCfg.ship == "moon" then
+        if urbitCfg.ship == "comet" then
           ''
-            exec urbit "''${extra[@]}" -w ${lib.escapeShellArg (
-              lib.removePrefix "~" (toString urbitCfg.moonName)
-            )} -k ${lib.escapeShellArg (toString urbitCfg.moonKeyFile)} -c "$pier"
+            exec urbit "''${extra[@]}" -c "$pier"
           ''
         else
           ''
-            exec urbit "''${extra[@]}" -c "$pier"
+            exec urbit "''${extra[@]}" -w ${lib.escapeShellArg (
+              lib.removePrefix "~" urbitCfg.name
+            )} -k ${lib.escapeShellArg urbitCfg.keyFile} -c "$pier"
           ''
       }
     '';
@@ -102,13 +102,13 @@ let
   };
 in
 {
-  options.digitalWorkspace.server.urbit = {
+  options.locus.server.urbit = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = ''
-        systemd unit that boots the household ship on the pier dataset.
-        Ignored unless digitalWorkspace.server.enable.
+        systemd unit that boots the clan ship on the pier dataset.
+        Ignored unless locus.server.enable.
       '';
     };
 
@@ -118,22 +118,34 @@ in
       type = lib.types.enum [
         "comet"
         "moon"
+        "planet"
       ];
       default = "comet";
-      description = "Dev ship class. Comet needs no keys; moon needs moonName and moonKeyFile.";
+      description = ''
+        Ship class. A comet needs no keys. A moon or planet needs name and
+        keyFile (the unit boots it with -w, -k).
+      '';
     };
 
-    moonName = lib.mkOption {
+    name = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      example = "sampel-palnet-sampel-mondo";
-      description = "Moon @p without the leading ~. Required when ship = \"moon\".";
+      example = "sampel-palnet";
+      description = "@p without the leading ~. Required when ship is moon or planet.";
     };
 
-    moonKeyFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
+    keyFile = lib.mkOption {
+      # Deliberately a string, not a path: a Nix path literal is copied into
+      # the world-readable Nix store and would leak the private key.
+      type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Moon private key file for Vere -k. Required when ship = \"moon\".";
+      example = "/var/lib/urbit/keys/sampel-palnet.key";
+      description = ''
+        Absolute path to the ship's private key file, passed to Vere with -k.
+        Required when ship is moon or planet. Install the file on the server
+        out of band (owned by the urbit user, mode 0400), not from the Nix
+        store. Delete it after the first successful boot.
+      '';
     };
 
     verePierName = lib.mkOption {
@@ -174,17 +186,26 @@ in
     assertions = [
       {
         assertion = builtins.match "[^/]+" urbitCfg.verePierName != null;
-        message = "digitalWorkspace.server.urbit.verePierName must be a single directory name (no slashes).";
+        message = "locus.server.urbit.verePierName must be a single directory name (no slashes).";
       }
       {
         assertion =
-          urbitCfg.ship != "moon"
+          urbitCfg.ship == "comet"
           || (
-            urbitCfg.moonName != null
-            && urbitCfg.moonName != ""
-            && urbitCfg.moonKeyFile != null
+            urbitCfg.name != null
+            && urbitCfg.name != ""
+            && urbitCfg.keyFile != null
           );
-        message = "digitalWorkspace.server.urbit.ship = \"moon\" requires moonName and moonKeyFile.";
+        message = "locus.server.urbit.ship = \"moon\" or \"planet\" requires name and keyFile.";
+      }
+      {
+        assertion =
+          urbitCfg.keyFile == null
+          || (
+            lib.hasPrefix "/" urbitCfg.keyFile
+            && !lib.hasPrefix "/nix/store" urbitCfg.keyFile
+          );
+        message = "locus.server.urbit.keyFile must be an absolute path and must not be in /nix/store.";
       }
     ];
 
@@ -253,7 +274,9 @@ in
         SystemCallArchitectures = "native";
         RestrictAddressFamilies = "AF_UNIX AF_INET AF_INET6 AF_NETLINK";
         ReadWritePaths = [ cfg.pierMountpoint ];
-        ReadOnlyPaths = lib.mkIf (urbitCfg.moonKeyFile != null) [ urbitCfg.moonKeyFile ];
+        # "-" makes the path optional: the key may be deleted after first boot
+        # and the unit must still start.
+        ReadOnlyPaths = lib.mkIf (urbitCfg.keyFile != null) [ "-${urbitCfg.keyFile}" ];
         CapabilityBoundingSet =
           if urbitCfg.httpPort < 1024 then "CAP_NET_BIND_SERVICE" else "";
         AmbientCapabilities = lib.mkIf (urbitCfg.httpPort < 1024) "CAP_NET_BIND_SERVICE";

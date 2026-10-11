@@ -1,4 +1,4 @@
-::  %locus — household identity, named functions, OS approval, audit.
+::  %locus — clan identity, named functions, OS approval, audit.
 ::
 /-  loc=locus
 /+  default-agent, dbug, server
@@ -226,7 +226,7 @@
   =?  actor  ?=(^ as)  u.as
   =/  who=(unit member:loc)  (~(get by members) actor)
   ?~  who
-    [(err:enjs:locus-json 'unknown-principal' 'ship is not a household member') cor]
+    [(err:enjs:locus-json 'unknown-principal' 'ship is not a clan member') cor]
   =/  gate=(unit @t)  (actor-gate u.who as)
   ?^  gate
     [(err:enjs:locus-json 'not-authorized' u.gate) cor]
@@ -280,13 +280,6 @@
     (os-executed actor args)
   ?:  =(fn 'audit.list')
     [(ok:enjs:locus-json [audit+(audits:enjs:locus-json log)]~) cor]
-  ?:  =(fn 'escape.list')
-    :-  %-  ok:enjs:locus-json
-        :~  apps+a+~[s+'steam' s+'blender']
-        ==
-      cor
-  ?:  =(fn 'escape.launch')
-    (escape-launch actor args)
   =.  cor  (note actor fn args 'rejected: unknown')
   [(err:enjs:locus-json 'unknown-function' fn) cor]
 ::
@@ -395,24 +388,6 @@
   ?>  ?=(%o -.args)
   :-  (slav %p (so:dejs:format (~(got by p.args) 'ship')))
   (role:dejs:locus-json (~(got by p.args) 'role'))
-::
-++  escape-launch
-  |=  [actor=member:loc args=json]
-  ^-  [json _cor]
-  =/  parsed=(each @t tang)  (mule |.((parse-hatch args)))
-  ?:  ?=(%| -.parsed)
-    [(err:enjs:locus-json 'bad-request' 'need app') cor]
-  =/  app=@t  p.parsed
-  ?.  |(=(app 'steam') =(app 'blender'))
-    =.  cor  (note actor 'escape.launch' args 'rejected: unknown hatch')
-    [(err:enjs:locus-json 'bad-request' 'unknown hatch app') cor]
-  (queue-os actor 'escape.launch' args)
-::
-++  parse-hatch
-  |=  args=json
-  ^-  @t
-  ?>  ?=(%o -.args)
-  (so:dejs:format (~(got by p.args) 'app'))
 ::
 ++  queue-os
   |=  [actor=member:loc fn=@t args=json]

@@ -1,7 +1,7 @@
-# Disko layout for the household **server** disk only.
+# Disko layout for the clan **server** disk only.
 #
 # Datasets: rpool/root, rpool/nix, rpool/urbit, rpool/urbit/pier,
-# rpool/locus/photos (P4 bytes), rpool/locus/hatch (P6 escape-hatch data).
+# rpool/locus/photos (photo bytes).
 # This file does not mention any other disk, so Disko will not format them.
 # `diskDevice` must be the dedicated server disk (by-id). Format wipes that device.
 
@@ -95,14 +95,6 @@
       "locus/photos" = {
         type = "zfs_fs";
         mountpoint = "/var/lib/locus/photos";
-        options = {
-          mountpoint = "legacy";
-          "com.sun:auto-snapshot" = "true";
-        };
-      };
-      "locus/hatch" = {
-        type = "zfs_fs";
-        mountpoint = "/var/lib/locus/hatch";
         options = {
           mountpoint = "legacy";
           "com.sun:auto-snapshot" = "true";

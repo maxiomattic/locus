@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# P3: COSMIC client evaluates — cosmic-comp compositor, autotile defaults,
-# Nix-declared browser. Does not nixos-rebuild this laptop. Does not start P4.
+# COSMIC client evaluates — cosmic-comp compositor, autotile defaults,
+# Nix-declared browser. Does not nixos-rebuild this laptop.
 #
 # Env: NIX extra args via NIX_FLAGS (default --accept-flake-config).
 set -euo pipefail
@@ -60,4 +60,4 @@ if [ "$autotile" != "true" ] || [ "$behavior" != "Global" ]; then
 fi
 echo "cosmic-comp autotile=true (Global)"
 
-echo "P3 COSMIC check passed"
+echo "COSMIC check passed"

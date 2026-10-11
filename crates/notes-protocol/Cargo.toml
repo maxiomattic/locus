@@ -3,7 +3,7 @@ name = "notes-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "HTTP client and wire types for the household %notes API"
+description = "HTTP client and wire types for the clan %notes API"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -3,7 +3,7 @@ name = "locus-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "HTTP client for the %locus household command plane"
+description = "HTTP client for the %locus clan command plane"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

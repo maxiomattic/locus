@@ -1,4 +1,4 @@
-//! Named functions for household identity and OS-mutating commands.
+//! Named functions for clan identity and OS-mutating commands.
 //!
 //! The ship is source of truth (grants, pending jobs, audit). This crate
 //! is the host-side skin: CLI, session, and the nixos-rebuild wrapper that
@@ -167,14 +167,6 @@ impl Session {
         self.call("os.deny", as_ship, serde_json::json!({ "id": id }))
     }
 
-    pub fn queue_hatch(&self, app: &str, as_ship: Option<&str>) -> Result<Envelope> {
-        self.call(
-            "escape.launch",
-            as_ship,
-            serde_json::json!({ "app": app }),
-        )
-    }
-
     pub fn mark_executed(&self, id: u64) -> Result<Envelope> {
         self.call("os.executed", None, serde_json::json!({ "id": id }))
     }
@@ -215,24 +207,6 @@ pub fn os_argv(function: &str, flake: &str, execute: bool) -> Result<Vec<String>
     }
 }
 
-/// P6: Steam / Blender on the server, outside Urbit. `flake` here is the app name
-/// (`steam` / `blender`). Dry-run echoes; execute runs the binary.
-pub fn hatch_argv(app: &str, execute: bool) -> Result<Vec<String>> {
-    let app = app.trim();
-    if !matches!(app, "steam" | "blender") {
-        return Err(Error::Denied("unknown hatch app (want steam or blender)"));
-    }
-    if execute {
-        Ok(vec![app.to_string()])
-    } else {
-        Ok(vec!["echo".into(), "dry-run".into(), app.into()])
-    }
-}
-
-pub fn hatch_execute_allowed() -> bool {
-    matches!(std::env::var("LOCUS_HATCH_EXECUTE"), Ok(v) if v == "1")
-}
-
 pub fn execute_allowed() -> bool {
     matches!(std::env::var("LOCUS_OS_EXECUTE"), Ok(v) if v == "1")
 }
@@ -241,28 +215,6 @@ pub fn execute_allowed() -> bool {
 pub fn run_approved_job(job: &Job, execute: bool) -> Result<String> {
     if job.status != "approved" {
         return Err(Error::Denied("job is not approved on the ship"));
-    }
-    if job.function == "escape.launch" {
-        if execute && !hatch_execute_allowed() {
-            return Err(Error::Denied(
-                "refusing hatch launch; set LOCUS_HATCH_EXECUTE=1",
-            ));
-        }
-        let app = job
-            .args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let argv = hatch_argv(app, execute)?;
-        let out = Command::new(&argv[0]).args(&argv[1..]).output()?;
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        if out.status.success() {
-            return Ok(format!("{stdout}{stderr}"));
-        }
-        return Err(Error::Io(std::io::Error::other(format!(
-            "hatch failed: {stderr}{stdout}"
-        ))));
     }
     if execute && !execute_allowed() {
         return Err(Error::Denied(
@@ -332,58 +284,5 @@ mod tests {
         };
         let err = run_approved_job(&job, false).unwrap_err();
         assert!(err.to_string().contains("not approved"));
-    }
-
-    #[test]
-    fn hatch_dry_run_does_not_exec_steam() {
-        let argv = hatch_argv("steam", false).unwrap();
-        assert_eq!(argv[0], "echo");
-        assert!(argv.contains(&"steam".into()));
-        assert!(hatch_argv("doom", false).is_err());
-    }
-
-    #[test]
-    fn hatch_unapproved_rejected() {
-        let job = Job {
-            id: 2,
-            actor: "~zod".into(),
-            function: "escape.launch".into(),
-            args: serde_json::json!({"app":"blender"}),
-            status: "pending".into(),
-            approved_by: None,
-            result: "queued".into(),
-        };
-        assert!(run_approved_job(&job, false).is_err());
-    }
-
-    #[test]
-    fn hatch_approved_dry_run() {
-        let job = Job {
-            id: 3,
-            actor: "~zod".into(),
-            function: "escape.launch".into(),
-            args: serde_json::json!({"app":"blender"}),
-            status: "approved".into(),
-            approved_by: Some("~zod".into()),
-            result: "approved".into(),
-        };
-        let out = run_approved_job(&job, false).unwrap();
-        assert!(out.contains("blender") || out.contains("dry-run"));
-    }
-
-    #[test]
-    fn hatch_execute_requires_env() {
-        let job = Job {
-            id: 4,
-            actor: "~zod".into(),
-            function: "escape.launch".into(),
-            args: serde_json::json!({"app":"steam"}),
-            status: "approved".into(),
-            approved_by: Some("~zod".into()),
-            result: "approved".into(),
-        };
-        unsafe { std::env::remove_var("LOCUS_HATCH_EXECUTE") };
-        let err = run_approved_job(&job, true).unwrap_err();
-        assert!(err.to_string().contains("LOCUS_HATCH_EXECUTE"));
     }
 }

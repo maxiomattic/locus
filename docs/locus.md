@@ -1,6 +1,6 @@
-# Locus command plane (P1)
+# Locus command plane
 
-Household identity, named functions, OS-mutating commands behind human approval, append-only audit. Notes stay in `%notes`; Gall `%locus` lives on Clay desk `%locus` (same desk as `%notes` / `%mail` / `%calendar`). Parent plan: [plan.md](plan.md).
+Clan identity, named functions, OS-mutating commands behind human approval, append-only audit. Notes stay in `%notes`; Gall `%locus` lives on Clay desk `%locus` (same desk as `%notes` / `%calendar` / `%photos` / `%contacts`).
 
 **Done when:** a second principal exists on the ship; `os.rebuild` from an agent queues and cannot approve; an owner/member can approve; `history.purge` is denied and the audit log still has entries; `locus` CLI talks to the same functions.
 
@@ -26,10 +26,10 @@ The Gall agent does **not** run `nixos-rebuild`. Host-side `locus execute <id>` 
 On the bring-up VM, rsync + OCC + this check is one command:
 
 ```bash
-./scripts/server-vm.sh p1
+./scripts/server-vm.sh locus
 ```
 
-Or after the desk is already committed: `EYRE_URL=http://127.0.0.1 ./scripts/locus-p1.sh` on the guest (host Eyre is `http://127.0.0.1:8080`).
+Or after the desk is already committed: `EYRE_URL=http://127.0.0.1 ./scripts/locus-check.sh` on the guest (host Eyre is `http://127.0.0.1:8080`).
 
 On the laptop, after a session exists:
 

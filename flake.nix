@@ -1,5 +1,5 @@
 {
-  description = "Locus — NixOS/COSMIC clients and Urbit-backed household server";
+  description = "Locus — NixOS/COSMIC clients and Urbit-backed clan server";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,12 +30,12 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
       # Placeholder so the example config evaluates without matching a real disk.
-      # Set digitalWorkspace.server.diskDevice to the server's /dev/disk/by-id/...
+      # Set locus.server.diskDevice to the server's /dev/disk/by-id/...
       # before Disko format.
       serverDiskPlaceholder = "/dev/disk/by-id/REPLACE-ME-server-disk";
     in
     {
-      # Household machines import these. CalDAV, Attic, and operator
+      # Clan machines import these. CalDAV, Attic, and operator
       # accounts live in the separate personal NixOS flake — not here.
       nixosModules.server = {
         imports = [
@@ -49,10 +49,6 @@
         imports = [ ./nix/modules/client.nix ];
       };
 
-      nixosModules.mobile = {
-        imports = [ ./nix/modules/mobile.nix ];
-      };
-
       diskoConfigurations.server = {
         disko.devices = import ./nix/disko.nix {
           diskDevice = serverDiskPlaceholder;
@@ -64,7 +60,7 @@
         modules = [
           self.nixosModules.server
           {
-            digitalWorkspace.server = {
+            locus.server = {
               enable = true;
               diskDevice = serverDiskPlaceholder;
             };
@@ -95,13 +91,13 @@
         modules = [ ./nix/installer-iso.nix ];
       };
 
-      # Evaluable Locus desktop (P3). Placeholder root disk — not the laptop.
+      # Evaluable Locus desktop. Placeholder root disk — not the laptop.
       nixosConfigurations.client = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
           self.nixosModules.client
           {
-            digitalWorkspace.client.enable = true;
+            locus.client.enable = true;
             nixpkgs.hostPlatform = "x86_64-linux";
             system.stateVersion = "25.05";
             networking.hostName = "client";
@@ -109,26 +105,6 @@
             boot.loader.efi.canTouchEfiVariables = true;
             fileSystems."/" = {
               device = "/dev/disk/by-id/REPLACE-ME-client-disk";
-              fsType = "ext4";
-            };
-          }
-        ];
-      };
-
-      # P5 eval target: same ship APIs, not COSMIC. Placeholder root — not a phone.
-      nixosConfigurations.mobile = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          self.nixosModules.mobile
-          {
-            digitalWorkspace.mobile.enable = true;
-            nixpkgs.hostPlatform = "x86_64-linux";
-            system.stateVersion = "25.05";
-            networking.hostName = "phone";
-            boot.loader.systemd-boot.enable = true;
-            boot.loader.efi.canTouchEfiVariables = true;
-            fileSystems."/" = {
-              device = "/dev/disk/by-id/REPLACE-ME-phone-disk";
               fsType = "ext4";
             };
           }
@@ -268,8 +244,9 @@
               echo "  cargo run -p locus-command --bin locus -- help"
               echo "  nix build .#notes-app"
               echo "  nix build .#server    # Vere 4.6 binary"
-              echo "  ./scripts/cosmic-p3.sh  # P3 COSMIC client eval (not a laptop rebuild)"
-              echo "  ./scripts/plan-check.sh # P4 photos cargo + Disko eval (not a laptop rebuild)"
+              echo "  ./scripts/cosmic-check.sh  # COSMIC client eval (not a laptop rebuild)"
+              echo "  ./scripts/check.sh          # photos cargo tests + photos dataset eval"
+              echo "  nix flake check --no-build  # flake eval checks"
               echo "  # ship: nixosConfigurations.server → urbit.service (docs/urbit.md)"
               export XDG_DATA_DIRS="${pkgs.cosmic-icons}/share:${pkgs.adwaita-icon-theme}/share''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
             '';

@@ -3,7 +3,7 @@ name = "locus-command"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Named-function plane for Locus: household identity, OS approval, audit"
+description = "Named-function plane for Locus: clan identity, OS approval, audit"
 
 [dependencies]
 dirs = "6"

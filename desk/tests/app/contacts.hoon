@@ -1,4 +1,4 @@
-::  P4 contacts — create, list, expectedRevision conflict.
+::  Contacts — create, list, expectedRevision conflict.
 ::
 /-  con=contacts
 /+  *test-agent

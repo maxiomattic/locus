@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P4: photo catalog + contacts on desk %locus. Create/list/expectedRevision
+# Photo catalog + contacts on desk %locus. Create/list/expectedRevision
 # conflict; reject `..` catalog paths. Bytes stay on ZFS — this script does
 # not copy JPEGs. Desk must include %photos / %contacts (re-run notes-occ.sh).
 #
@@ -162,5 +162,5 @@ code, cstale = req("PUT", f"/contacts/~/v1/contacts/{cid}", {
 if code != 200 or (cstale or {}).get("error") != "conflict":
     raise SystemExit(f"stale contact should be conflict, got {cstale}")
 print("stale expectedRevision contact save returned conflict")
-print("P4 photos/contacts check passed")
+print("photos/contacts check passed")
 PY

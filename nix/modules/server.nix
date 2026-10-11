@@ -5,13 +5,13 @@
   ...
 }:
 let
-  cfg = config.digitalWorkspace.server;
+  cfg = config.locus.server;
 in
 {
   imports = [ ./urbit.nix ];
 
-  options.digitalWorkspace.server = {
-    enable = lib.mkEnableOption "household server (Disko ZFS, pier dataset, snapshots, Urbit unit)";
+  options.locus.server = {
+    enable = lib.mkEnableOption "clan server (Disko ZFS, pier dataset, snapshots, Urbit unit)";
 
     diskDevice = lib.mkOption {
       type = lib.types.str;
@@ -43,71 +43,34 @@ in
         blobs, bulk cloud storage). Same shape as entries in nix/disko.nix.
       '';
     };
-
-    hatch = {
-      enable = lib.mkEnableOption "Steam + Blender on this server, outside the Urbit VM (P6)";
-      apps = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "steam"
-          "blender"
-        ];
-        description = "Allowed escape-hatch binaries. Launch is queued on %locus (escape.launch).";
-      };
-    };
-
-    tunnel = {
-      enable = lib.mkEnableOption "Cloudflare Tunnel to Eyre (M4). The tunnel is a pipe; data stays here.";
-    };
   };
 
-  config = lib.mkMerge [
-    (lib.mkIf cfg.enable {
-      disko.devices = import ../disko.nix {
-        inherit (cfg) diskDevice poolName pierMountpoint extraDatasets;
-      };
+  config = lib.mkIf cfg.enable {
+    disko.devices = import ../disko.nix {
+      inherit (cfg) diskDevice poolName pierMountpoint extraDatasets;
+    };
 
-      boot.supportedFilesystems = [ "zfs" ];
-      # Default true in nixpkgs; keep it so an unclean installer/poweroff can
-      # still import the dedicated server pool. Host pool is not named rpool.
-      boot.zfs.forceImportRoot = true;
+    boot.supportedFilesystems = [ "zfs" ];
+    # Default true in nixpkgs; keep it so an unclean installer/poweroff can
+    # still import the dedicated server pool. Host pool is not named rpool.
+    boot.zfs.forceImportRoot = true;
 
-      # Regular snapshots of datasets with com.sun:auto-snapshot=true
-      # (root and urbit/pier). nix is opted out in disko.nix.
-      services.zfs.autoSnapshot = {
-        enable = true;
-        frequent = 4;
-        hourly = 24;
-        daily = 7;
-        weekly = 4;
-        monthly = 12;
-      };
+    # Regular snapshots of datasets with com.sun:auto-snapshot=true
+    # (root and urbit/pier). nix is opted out in disko.nix.
+    services.zfs.autoSnapshot = {
+      enable = true;
+      frequent = 4;
+      hourly = 24;
+      daily = 7;
+      weekly = 4;
+      monthly = 12;
+    };
 
-      environment.systemPackages =
-        [ pkgs.zfs ]
-        ++ lib.optionals cfg.tunnel.enable [ pkgs.cloudflared ];
+    environment.systemPackages = [ pkgs.zfs ];
 
-      # notes-app (and any other unprivileged process) must not be able to
-      # destroy snapshots. ZFS destroy is root-only unless `zfs allow` delegates
-      # it — do not delegate destroy. Do not add sudoers for zfs. The urbit
-      # unit runs as user urbit without CAP_SYS_ADMIN (see urbit.nix).
-    })
-    # P6: Steam is unfree. Keep this block off the example server / ISO so
-    # eval does not fetch Steam. Enable only on a dedicated hatch host.
-    (lib.mkIf (cfg.enable && cfg.hatch.enable) {
-      nixpkgs.config.allowUnfreePredicate =
-        pkg:
-        builtins.elem (lib.getName pkg) [
-          "steam"
-          "steam-unwrapped"
-          "steam-original"
-          "steam-run"
-        ];
-      environment.systemPackages = [
-        pkgs.steam
-        pkgs.blender
-      ];
-      hardware.graphics.enable = true;
-    })
-  ];
+    # notes-app (and any other unprivileged process) must not be able to
+    # destroy snapshots. ZFS destroy is root-only unless `zfs allow` delegates
+    # it — do not delegate destroy. Do not add sudoers for zfs. The urbit
+    # unit runs as user urbit without CAP_SYS_ADMIN (see urbit.nix).
+  };
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "Locus calendar store",
     "version": "1.0.0",
-    "description": "P2: canonical calendar events on the ship. Host CalDAV is a bridge into this agent, not a second database. Writes use expectedRevision; stale saves return conflict."
+    "description": "Canonical calendar events on the ship. Host CalDAV is a bridge into this agent, not a second database. Writes use expectedRevision; stale saves return conflict."
   },
   "paths": {
     "/calendar/openapi.json": {

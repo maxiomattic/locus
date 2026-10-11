@@ -1,4 +1,4 @@
-::  %calendar — household calendar store (P2).
+::  %calendar — clan calendar store.
 ::
 /-  cal=calendar
 /+  default-agent, dbug, server

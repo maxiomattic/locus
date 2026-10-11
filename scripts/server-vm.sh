@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring-up M2 ship in a new quickemu VM with a dedicated qcow2 (Disko ZFS).
+# Bring-up ship in a new quickemu VM with a dedicated qcow2 (Disko ZFS).
 # Does not use or touch any other VM's disk.
 #
 # Layout (same pattern as other quickemu VMs, separate directory):
@@ -7,14 +7,14 @@
 #   ~/vms/<name>/disk.qcow2
 #
 # Default name locus-server: SSH 127.0.0.1:22221, Eyre :8080 (notes-app).
-# P4 test VM: LOCUS_VM_NAME=locus-p4 LOCUS_SSH_PORT=22222 LOCUS_HTTP_PORT=8081
-# (wrapper: ./scripts/p4-vm.sh). Never reuse another VM's disk.
+# A second test VM can use LOCUS_VM_NAME, LOCUS_SSH_PORT, LOCUS_HTTP_PORT.
+# Never reuse another VM's disk.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VMS="${LOCUS_VMS:-$HOME/vms}"
-# Default is the notes-app bring-up VM. Agent/P4 tests use LOCUS_VM_NAME=locus-p4
-# (see scripts/p4-vm.sh) so they never share disk, SSH, or Eyre with that guest.
+# Default is the notes-app bring-up VM. Agent tests use their own LOCUS_VM_NAME
+# so they never share disk, SSH, or Eyre with that guest.
 NAME="${LOCUS_VM_NAME:-locus-server}"
 VM_USER="locus"
 VM_DIR="$VMS/$NAME"
@@ -268,21 +268,13 @@ case "$cmd" in
     ensure_clay_unix
     ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh"
     ;;
-  p1)
+  locus)
     "$0" occ
-    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/locus-p1.sh"
+    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/locus-check.sh"
     ;;
-  p2)
+  photos)
     "$0" occ
-    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/mail-p2.sh"
-    ;;
-  p4)
-    "$0" occ
-    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/photos-p4.sh"
-    ;;
-  p6)
-    "$0" occ
-    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/hatch-p6.sh"
+    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/photos-check.sh"
     ;;
   down)
     if ! vm_running; then
@@ -307,7 +299,7 @@ case "$cmd" in
     fi
     ;;
   *)
-    echo "usage: $0 [up|build-iso|ssh|rsync|occ|p1|p2|p4|p6|down|kill]" >&2
+    echo "usage: $0 [up|build-iso|ssh|rsync|occ|locus|photos|down|kill]" >&2
     exit 1
     ;;
 esac

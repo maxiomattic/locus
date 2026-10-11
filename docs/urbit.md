@@ -1,19 +1,19 @@
-# Urbit on the household server (M2)
+# Urbit on the clan server
 
-systemd unit `urbit.service` boots a **comet** (or optional moon) on the Disko pier dataset. Do not `zfs create` by hand. Do not put the pier on a non-ZFS disk. Do not install Tlon / `%groups` (M3).
+systemd unit `urbit.service` boots a **comet** (or a planet or moon) on the Disko pier dataset. Do not `zfs create` by hand. Do not put the pier on a non-ZFS disk. Do not install Tlon / `%groups`.
 
 ## Layout
 
 | Path | Role |
 |---|---|
-| `rpool/urbit/pier` → `/var/lib/urbit/pier` | ZFS dataset (M1) |
+| `rpool/urbit/pier` → `/var/lib/urbit/pier` | ZFS dataset |
 | `/var/lib/urbit/pier/ship` | Vere pier (`.urb`). `-c` cannot target the mountpoint because that directory already exists. |
 
 The unit refuses to start unless `/var/lib/urbit/pier` is that ZFS dataset. User `urbit` owns the mount; the process is not root and is not granted `zfs allow`.
 
 ## Apply
 
-Disko first: [zfs.md](zfs.md). Point `digitalWorkspace.server.diskDevice` at a **dedicated server disk** or a **bring-up VM disk** (`/dev/disk/by-id/...` or `/dev/vda`). The flake example uses a placeholder so it will not match a laptop disk.
+Disko first: [zfs.md](zfs.md). Point `locus.server.diskDevice` at a **dedicated server disk** or a **bring-up VM disk** (`/dev/disk/by-id/...` or `/dev/vda`). The flake example uses a placeholder so it will not match a laptop disk.
 
 On that machine:
 
@@ -67,15 +67,17 @@ sudo reboot
 
 After boot: `systemctl is-active urbit`, then `urbit-code` and the LAN `curl` to `/~/login` again.
 
-## Moon instead of comet
+## Planet or moon instead of comet
 
 ```nix
-digitalWorkspace.server.urbit = {
-  ship = "moon";
-  moonName = "your-planet-your-moon";
-  moonKeyFile = /var/lib/urbit/moon.key;
+locus.server.urbit = {
+  ship = "planet";                         # or "moon"
+  name = "sampel-palnet";                  # @p without the leading ~
+  keyFile = "/var/lib/urbit/keys/sampel-palnet.key";
 };
 ```
+
+`keyFile` is a string, not a Nix path, so the key never enters the world-readable Nix store. The file must be absolute and readable by the `urbit` user only. Delete it after the first successful boot; the unit is started with `-` on the read-only path, so it still starts without the file.
 
 ## Rollback
 

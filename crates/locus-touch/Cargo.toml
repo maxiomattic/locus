@@ -1,9 +1,0 @@
-[package]
-name = "locus-touch"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "P5: same ship HTTP surfaces for a Graphene/touch client (not a nested COSMIC)"
-
-[dependencies]
-photos-protocol = { path = "../photos-protocol" }

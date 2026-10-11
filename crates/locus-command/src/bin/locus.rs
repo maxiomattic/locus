@@ -1,7 +1,7 @@
-//! `locus` — household command plane (same functions the ship audits).
+//! `locus` — clan command plane (same functions the ship audits).
 
 use locus_command::{
-    execute_allowed, hatch_execute_allowed, load_saved, run_approved_job, Session,
+    execute_allowed, load_saved, run_approved_job, Session,
 };
 use std::env;
 use std::io::{self, IsTerminal, Read};
@@ -96,16 +96,6 @@ fn run() -> Result<(), String> {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
             cmd_execute(&s, id)
         }
-        "hatch" => {
-            let app = args.next().ok_or("usage: locus hatch <steam|blender>")?;
-            if app != "steam" && app != "blender" {
-                return Err("usage: locus hatch <steam|blender>".into());
-            }
-            let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            let env = s.queue_hatch(&app, None).map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&env).unwrap_or_default());
-            Ok(())
-        }
         "audit" => {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&s.audit().map_err(|e| e.to_string())?).unwrap_or_default());
@@ -121,12 +111,7 @@ fn cmd_execute(s: &Session, id: u64) -> Result<(), String> {
         .into_iter()
         .find(|j| j.id == id)
         .ok_or_else(|| format!("no job {id}"))?;
-    let hatch = job.function == "escape.launch";
-    let execute = if hatch {
-        hatch_execute_allowed()
-    } else {
-        execute_allowed()
-    };
+    let execute = execute_allowed();
     let out = run_approved_job(&job, execute).map_err(|e| e.to_string())?;
     s.mark_executed(id).map_err(|e| e.to_string())?;
     if !out.trim().is_empty() {
@@ -134,8 +119,6 @@ fn cmd_execute(s: &Session, id: u64) -> Result<(), String> {
     }
     if execute {
         println!("executed {id}");
-    } else if hatch {
-        println!("dry-run hatch {id} (set LOCUS_HATCH_EXECUTE=1 to launch)");
     } else {
         println!("dry-activate {id} (set LOCUS_OS_EXECUTE=1 to switch)");
     }
@@ -144,7 +127,7 @@ fn cmd_execute(s: &Session, id: u64) -> Result<(), String> {
 
 fn print_help() {
     eprintln!(
-        "locus — household command plane\n\
+        "locus — clan command plane\n\
          \n\
          locus login [code-file]   # +code file, or stdin; stores API key\n\
          locus whoami\n\
@@ -157,13 +140,11 @@ fn print_help() {
          locus approve <id>\n\
          locus deny <id>\n\
          locus execute <id>        # dry-activate unless LOCUS_OS_EXECUTE=1\n\
-         locus hatch <steam|blender>  # queue escape.launch (P6)\n\
          locus audit\n\
          \n\
          Agents authenticate with their own X-Api-Key (from add / issue-key).\n\
-         They can queue os.rebuild / os.rollback / escape.launch. They cannot\n\
-         approve, execute, or call history.purge / zfs.destroy. --as is owner-only.\n\
-         Hatch execute needs LOCUS_HATCH_EXECUTE=1 (does not use LOCUS_OS_EXECUTE)."
+         They can queue os.rebuild / os.rollback. They cannot\n\
+         approve, execute, or call history.purge / zfs.destroy. --as is owner-only."
     );
 }
 

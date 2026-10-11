@@ -2983,13 +2983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "locus-touch"
-version = "0.1.0"
-dependencies = [
- "photos-protocol",
-]
-
-[[package]]
 name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3051,23 +3044,6 @@ dependencies = [
  "float_next_after",
  "lyon_path",
  "num-traits",
-]
-
-[[package]]
-name = "mail-bridge"
-version = "0.1.0"
-dependencies = [
- "mail-protocol",
-]
-
-[[package]]
-name = "mail-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "ureq",
 ]
 
 [[package]]

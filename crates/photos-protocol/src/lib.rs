@@ -1,4 +1,4 @@
-//! Catalog types and HTTP client for `%photos` and `%contacts` (P4).
+//! Catalog types and HTTP client for `%photos` and `%contacts` .
 //!
 //! Photo **bytes** stay on ZFS (`/var/lib/locus/photos`). This crate is the
 //! ship catalog (albums, tags, relative paths) plus contacts.

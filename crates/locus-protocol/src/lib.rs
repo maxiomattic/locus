@@ -1,4 +1,4 @@
-//! HTTP client for `%locus` (household members, named functions, audit).
+//! HTTP client for `%locus` (clan members, named functions, audit).
 
 use serde::{Deserialize, Serialize};
 use std::io::Read;

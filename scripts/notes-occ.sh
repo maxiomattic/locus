@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# M3: |commit Clay desk %locus (Gall %notes / %locus / %mail / %calendar /
-# %photos / %contacts), then create / list / expectedRevision conflict.
+# |commit Clay desk %locus (Gall %notes / %locus / %calendar / %photos /
+# %contacts), then create / list / expectedRevision conflict.
 # Does not install Tlon Messenger / %groups.
 #
 # Env:
-#   EYRE_URL          default http://127.0.0.1 (Eyre is port 80 in M2)
+#   EYRE_URL          default http://127.0.0.1 (Eyre is port 80)
 #   URBIT_PIER        default /var/lib/urbit/pier/ship
 #   LOCUS_DESK        Clay desk name, default locus
 #   NOTES_CODE_FILE   optional file with +code (never commit this)
@@ -27,13 +27,13 @@ need python3
 
 ship_not_up() {
   cat >&2 <<EOF
-M3 desk fork is in $DESK_SRC (Tlon %notes, MIT, groups/activity/mcp/UI stripped).
+Desk fork is in $DESK_SRC (Tlon %notes, MIT, groups/activity/mcp/UI stripped).
 
 Eyre is not reachable at $EYRE_URL/~/login.
 
 To run this script against the live ship:
 
-  1. Finish M2 on the household server (ZFS pier, urbit.service).
+  1. Finish the bring-up on the clan server (ZFS pier, urbit.service).
      Pier must stay on rpool/urbit/pier — do not boot a fake ship on a
      non-ZFS disk.
   2. From the LAN: curl -sS -o /dev/null -w '%{http_code}\\n' http://<server-lan-ip>/~/login
@@ -115,7 +115,7 @@ wait_until() {
 commit_desk() {
   local mount="$URBIT_PIER/$LOCUS_DESK"
 
-  echo "uninstalling Tlon %groups / %landscape / pill %notes / pill %contacts if present (M3 is our fork only)"
+  echo "uninstalling Tlon %groups / %landscape / pill %notes / pill %contacts if present (this desk is our fork only)"
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%groups))  (pure:m !>(%ok))" >/dev/null || true
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%landscape))  (pure:m !>(%ok))" >/dev/null || true
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%notes))  (pure:m !>(%ok))" >/dev/null || true
@@ -169,12 +169,6 @@ commit_desk() {
     printf '%s\n' "$out" | grep -Fq 'locus-hoon-yes'
   }
 
-  clay_has_mail() {
-    local out
-    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/mail/hoon) %mail-hoon-yes %mail-hoon-no)))" || true)"
-    printf '%s\n' "$out" | grep -Fq 'mail-hoon-yes'
-  }
-
   clay_has_photos() {
     local out
     out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/photos/hoon) %photos-hoon-yes %photos-hoon-no)))" || true)"
@@ -215,7 +209,7 @@ commit_desk() {
   wait_until "committed /app/notes/hoon on %$LOCUS_DESK" \
     "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/notes/hoon) %notes-hoon-yes %notes-hoon-no)))" \
     'notes-hoon-yes'
-  if ! clay_has_locus || ! clay_has_mail || ! clay_has_photos || ! clay_has_contacts; then
+  if ! clay_has_locus || ! clay_has_photos || ! clay_has_contacts; then
     recreate_unix_desk
     copy_desk_src
     echo "|commit %$LOCUS_DESK (after recreating mount)"
@@ -227,9 +221,6 @@ commit_desk() {
   wait_until "committed /app/locus/hoon on %$LOCUS_DESK" \
     "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/locus/hoon) %locus-hoon-yes %locus-hoon-no)))" \
     'locus-hoon-yes'
-  wait_until "committed /app/mail/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/mail/hoon) %mail-hoon-yes %mail-hoon-no)))" \
-    'mail-hoon-yes'
   wait_until "committed /app/calendar/hoon on %$LOCUS_DESK" \
     "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/calendar/hoon) %calendar-hoon-yes %calendar-hoon-no)))" \
     'calendar-hoon-yes'
@@ -264,7 +255,6 @@ commit_desk() {
 
   wait_openapi /notes/openapi.json %notes 600 || exit 1
   wait_openapi /locus/openapi.json %locus 300 || exit 1
-  wait_openapi /mail/openapi.json %mail 300 || exit 1
   wait_openapi /calendar/openapi.json %calendar 300 || exit 1
   wait_openapi /photos/openapi.json %photos 300 || exit 1
   wait_openapi /contacts/openapi.json %contacts 300 || exit 1
@@ -281,7 +271,7 @@ if [ -z "${SKIP_COMMIT:-}" ] && sudo test -S "$SOCK"; then
 elif [ -z "${SKIP_COMMIT:-}" ]; then
   echo "conn.sock not at $SOCK — skipping |commit (run this on the server to install the desk)"
   if [ "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$EYRE_URL/notes/openapi.json" || true)" != "200" ]; then
-    echo "%notes is not serving $EYRE_URL/notes/openapi.json yet. Run this script on the M2 server so it can |commit %$LOCUS_DESK." >&2
+    echo "%notes is not serving $EYRE_URL/notes/openapi.json yet. Run this script on the server so it can |commit %$LOCUS_DESK." >&2
     exit 1
   fi
 fi
@@ -365,7 +355,7 @@ def wait_terminal(code, payload, path):
             return payload
     raise SystemExit(f"{path} still pending after poll: {payload}")
 
-title = "M3 OCC"
+title = "OCC"
 code, created = req("POST", "/notes/~/v1/notebooks", {"title": title})
 created = wait_terminal(code, created, "create notebook")
 body = created.get("body") or {}
@@ -377,7 +367,7 @@ root = nb["notebook"]["rootFolderId"]
 base = f"/notes/~/v1/notebooks/{host}/{name}"
 print(f"created notebook {host}/{name} rootFolderId={root}")
 
-code, folder = req("POST", f"{base}/folders", {"folderName": "M3 Folder", "parent": root})
+code, folder = req("POST", f"{base}/folders", {"folderName": "OCC Folder", "parent": root})
 folder = wait_terminal(code, folder, "create folder")
 if (folder.get("body") or {}).get("type") == "error":
     raise SystemExit(f"create folder error: {folder}")
@@ -386,13 +376,13 @@ code, folders = req("GET", f"{base}/folders")
 folders = expect_ok(code, folders, "list folders")
 if not isinstance(folders, list):
     raise SystemExit(f"list folders: expected array, got {folders}")
-child = next((f for f in folders if f.get("name") == "M3 Folder"), None)
+child = next((f for f in folders if f.get("name") == "OCC Folder"), None)
 if child is None:
     raise SystemExit(f"folder not in list: {folders}")
 fid = child["id"]
 print(f"created folder id={fid}")
 
-code, note = req("POST", f"{base}/notes", {"folder": fid, "title": "M3 Note", "body": "first"})
+code, note = req("POST", f"{base}/notes", {"folder": fid, "title": "OCC Note", "body": "first"})
 note = wait_terminal(code, note, "create note")
 if (note.get("body") or {}).get("type") == "error":
     raise SystemExit(f"create note error: {note}")
@@ -401,7 +391,7 @@ code, notes = req("GET", f"{base}/notes")
 notes = expect_ok(code, notes, "list notes")
 if not isinstance(notes, list):
     raise SystemExit(f"list notes: expected array, got {notes}")
-got = next((n for n in notes if n.get("title") == "M3 Note"), None)
+got = next((n for n in notes if n.get("title") == "OCC Note"), None)
 if got is None:
     raise SystemExit(f"note not in list: {notes}")
 nid, rev = got["id"], got["revision"]
@@ -427,7 +417,7 @@ err = (stale.get("body") or {})
 if err.get("type") != "error" or err.get("errorType") != "conflict":
     raise SystemExit(f"stale save should be %conflict, got {stale}")
 print("stale expectedRevision save returned %conflict")
-print("M3 OCC ok")
+print("OCC ok")
 PY
 
 echo "checking +vats / %groups is not running"
@@ -458,4 +448,4 @@ else
   echo "no conn.sock; skipped kiln pikes. /groups HTTP=$groups_http (not 200)"
 fi
 
-echo "M3 done: OCC against our desk, %groups not running"
+echo "done: OCC against our desk, %groups not running"

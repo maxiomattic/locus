@@ -10,7 +10,7 @@
 {
   imports = [ "${modulesPath}/profiles/qemu-guest.nix" ];
 
-  digitalWorkspace.server = {
+  locus.server = {
     enable = true;
     diskDevice = "/dev/vda";
     urbit.loom = 31; # 2GiB; first comet boot of the 4.6 pill OOMs (`bail: meme`) at loom 30.

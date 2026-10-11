@@ -1,4 +1,4 @@
-# ZFS on the household server (M1)
+# ZFS on the clan server
 
 Disko in this flake is the source of truth. Do not `zfs create` by hand. Ship boot: [urbit.md](urbit.md).
 
@@ -13,7 +13,7 @@ Pool `rpool` on the **server** disk only:
 | `rpool/urbit` | (not mounted) | no |
 | `rpool/urbit/pier` | `/var/lib/urbit/pier` | yes |
 
-Set `digitalWorkspace.server.diskDevice` to that machine’s `/dev/disk/by-id/...` before any Disko format. The flake’s example configuration uses a placeholder path so it will not match a real disk.
+Set `locus.server.diskDevice` to that machine’s `/dev/disk/by-id/...` before any Disko format. The flake’s example configuration uses a placeholder path so it will not match a real disk.
 
 Disko only lists that one disk. It will not format other disks. Format **will** wipe `diskDevice`.
 

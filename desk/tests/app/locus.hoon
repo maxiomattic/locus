@@ -1,4 +1,4 @@
-::  P1 household command plane — identity, OS approval, immutable audit.
+::  Clan command plane — identity, OS approval, immutable audit.
 ::
 /-  loc=locus
 /+  *test-agent
@@ -112,42 +112,6 @@
   ;<  *  bind:m  (call add-agent)
   ;<  *  bind:m  (call rebuild-as-dev)
   ;<  *  bind:m  (call (approve 1))
-  ;<  =cage  bind:m  (got-peek /x/pending)
-  =/  jon=json  !<(json q.cage)
-  ?>  ?=(%a -.jon)
-  ?>  ?=(~ p.jon)
-  (pure:m ~)
-::
-++  launch-steam
-  %-  pairs:enjs:format
-  :~  fn+s+'escape.launch'
-      args+(pairs:enjs:format ~[app+s+'steam'])
-  ==
-::
-++  test-escape-launch-queues
-  %-  eval-mare
-  =/  m  (mare ,~)
-  ^-  form:m
-  ;<  ~  bind:m  init
-  ;<  *  bind:m  (call launch-steam)
-  ;<  =cage  bind:m  (got-peek /x/pending)
-  =/  jon=json  !<(json q.cage)
-  ?>  ?=(%a -.jon)
-  ?>  ?=([^ ~] p.jon)
-  (pure:m ~)
-::
-++  launch-doom
-  %-  pairs:enjs:format
-  :~  fn+s+'escape.launch'
-      args+(pairs:enjs:format ~[app+s+'doom'])
-  ==
-::
-++  test-escape-unknown-stays-empty
-  %-  eval-mare
-  =/  m  (mare ,~)
-  ^-  form:m
-  ;<  ~  bind:m  init
-  ;<  *  bind:m  (call launch-doom)
   ;<  =cage  bind:m  (got-peek /x/pending)
   =/  jon=json  !<(json q.cage)
   ?>  ?=(%a -.jon)

@@ -1,4 +1,4 @@
-::  %photos — catalog only (P4). Bytes stay on ZFS.
+::  %photos — catalog only. Bytes stay on ZFS.
 ::
 /-  pho=photos
 /+  default-agent, dbug, server

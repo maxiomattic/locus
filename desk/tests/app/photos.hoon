@@ -1,4 +1,4 @@
-::  P4 photo catalog — create, list, expectedRevision conflict, reject .. paths.
+::  Photo catalog — create, list, expectedRevision conflict, reject .. paths.
 ::
 /-  pho=photos
 /+  *test-agent

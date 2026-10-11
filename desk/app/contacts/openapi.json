@@ -3,7 +3,7 @@
   "info": {
     "title": "Locus contacts",
     "version": "1.0.0",
-    "description": "P4: canonical household contacts on the ship."
+    "description": "Canonical clan contacts on the ship."
   },
   "paths": {
     "/contacts/openapi.json": {

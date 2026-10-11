@@ -3,7 +3,7 @@
   "info": {
     "title": "Locus photo catalog",
     "version": "1.0.0",
-    "description": "P4: catalog on the ship. JPEG/PNG bytes stay on ZFS under /var/lib/locus/photos. Writes use expectedRevision; stale saves return conflict."
+    "description": "Catalog on the ship. JPEG/PNG bytes stay on ZFS under /var/lib/locus/photos. Writes use expectedRevision; stale saves return conflict."
   },
   "paths": {
     "/photos/openapi.json": {

@@ -1,4 +1,4 @@
-# Photo library and contacts (P4)
+# Photo library and contacts
 
 Catalog (albums, tags, relative paths, OCC) lives in Gall on **our** `%locus` desk. JPEG/PNG **bytes** stay on ZFS at `/var/lib/locus/photos`. The client thumbnail cache is not a second library. Parent plan: [plan.md](plan.md).
 
@@ -21,7 +21,7 @@ A catalog `path` is ZFS-relative (`holidays/pier.jpg`). The agent refuses `/...`
 
 ## Check
 
-Automated (no ship): `./scripts/plan-check.sh` (cargo + Disko photos dataset).
+Automated (no ship): `./scripts/check.sh` (cargo + Disko photos dataset).
 
 On the bring-up VM, after the desk is committed:
 
@@ -31,4 +31,4 @@ On the bring-up VM, after the desk is committed:
 
 Or on the guest: `EYRE_URL=http://127.0.0.1 ./scripts/photos-p4.sh`
 
-A libcosmic photo grid (M7 shape) is a later slice. Instant grid means the thumb cache; this pass proves the cache and the catalog, not a window.
+A libcosmic photo grid is a later slice. Instant grid means the thumb cache; this pass proves the cache and the catalog, not a window.

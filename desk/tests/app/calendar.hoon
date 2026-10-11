@@ -1,4 +1,4 @@
-::  P2 calendar store — create, list, expectedRevision conflict.
+::  Calendar store — create, list, expectedRevision conflict.
 ::
 /-  cal=calendar
 /+  *test-agent

@@ -1,4 +1,4 @@
-::  Photo catalog (P4). Bytes live on ZFS; this map is titles, albums, tags, paths.
+::  Photo catalog. Bytes live on ZFS; this map is titles, albums, tags, paths.
 ::
 |%
 +$  photo

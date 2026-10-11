@@ -1,4 +1,4 @@
-::  %contacts — household people (P4).
+::  %contacts — clan people.
 ::
 /-  con=contacts
 /+  default-agent, dbug, server

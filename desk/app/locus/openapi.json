@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Locus household command plane",
+    "title": "Locus clan command plane",
     "version": "1.0.0",
-    "description": "P1: map Urbit ships onto household members, wrap OS-mutating commands behind human approval, append-only audit. history.purge and zfs.destroy are always denied. escape.launch queues steam/blender (P6)."
+    "description": "Map Urbit ships onto clan members, wrap OS-mutating commands behind human approval, append-only audit. history.purge and zfs.destroy are always denied."
   },
   "paths": {
     "/locus/openapi.json": {
@@ -15,7 +15,7 @@
       "get": { "summary": "Authenticated principal (cookie or X-Api-Key)" }
     },
     "/locus/~/v1/members": {
-      "get": { "summary": "List household members" }
+      "get": { "summary": "List clan members" }
     },
     "/locus/~/v1/audit": {
       "get": { "summary": "Append-only function-call log" }

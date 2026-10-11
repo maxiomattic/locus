@@ -1,4 +1,4 @@
-::  Household command plane (P1). Members are ships; OS-mutating
+::  Clan command plane. Members are ships; OS-mutating
 ::  functions queue until a human (owner/member, never agent) approves.
 ::  Audit is append-only. history.purge / zfs.destroy are always denied.
 ::

@@ -1,4 +1,4 @@
-# Notes desk (M3)
+# Notes desk
 
 Hard fork of Tlon `%notes` (MIT, tloncorp/tlon-apps) onto **our** desk. This repo does not install Tlon Messenger or `%groups`.
 
@@ -13,12 +13,12 @@ Live check: [scripts/notes-occ.sh](../scripts/notes-occ.sh) — create personal 
 | `desk/lib/notes/json.hoon` | JSON |
 | `desk/mar/notes/` | Marks |
 | `desk/app/notes/openapi.json` | v1 HTTP spec |
-| `desk/desk.bill` | starts **`%notes`**, **`%locus`**, **`%mail`**, **`%calendar`** |
+| `desk/desk.bill` | starts **`%notes`**, **`%locus`**, **`%calendar`**, **`%photos`**, **`%contacts`** |
 | `desk/NOTICE` | Tlon MIT pin + urbit 408k helpers |
 
-Desk name on the ship: `%locus` (Gall agents `%notes`, `%locus`, `%mail`, `%calendar`). Kelvin `[%zuse 408]`.
+Desk name on the ship: `%locus` (Gall agents `%notes`, `%locus`, `%calendar`, `%photos`, `%contacts`). Kelvin `[%zuse 408]`.
 
-## Apply on the M2 server
+## Apply on the server
 
 Eyre must already be on the LAN (`docs/urbit.md`). Pier stays on `rpool/urbit/pier`. Do not boot a fake ship on a non-ZFS disk.
 
@@ -39,7 +39,7 @@ EYRE_URL=http://<server-lan-ip> SKIP_COMMIT=1 ./scripts/notes-occ.sh
 
 `SKIP_COMMIT=1` still needs +code via `urbit-code` or `NOTES_CODE_FILE` (a 600 file, not in git).
 
-## Client on this laptop (before the tunnel)
+## Client on this laptop
 
 The COSMIC window on the NixOS host talks to the ship in the bring-up VM:
 

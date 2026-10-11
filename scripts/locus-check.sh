@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P1: household members, agent cannot approve OS mutations, purge cannot
+# Clan members, agent cannot approve OS mutations, purge cannot
 # empty the audit log. Desk must already include %locus (re-run notes-occ.sh
 # to |commit). Does not install Tlon Messenger.
 #
@@ -146,5 +146,5 @@ code, audit = req("GET", "/locus/~/v1/audit")
 if code != 200 or not (audit or {}).get("audit"):
     raise SystemExit(f"audit empty after purge attempt: {audit}")
 print(f"audit {len(audit['audit'])} entries (purge did not wipe)")
-print("P1 locus check passed")
+print("locus check passed")
 PY

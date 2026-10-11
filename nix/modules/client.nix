@@ -1,4 +1,4 @@
-# Locus desktop client (P3). COSMIC with cosmic-comp — not a separate TWM.
+# Locus desktop client. COSMIC with cosmic-comp — not a separate TWM.
 # Do not nixos-rebuild switch this on the laptop unless that machine should
 # leave GNOME. Browser is a Nix-declared client app, not an Urbit agent.
 {
@@ -8,11 +8,11 @@
   ...
 }:
 let
-  cfg = config.digitalWorkspace.client;
+  cfg = config.locus.client;
   defaults = pkgs.callPackage ../cosmic-defaults.nix { };
 in
 {
-  options.digitalWorkspace.client = {
+  options.locus.client = {
     enable = lib.mkEnableOption "Locus COSMIC desktop client (cosmic-comp, tiling, declared browser)";
 
     browser = lib.mkOption {
@@ -20,7 +20,7 @@ in
       default = pkgs.firefox;
       defaultText = lib.literalExpression "pkgs.firefox";
       description = ''
-        Household browser package. Ordinary client software: declare it in Nix,
+        Clan browser package. Ordinary client software: declare it in Nix,
         permission it through the command plane later. Do not port it into Urbit.
       '';
     };

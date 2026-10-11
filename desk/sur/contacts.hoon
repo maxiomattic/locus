@@ -1,4 +1,4 @@
-::  Household contacts (P4). Canonical people live here, not a second DB.
+::  Clan contacts. Canonical people live here, not a second DB.
 ::
 |%
 +$  contact
