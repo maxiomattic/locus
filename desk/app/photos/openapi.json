@@ -15,7 +15,8 @@
     },
     "/photos/~/v1/photos/{id}": {
       "get": { "summary": "Get one entry" },
-      "put": { "summary": "Patch; expectedRevision required" }
+      "put": { "summary": "Patch; expectedRevision required" },
+      "delete": { "summary": "Delete; optional expectedRevision query (404 if missing, 409 if stale)" }
     }
   }
 }

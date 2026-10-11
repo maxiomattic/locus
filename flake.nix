@@ -37,12 +37,16 @@
     {
       # Clan machines import these. CalDAV, Attic, and operator
       # accounts live in the separate personal NixOS flake — not here.
-      nixosModules.server = {
-        imports = [
-          disko.nixosModules.disko
-          ./nix/modules/server.nix
-        ];
-      };
+      nixosModules.server =
+        { pkgs, lib, ... }:
+        {
+          imports = [
+            disko.nixosModules.disko
+            ./nix/modules/server.nix
+          ];
+          locus.server.gateway.package =
+            lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-gateway;
+        };
       nixosModules.default = self.nixosModules.server;
 
       nixosModules.client = {
@@ -131,6 +135,14 @@
             rustc = rustToolchain;
           };
 
+          # One vendored dependency set for every crate in the workspace.
+          # Update the hash whenever Cargo.lock changes.
+          cargoDeps = rustPlatform.fetchCargoVendor {
+            src = pkgs.lib.cleanSource ./.;
+            name = "locus-cargo-deps";
+            hash = "sha256-hI1WQH3w11TqAZGcVW9GtVDvI6caTSx+ERWYOAgUV4Q=";
+          };
+
           # Vere (urbit runtime) pin: nixpkgs-unstable `pkgs.urbit` 4.6
           # (vere-v4.6, Arvo 408k — same kelvin as desk/sys/kelvin). Locked by flake.lock.
           urbit = pkgs.urbit;
@@ -140,11 +152,24 @@
           server = urbit;
           locus-cosmic-defaults = pkgs.callPackage ./nix/cosmic-defaults.nix { };
 
+          locus-gateway = rustPlatform.buildRustPackage {
+            pname = "locus-gateway";
+            version = "0.1.0";
+            src = pkgs.lib.cleanSource ./.;
+            inherit cargoDeps;
+            cargoBuildFlags = [ "-p" "locus-gateway" ];
+            doCheck = false;
+            meta = {
+              description = "Locus gateway: browser app, file bytes, Eyre proxy";
+              mainProgram = "locus-gateway";
+            };
+          };
+
           notes-app = rustPlatform.buildRustPackage {
             pname = "notes-app";
             version = "0.1.0";
             src = pkgs.lib.cleanSource ./.;
-            cargoHash = "sha256-sFkU9I1ZRk4g8dZ/D9VdgFr4+kAJ1/bp83/RCOxmb9o=";
+            inherit cargoDeps;
             cargoBuildFlags = [ "-p" "notes-app" ];
             doCheck = false;
             nativeBuildInputs = [
@@ -206,12 +231,17 @@
               "clippy"
               "rustfmt"
             ];
+            # Browser build of locus-web (upstream iced, webgl).
+            targets = [ "wasm32-unknown-unknown" ];
           };
         in
         {
           default = pkgs.mkShell {
             packages = [
               rustToolchain
+              # Must match the wasm-bindgen crate pinned in crates/locus-web.
+              (pkgs.callPackage ./nix/pkgs/wasm-bindgen-cli.nix { })
+              pkgs.binaryen
               pkgs.pkg-config
               pkgs.cmake
               pkgs.fontconfig

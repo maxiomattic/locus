@@ -1,0 +1,27 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus file catalog",
+    "version": "1.0.0",
+    "description": "Catalog on the ship. File bytes stay on ZFS behind a host gateway and are addressed by SHA-256. Folders are implied by entries plus explicitly created folders. Writes use expectedRevision; stale saves return conflict (409). Errors use the envelope {ok:false, error, message} with HTTP 400, 404 or 409 as applicable."
+  },
+  "paths": {
+    "/files/openapi.json": {
+      "get": { "summary": "This spec (unauthenticated)" }
+    },
+    "/files/~/v1/files": {
+      "get": { "summary": "List file entries; optional ?dir=/exact/folder filter" },
+      "post": { "summary": "Create an entry {dir, name, sha256, size, mime}" }
+    },
+    "/files/~/v1/files/{id}": {
+      "get": { "summary": "Get one entry" },
+      "put": { "summary": "Patch {dir, name} (rename or move); expectedRevision required" },
+      "delete": { "summary": "Delete; optional expectedRevision query (404 if missing, 409 if stale)" }
+    },
+    "/files/~/v1/dirs": {
+      "get": { "summary": "Sorted unique folder paths implied by entries plus explicit folders" },
+      "post": { "summary": "Create an empty folder {path}" },
+      "delete": { "summary": "Delete folder ?path=/x; 409 if any entry is under it" }
+    }
+  }
+}

@@ -1,5 +1,17 @@
 /-  con=contacts
 |%
+++  status-of
+  |=  jon=json
+  ^-  @ud
+  ?.  ?=(%o -.jon)  200
+  ?~  e=(~(get by p.jon) 'error')  200
+  =/  typ=@t  (so:dejs:format u.e)
+  ?+  typ  200
+    %bad-request  400
+    %not-found    404
+    %conflict     409
+  ==
+::
 ++  enjs
   =,  enjs:format
   |%

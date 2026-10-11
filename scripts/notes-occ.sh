@@ -9,6 +9,8 @@
 #   LOCUS_DESK        Clay desk name, default locus
 #   NOTES_CODE_FILE   optional file with +code (never commit this)
 #   SKIP_COMMIT       if set, skip Clay install and only run HTTP OCC
+#   LOCUS_RESET       1 = wipe %notes/%contacts state and reinstall %locus.
+#                     TEST SHIPS ONLY (server-vm.sh sets it). Default 0 keeps data.
 #
 # +code is read on the server with `sudo -u urbit urbit-code` (or NOTES_CODE_FILE).
 # It is never printed, never put in the repo, never passed on argv.
@@ -121,8 +123,8 @@ commit_desk() {
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%notes))  (pure:m !>(%ok))" >/dev/null || true
   # Gall dude %contacts is on the pill (Tlon). Nuke it so our %contacts is a
   # fresh install, not a revive of negotiate-%2 state.
-  conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%notes |]))  (pure:m !>(%ok))" >/dev/null || true
-  conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%contacts |]))  (pure:m !>(%ok))" >/dev/null || true
+  if [ "${LOCUS_RESET:-0}" = 1 ]; then conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%notes |]))  (pure:m !>(%ok))" >/dev/null || true; fi
+  if [ "${LOCUS_RESET:-0}" = 1 ]; then conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%contacts |]))  (pure:m !>(%ok))" >/dev/null || true; fi
 
   echo "creating/merging %$LOCUS_DESK from %base (auto/init)"
   hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  ;<  ~  bind:m  (poke-our %hood kiln-merge+!>([%$LOCUS_DESK our %base da+now %auto]))  (pure:m !>(%ok))"
@@ -181,6 +183,12 @@ commit_desk() {
     printf '%s\n' "$out" | grep -Fq 'contacts-hoon-yes'
   }
 
+  clay_has_files() {
+    local out
+    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/files/hoon) %files-hoon-yes %files-hoon-no)))" || true)"
+    printf '%s\n' "$out" | grep -Fq 'files-hoon-yes'
+  }
+
   recreate_unix_desk() {
     echo "clay unix missed new files; recreating %$LOCUS_DESK mount"
     conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%$LOCUS_DESK))  (pure:m !>(%ok))" >/dev/null || true
@@ -209,7 +217,7 @@ commit_desk() {
   wait_until "committed /app/notes/hoon on %$LOCUS_DESK" \
     "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/notes/hoon) %notes-hoon-yes %notes-hoon-no)))" \
     'notes-hoon-yes'
-  if ! clay_has_locus || ! clay_has_photos || ! clay_has_contacts; then
+  if ! clay_has_locus || ! clay_has_photos || ! clay_has_contacts || ! clay_has_files; then
     recreate_unix_desk
     copy_desk_src
     echo "|commit %$LOCUS_DESK (after recreating mount)"
@@ -230,7 +238,15 @@ commit_desk() {
   wait_until "committed /app/contacts/hoon on %$LOCUS_DESK" \
     "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/contacts/hoon) %contacts-hoon-yes %contacts-hoon-no)))" \
     'contacts-hoon-yes'
+  wait_until "committed /app/files/hoon on %$LOCUS_DESK" \
+    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/files/hoon) %files-hoon-yes %files-hoon-no)))" \
+    'files-hoon-yes'
 
+  # The nukes above stop %notes / %contacts. If %locus is still installed from a
+  # previous run, |install is a no-op and those agents stay dead, so uninstall
+  # %locus first (desk files stay in Clay).
+  if [ "${LOCUS_RESET:-0}" = 1 ]; then conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%$LOCUS_DESK))  (pure:m !>(%ok))" >/dev/null || true; fi
+  sleep 5
   echo "|install our %$LOCUS_DESK"
   hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  ~  bind:m  (poke-our %hood kiln-install+!>([%$LOCUS_DESK our %$LOCUS_DESK]))  (pure:m !>(%ok))"
   # Do not poke kiln-revive+!>(%locus): this 408k hood nest-fails that vase,
@@ -258,6 +274,7 @@ commit_desk() {
   wait_openapi /calendar/openapi.json %calendar 300 || exit 1
   wait_openapi /photos/openapi.json %photos 300 || exit 1
   wait_openapi /contacts/openapi.json %contacts 300 || exit 1
+  wait_openapi /files/openapi.json %files 300 || exit 1
 }
 
 if [ -z "${SKIP_COMMIT:-}" ] && sudo test -S "$SOCK"; then
@@ -418,6 +435,84 @@ if err.get("type") != "error" or err.get("errorType") != "conflict":
     raise SystemExit(f"stale save should be %conflict, got {stale}")
 print("stale expectedRevision save returned %conflict")
 print("OCC ok")
+PY
+
+echo "files catalog smoke (create, list, stale patch, delete)"
+python3 - "$EYRE_URL" "$COOKIES" <<'PY'
+import hashlib, json, subprocess, sys, time
+
+eyre, cookie_file = sys.argv[1], sys.argv[2]
+
+def req(method, path, body=None):
+    cmd = [
+        "curl", "-sS", "-b", cookie_file, "-c", cookie_file,
+        "-w", "\n%{http_code}", "--max-time", "60",
+        "-X", method, eyre.rstrip("/") + path,
+        "-H", "Accept: application/json",
+    ]
+    if body is not None:
+        cmd += ["-H", "Content-Type: application/json", "-d", json.dumps(body)]
+    out = subprocess.check_output(cmd)
+    raw, _, code_s = out.rpartition(b"\n")
+    code = int(code_s.decode())
+    return code, (json.loads(raw) if raw else None)
+
+base = "/files/~/v1"
+folder = f"/occ-{int(time.time())}"
+sha = hashlib.sha256(b"occ").hexdigest()
+
+code, bad = req("POST", f"{base}/files", {"dir": "/a/../b", "name": "x", "sha256": sha, "size": 1})
+if code != 400 or bad.get("error") != "bad-request":
+    raise SystemExit(f"dotdot dir must be 400 bad-request: HTTP {code} {bad}")
+code, bad = req("POST", f"{base}/files", {"dir": folder, "name": "x", "sha256": "ABC", "size": 1})
+if code != 400 or bad.get("error") != "bad-request":
+    raise SystemExit(f"short sha256 must be 400 bad-request: HTTP {code} {bad}")
+print("rejected bad dir and bad sha256 with 400")
+
+code, made = req("POST", f"{base}/files", {
+    "dir": folder, "name": "occ.pdf", "sha256": sha, "size": 3, "mime": "application/pdf",
+})
+if code != 200 or not (made or {}).get("ok"):
+    raise SystemExit(f"create file: HTTP {code} {made}")
+fid = made["file"]["id"]
+print(f"created file id={fid} revision={made['file']['revision']}")
+
+code, listed = req("GET", f"{base}/files")
+if code != 200 or not any(f.get("id") == fid for f in (listed or {}).get("files") or []):
+    raise SystemExit(f"list files missing {fid}: {listed}")
+code, scoped = req("GET", f"{base}/files?dir={folder}")
+if code != 200 or [f["id"] for f in scoped.get("files") or []] != [fid]:
+    raise SystemExit(f"?dir filter should return only {fid}: {scoped}")
+code, dirs = req("GET", f"{base}/dirs")
+if code != 200 or folder not in ((dirs or {}).get("dirs") or []):
+    raise SystemExit(f"dirs missing {folder}: {dirs}")
+print("list files, ?dir filter and dirs include the new entry")
+
+code, moved = req("PUT", f"{base}/files/{fid}", {"name": "occ-renamed.pdf", "expectedRevision": 0})
+if code != 200 or not (moved or {}).get("ok") or moved["file"]["revision"] != 1:
+    raise SystemExit(f"matching-revision patch: HTTP {code} {moved}")
+code, stale = req("PUT", f"{base}/files/{fid}", {"name": "stale.pdf", "expectedRevision": 0})
+if code != 409 or stale.get("error") != "conflict":
+    raise SystemExit(f"stale patch must be 409 conflict: HTTP {code} {stale}")
+print("matching patch ok, stale patch returned 409 conflict")
+
+code, blocked = req("DELETE", f"{base}/dirs?path={folder}")
+if code != 409 or blocked.get("error") != "conflict":
+    raise SystemExit(f"non-empty folder delete must be 409: HTTP {code} {blocked}")
+code, gone = req("DELETE", f"{base}/files/{fid}?expectedRevision=0")
+if code != 409:
+    raise SystemExit(f"stale delete must be 409: HTTP {code} {gone}")
+code, deleted = req("DELETE", f"{base}/files/{fid}?expectedRevision=1")
+if code != 200 or not (deleted or {}).get("ok"):
+    raise SystemExit(f"delete file: HTTP {code} {deleted}")
+code, again = req("DELETE", f"{base}/files/{fid}")
+if code != 404:
+    raise SystemExit(f"second delete must be 404: HTTP {code} {again}")
+code, rmdir = req("DELETE", f"{base}/dirs?path={folder}")
+if code != 200 or not (rmdir or {}).get("ok"):
+    raise SystemExit(f"empty folder delete: HTTP {code} {rmdir}")
+print("stale delete 409, delete 200, repeat delete 404, empty folder delete 200")
+print("files smoke ok")
 PY
 
 echo "checking +vats / %groups is not running"

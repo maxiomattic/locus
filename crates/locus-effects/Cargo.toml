@@ -1,0 +1,15 @@
+[package]
+name = "locus-effects"
+description = "Shared IO layer for Locus apps: runs locus-core Effects through locus-client and maps the results back to Msgs (native and wasm32)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+locus-core = { path = "../locus-core" }
+locus-client = { path = "../locus-client" }
+url = "2"
+
+[dev-dependencies]
+sha2 = "0.11.0"
+tokio = { version = "1", features = ["macros", "rt", "net", "io-util"] }

@@ -1,0 +1,13 @@
+[package]
+name = "locus-core"
+description = "Framework-agnostic state machine for the Locus apps: pure update, keymap and view models"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+locus-client = { path = "../locus-client" }
+serde = { version = "1", features = ["derive"] }
+# Default features are off so the crate builds for wasm32-unknown-unknown
+# without a js feature. `time` is only used for calendar arithmetic.
+time = { version = "0.3", default-features = false, features = ["macros"] }

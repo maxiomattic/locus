@@ -266,7 +266,7 @@ case "$cmd" in
     occ)
     "$0" rsync
     ensure_clay_unix
-    ssh_base "cd /home/${VM_USER}/locus && EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh"
+    ssh_base "cd /home/${VM_USER}/locus && LOCUS_RESET=1 EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh"
     ;;
   locus)
     "$0" occ

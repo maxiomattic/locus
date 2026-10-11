@@ -15,7 +15,8 @@
     },
     "/contacts/~/v1/contacts/{id}": {
       "get": { "summary": "Get one contact" },
-      "put": { "summary": "Patch; expectedRevision required" }
+      "put": { "summary": "Patch; expectedRevision required" },
+      "delete": { "summary": "Delete; optional expectedRevision query (404 if missing, 409 if stale)" }
     }
   }
 }

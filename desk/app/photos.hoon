@@ -120,7 +120,7 @@
       (give-json eyre-id out)
     (http-error eyre-id 405 'method not allowed')
   ?:  ?=([%photos %~.~ %v1 %photos @ ~] site)
-    ?~  id=(slaw %ud i.t.t.t.t.site)
+    ?~  id=(parse-id i.t.t.t.t.site)
       (http-error eyre-id 400 'bad id')
     ?:  =(%'GET' method)
       ?~  p=(~(get by photos) u.id)
@@ -129,6 +129,8 @@
     ?:  =(%'PUT' method)
       =^  out=json  cor  (patch-id u.id inbound-request)
       (give-json eyre-id out)
+    ?:  =(%'DELETE' method)
+      (delete-photo eyre-id u.id args.request-line)
     (http-error eyre-id 405 'method not allowed')
   (http-error eyre-id 404 'not found')
 ::
@@ -149,6 +151,47 @@
 ++  give-json
   |=  [eyre-id=@ta =json]
   (give-http eyre-id 200 'application/json' (en:json:html json))
+::
+++  give-json-status
+  |=  [eyre-id=@ta =json]
+  (give-http eyre-id (status-of:photos-json json) 'application/json' (en:json:html json))
+::
+::  decimal id. slaw %ud wants dots from 1.000 up, so insert one before the
+::  last three digits (ids above 999,999 are rejected).
+++  parse-id
+  |=  t=@t
+  ^-  (unit @ud)
+  =/  s=tape  (trip t)
+  ?:  (lte (lent s) 3)  (slaw %ud t)
+  ?:  (gth (lent s) 6)  ~
+  =/  cut=@ud  (sub (lent s) 3)
+  (slaw %ud (crip :(weld (scag cut s) "." (slag cut s))))
+::
+++  arg-value
+  |=  [args=(list [key=@t value=@t]) k=@t]
+  ^-  (unit @t)
+  |-
+  ?~  args  ~
+  ?:  =(key.i.args k)  `value.i.args
+  $(args t.args)
+::
+++  delete-photo
+  |=  [eyre-id=@ta id=@ud args=(list [key=@t value=@t])]
+  ^+  cor
+  ?~  old=(~(get by photos) id)
+    (give-json-status eyre-id (err:enjs:photos-json 'not-found' 'no such photo'))
+  ?~  raw=(arg-value args 'expectedRevision')
+    (remove-photo eyre-id id)
+  ?~  exp=(parse-id u.raw)
+    (give-json-status eyre-id (err:enjs:photos-json 'bad-request' 'expectedRevision must be a number'))
+  ?.  =(u.exp revision.u.old)
+    (give-json-status eyre-id (err:enjs:photos-json 'conflict' 'stale expectedRevision'))
+  (remove-photo eyre-id id)
+++  remove-photo
+  |=  [eyre-id=@ta id=@ud]
+  ^+  cor
+  =.  photos  (~(del by photos) id)
+  (give-json-status eyre-id (ok:enjs:photos-json [id+(numb:enjs:format id)]~))
 ::
 ++  get-api-key-header
   |=  req=inbound-request:eyre
