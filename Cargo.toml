@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Browser shell: upstream iced 0.14 for wasm32, its own workspace and lockfile.
+exclude = ["crates/locus-web"]
 
 [workspace.package]
 edition = "2024"

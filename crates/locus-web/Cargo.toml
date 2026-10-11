@@ -1,0 +1,32 @@
+[package]
+name = "locus-web"
+description = "Browser shell for the Locus apps: upstream iced 0.14 on wasm32-unknown-unknown"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# Own workspace: upstream iced 0.14 is not the libcosmic fork in the root
+# workspace, and the two must not share a lockfile.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `image-without-codecs` plus the `image` dependency below: only the formats
+# thumbnails come in, instead of every codec `image/default` pulls in.
+iced = { version = "0.14", default-features = false, features = ["wgpu", "webgl", "fira-sans", "image-without-codecs", "advanced"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+locus-core = { path = "../locus-core" }
+locus-client = { path = "../locus-client" }
+locus-effects = { path = "../locus-effects" }
+url = "2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Location", "MediaQueryList", "console", "KeyboardEvent", "AddEventListenerOptions", "EventTarget"] }
+rfd = "0.16"
+console_error_panic_hook = "0.1"

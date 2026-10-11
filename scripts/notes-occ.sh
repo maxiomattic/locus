@@ -17,106 +17,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DESK_SRC="$ROOT/desk"
-EYRE_URL="${EYRE_URL:-http://127.0.0.1}"
-URBIT_PIER="${URBIT_PIER:-/var/lib/urbit/pier/ship}"
-LOCUS_DESK="${LOCUS_DESK:-locus}"
-SOCK="$URBIT_PIER/.urb/conn.sock"
+# shellcheck source=lib/ship.sh
+. "$ROOT/scripts/lib/ship.sh"
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "need $1" >&2; exit 1; }; }
 need curl
 need python3
 
-ship_not_up() {
-  cat >&2 <<EOF
-Desk fork is in $DESK_SRC (Tlon %notes, MIT, groups/activity/mcp/UI stripped).
-
-Eyre is not reachable at $EYRE_URL/~/login.
-
-To run this script against the live ship:
-
-  1. Finish the bring-up on the clan server (ZFS pier, urbit.service).
-     Pier must stay on rpool/urbit/pier — do not boot a fake ship on a
-     non-ZFS disk.
-  2. From the LAN: curl -sS -o /dev/null -w '%{http_code}\\n' http://<server-lan-ip>/~/login
-     200 means Eyre is up.
-  3. On that server, from this repo:
-       EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh
-
-The script calls sudo -u urbit urbit-code itself. Do not paste +code into
-the repo or a commit. Do not scrape /~/login HTML for the code.
-EOF
-  exit 2
-}
-
-wait_eyre() {
-  local i code
-  echo "waiting for Eyre at $EYRE_URL/~/login"
-  for i in $(seq 1 60); do
-    code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 \
-      "$EYRE_URL/~/login" 2>/dev/null || true)
-    if [ "$code" = "200" ]; then
-      echo "Eyre is up at $EYRE_URL/~/login"
-      return
-    fi
-    sleep 5
-  done
-  ship_not_up
-}
-
 wait_eyre
 
-urbit_bin() {
-  if [ -n "${URBIT_BIN:-}" ]; then
-    printf '%s\n' "$URBIT_BIN"
-    return
-  fi
-  command -v urbit
-}
-
-conn_eval() {
-  local hoon=$1
-  local bin nc fyrd
-  bin="$(urbit_bin)"
-  nc="$(command -v nc)"
-  fyrd="[0 %fyrd %base %khan-eval %noun %ted-eval '${hoon}']"
-  printf '%s\n' "$fyrd" \
-    | sudo -u urbit "$bin" eval -jn 2>/dev/null \
-    | sudo -u urbit "$nc" -U -W 60 "$SOCK" \
-    | sudo -u urbit "$bin" eval -cn 2>/dev/null
-}
-
-hood_poke() {
-  local hoon=$1 out
-  echo "hood poke" >&2
-  out="$(conn_eval "$hoon")" || {
-    echo "hood poke failed: $out" >&2
-    exit 1
-  }
-}
-
-# Clay/Hood pokes ack before the vane finishes. Retry scries, not just sleeps.
-# khan-eval prints the jammed noun, not dojo pretty-print: %.y is 0 and %.n is 1,
-# so never grep for the literal '%.y' in avow output.
-wait_until() {
-  local desc=$1 hoon=$2 needle=$3
-  local i out
-  for i in $(seq 1 60); do
-    out="$(conn_eval "$hoon" || true)"
-    if printf '%s\n' "$out" | grep -Fq "$needle"; then
-      echo "$desc"
-      return
-    fi
-    sleep 2
-  done
-  echo "timeout waiting for $desc" >&2
-  echo "$out" >&2
-  exit 1
-}
-
 commit_desk() {
-  local mount="$URBIT_PIER/$LOCUS_DESK"
-
   echo "uninstalling Tlon %groups / %landscape / pill %notes / pill %contacts if present (this desk is our fork only)"
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%groups))  (pure:m !>(%ok))" >/dev/null || true
   conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%landscape))  (pure:m !>(%ok))" >/dev/null || true
@@ -127,77 +36,20 @@ commit_desk() {
   if [ "${LOCUS_RESET:-0}" = 1 ]; then conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%contacts |]))  (pure:m !>(%ok))" >/dev/null || true; fi
 
   echo "creating/merging %$LOCUS_DESK from %base (auto/init)"
-  hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  ;<  ~  bind:m  (poke-our %hood kiln-merge+!>([%$LOCUS_DESK our %base da+now %auto]))  (pure:m !>(%ok))"
-  wait_until "desk %$LOCUS_DESK exists" \
-    '=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(.^((set desk) %cd /(scot %p our)//(scot %da now))))' \
-    "$LOCUS_DESK"
-
-  if sudo test ! -d "$mount"; then
-    echo "mounting %$LOCUS_DESK"
-    hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  =/  pax=path  /(scot %p our)/${LOCUS_DESK}/(scot %da now)  ;<  ~  bind:m  (poke-our %hood kiln-mount+!>([pax %${LOCUS_DESK}]))  (pure:m !>(%ok))"
-  else
-    echo "mount $mount already present"
-  fi
-
-  local i
-  for i in $(seq 1 90); do
-    if sudo test -d "$mount"; then
-      break
-    fi
-    sleep 1
-  done
-  if sudo test ! -d "$mount"; then
-    echo "mount $mount did not appear" >&2
-    exit 1
-  fi
-
-  copy_desk_src() {
-    echo "copying $DESK_SRC -> $mount"
-    # Clay unix-sync converts by extension; .md / extensionless files nack the commit.
-    sudo rsync -a --delete \
-      --chown=urbit:urbit \
-      --chmod=Du=rwx,Dgo=,Fu=rw,Fgo= \
-      --exclude LICENSE.tlon.md \
-      --exclude LICENSE.urbit.md \
-      --exclude NOTICE \
-      --exclude .git \
-      "$DESK_SRC/" "$mount/"
-    sudo rm -f "$mount/LICENSE.tlon.md" "$mount/LICENSE.urbit.md" "$mount/NOTICE"
-  }
-
-  clay_has_locus() {
-    local out
-    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/locus/hoon) %locus-hoon-yes %locus-hoon-no)))" || true)"
-    printf '%s\n' "$out" | grep -Fq 'locus-hoon-yes'
-  }
-
-  clay_has_photos() {
-    local out
-    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/photos/hoon) %photos-hoon-yes %photos-hoon-no)))" || true)"
-    printf '%s\n' "$out" | grep -Fq 'photos-hoon-yes'
-  }
-
-  clay_has_contacts() {
-    local out
-    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/contacts/hoon) %contacts-hoon-yes %contacts-hoon-no)))" || true)"
-    printf '%s\n' "$out" | grep -Fq 'contacts-hoon-yes'
-  }
-
-  clay_has_files() {
-    local out
-    out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/files/hoon) %files-hoon-yes %files-hoon-no)))" || true)"
-    printf '%s\n' "$out" | grep -Fq 'files-hoon-yes'
-  }
+  merge_desk_from_base
+  wait_desk_exists
+  ensure_mounted
 
   recreate_unix_desk() {
+    local mount j
+    mount="$(desk_mount)"
     echo "clay unix missed new files; recreating %$LOCUS_DESK mount"
     conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%$LOCUS_DESK))  (pure:m !>(%ok))" >/dev/null || true
     conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-unmount+!>(%$LOCUS_DESK))  (pure:m !>(%ok))" >/dev/null || true
     sleep 2
     sudo rm -rf "$mount"
-    hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  ;<  ~  bind:m  (poke-our %hood kiln-merge+!>([%$LOCUS_DESK our %base da+now %auto]))  (pure:m !>(%ok))"
-    hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  =/  pax=path  /(scot %p our)/${LOCUS_DESK}/(scot %da now)  ;<  ~  bind:m  (poke-our %hood kiln-mount+!>([pax %${LOCUS_DESK}]))  (pure:m !>(%ok))"
-    local j
+    merge_desk_from_base
+    mount_desk_poke
     for j in $(seq 1 90); do
       if sudo test -d "$mount"; then
         return
@@ -209,65 +61,30 @@ commit_desk() {
   }
 
   copy_desk_src
-
-  echo "|commit %$LOCUS_DESK"
-  hood_poke "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-commit+!>([%$LOCUS_DESK |]))  (pure:m !>(%ok))"
-  # %.y is 0 in the avow noun. Emit a %tas so we do not grep loobeans or
-  # put single-quoted cords inside conn_eval's ted-eval string.
-  wait_until "committed /app/notes/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/notes/hoon) %notes-hoon-yes %notes-hoon-no)))" \
-    'notes-hoon-yes'
-  if ! clay_has_locus || ! clay_has_photos || ! clay_has_contacts || ! clay_has_files; then
+  commit_poke
+  wait_committed notes
+  if ! clay_has_app locus || ! clay_has_app photos || ! clay_has_app contacts || ! clay_has_app files; then
     recreate_unix_desk
     copy_desk_src
     echo "|commit %$LOCUS_DESK (after recreating mount)"
     hood_poke "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-commit+!>([%$LOCUS_DESK |]))  (pure:m !>(%ok))"
-    wait_until "committed /app/notes/hoon on %$LOCUS_DESK" \
-      "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/notes/hoon) %notes-hoon-yes %notes-hoon-no)))" \
-      'notes-hoon-yes'
+    wait_committed notes
   fi
-  wait_until "committed /app/locus/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/locus/hoon) %locus-hoon-yes %locus-hoon-no)))" \
-    'locus-hoon-yes'
-  wait_until "committed /app/calendar/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/calendar/hoon) %calendar-hoon-yes %calendar-hoon-no)))" \
-    'calendar-hoon-yes'
-  wait_until "committed /app/photos/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/photos/hoon) %photos-hoon-yes %photos-hoon-no)))" \
-    'photos-hoon-yes'
-  wait_until "committed /app/contacts/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/contacts/hoon) %contacts-hoon-yes %contacts-hoon-no)))" \
-    'contacts-hoon-yes'
-  wait_until "committed /app/files/hoon on %$LOCUS_DESK" \
-    "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(?:(.^(? %cu /(scot %p our)/${LOCUS_DESK}/(scot %da now)/app/files/hoon) %files-hoon-yes %files-hoon-no)))" \
-    'files-hoon-yes'
+  wait_committed locus
+  wait_committed calendar
+  wait_committed photos
+  wait_committed contacts
+  wait_committed files
 
   # The nukes above stop %notes / %contacts. If %locus is still installed from a
   # previous run, |install is a no-op and those agents stay dead, so uninstall
   # %locus first (desk files stay in Clay).
   if [ "${LOCUS_RESET:-0}" = 1 ]; then conn_eval "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-uninstall+!>(%$LOCUS_DESK))  (pure:m !>(%ok))" >/dev/null || true; fi
   sleep 5
-  echo "|install our %$LOCUS_DESK"
-  hood_poke "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  ~  bind:m  (poke-our %hood kiln-install+!>([%$LOCUS_DESK our %$LOCUS_DESK]))  (pure:m !>(%ok))"
+  install_poke
   # Do not poke kiln-revive+!>(%locus): this 408k hood nest-fails that vase,
   # bails the khan thread, and can 503 already-running agents. |install plus
   # desk.bill is what starts %notes / %locus after mill succeeds.
-
-  wait_openapi() {
-    local path=$1 name=$2 tries=${3:-150}
-    local i
-    echo "waiting for $name HTTP (openapi)"
-    for i in $(seq 1 "$tries"); do
-      if [ "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$EYRE_URL$path" || true)" = "200" ]; then
-        echo "$name is serving $path"
-        return 0
-      fi
-      sleep 2
-    done
-    echo "$name did not come up on $path" >&2
-    journalctl -u urbit -n 80 --no-pager >&2 || true
-    return 1
-  }
 
   wait_openapi /notes/openapi.json %notes 600 || exit 1
   wait_openapi /locus/openapi.json %locus 300 || exit 1

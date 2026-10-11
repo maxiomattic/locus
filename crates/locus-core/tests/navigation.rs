@@ -227,7 +227,8 @@ fn help_overlay_toggles_and_lists_section_bindings() {
     press(&mut app, Key::Char('?'));
     assert_eq!(app.focus, Focus::Help);
     let help = view_model::help(&app);
-    assert!(help.iter().any(|(k, _)| k == "Ctrl+K"));
+    assert!(help.iter().any(|(k, _)| k == ": or Ctrl+K"));
+    assert!(help.iter().any(|(k, _)| k == "g n/t/c/p/f/o"));
     assert!(help.iter().any(|(k, _)| k == "Enter / i"));
     press(&mut app, Key::Char('?'));
     assert_eq!(app.focus, Focus::List);
@@ -309,4 +310,183 @@ fn page_keys_and_home_end_map_to_list_movement() {
     assert_eq!(app.notes.sel, 0);
     press(&mut app, Key::PageDown);
     assert_eq!(app.notes.sel, 10);
+}
+
+fn alt(app: &mut App, c: char) -> Vec<Effect> {
+    press_with(
+        app,
+        Key::Char(c),
+        Mods {
+            alt: true,
+            ..Mods::default()
+        },
+        now(),
+    )
+}
+
+#[test]
+fn g_then_letter_switches_sections() {
+    let mut app = loaded_notes(vec![]);
+    for (letter, want) in [
+        ('t', Section::Todo),
+        ('c', Section::Calendar),
+        ('p', Section::Photos),
+        ('f', Section::Files),
+        ('o', Section::Contacts),
+        ('n', Section::Notes),
+    ] {
+        press(&mut app, Key::Char('g'));
+        assert!(app.pending_g);
+        press(&mut app, Key::Char(letter));
+        assert_eq!(app.section, want, "g {letter}");
+        assert!(!app.pending_g);
+    }
+}
+
+#[test]
+fn g_n_switches_instead_of_creating_a_note() {
+    let mut app = loaded_notes(vec![]);
+    ctrl(&mut app, '3');
+    press(&mut app, Key::Char('g'));
+    let fx = press(&mut app, Key::Char('n'));
+    assert_eq!(app.section, Section::Notes);
+    assert!(fx.is_empty(), "no note is created: {fx:?}");
+    assert!(app.notes.items.is_empty());
+}
+
+#[test]
+fn g_t_in_calendar_switches_instead_of_jumping_to_today() {
+    let mut app = loaded_notes(vec![]);
+    ctrl(&mut app, '3');
+    press(&mut app, Key::Char('g'));
+    press(&mut app, Key::Char('t'));
+    assert_eq!(app.section, Section::Todo);
+}
+
+#[test]
+fn g_letter_from_a_detail_view_switches() {
+    let mut app = loaded_notes(vec![]);
+    ctrl(&mut app, '4');
+    send(
+        &mut app,
+        Msg::PhotosLoaded {
+            photos: vec![photo(1, "a", "/Photos/a.jpg")],
+        },
+    );
+    press(&mut app, Key::Enter);
+    assert_eq!(app.focus, Focus::Detail);
+    press(&mut app, Key::Char('g'));
+    press(&mut app, Key::Char('f'));
+    assert_eq!(app.section, Section::Files);
+    assert_eq!(app.focus, Focus::List);
+}
+
+#[test]
+fn gg_still_goes_to_the_top() {
+    let mut app = loaded_notes((1..=5).map(|i| note(i, "n", "", 1, i)).collect());
+    press(&mut app, Key::Char('G'));
+    assert_eq!(app.notes.sel, 4);
+    press(&mut app, Key::Char('g'));
+    press(&mut app, Key::Char('g'));
+    assert_eq!(app.notes.sel, 0);
+    assert_eq!(app.section, Section::Notes);
+}
+
+#[test]
+fn letters_without_g_keep_their_section_meaning() {
+    let mut app = loaded_notes(vec![]);
+    ctrl(&mut app, '3');
+    press(&mut app, Key::Char('c'));
+    assert_eq!(app.section, Section::Calendar, "plain c does not switch");
+    press(&mut app, Key::Char('g'));
+    press(&mut app, Key::Char('x'));
+    assert!(!app.pending_g, "an unbound key cancels the g prefix");
+    press(&mut app, Key::Char('o'));
+    assert_eq!(app.section, Section::Calendar);
+}
+
+#[test]
+fn g_letters_are_text_while_typing() {
+    let mut app = loaded_notes(vec![]);
+    press(&mut app, Key::Char('/'));
+    press(&mut app, Key::Char('g'));
+    press(&mut app, Key::Char('t'));
+    assert_eq!(app.section, Section::Notes);
+    assert_eq!(app.filter, "gt");
+}
+
+#[test]
+fn colon_opens_the_palette() {
+    let mut app = loaded_notes(vec![]);
+    press(&mut app, Key::Char(':'));
+    assert_eq!(app.focus, Focus::Palette);
+    press(&mut app, Key::Escape);
+    assert_eq!(app.focus, Focus::List);
+    // In a text field, ':' is text.
+    press(&mut app, Key::Char('/'));
+    press(&mut app, Key::Char(':'));
+    assert_eq!(app.focus, Focus::Input(InputKind::Filter));
+    assert_eq!(app.filter, ":");
+}
+
+#[test]
+fn colon_with_shift_held_opens_the_palette() {
+    let app = loaded_notes(vec![]);
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    assert_eq!(keymap(&app, Key::Char(':'), shift), Some(Msg::OpenPalette));
+}
+
+#[test]
+fn alt_digits_switch_sections_everywhere() {
+    let mut app = loaded_notes(vec![]);
+    for (digit, want) in [
+        ('2', Section::Todo),
+        ('3', Section::Calendar),
+        ('4', Section::Photos),
+        ('5', Section::Files),
+        ('6', Section::Contacts),
+        ('1', Section::Notes),
+    ] {
+        alt(&mut app, digit);
+        assert_eq!(app.section, want, "Alt+{digit}");
+    }
+    // Also from inside a text field.
+    press(&mut app, Key::Char('/'));
+    alt(&mut app, '3');
+    assert_eq!(app.section, Section::Calendar);
+    assert_eq!(app.focus, Focus::List);
+    // Alt+7 and other Alt combos are not bound.
+    assert_eq!(alt(&mut app, '7'), vec![]);
+    assert_eq!(app.section, Section::Calendar);
+    let app2 = loaded_notes(vec![]);
+    let alt_mods = Mods {
+        alt: true,
+        ..Mods::default()
+    };
+    assert_eq!(keymap(&app2, Key::Char('k'), alt_mods), None);
+}
+
+#[test]
+fn sidebar_labels_show_g_shortcuts() {
+    let app = loaded_notes(vec![]);
+    let labels: Vec<String> = view_model::sidebar(&app)
+        .into_iter()
+        .map(|i| i.shortcut)
+        .collect();
+    assert_eq!(labels, ["g n", "g t", "g c", "g p", "g f", "g o"]);
+}
+
+#[test]
+fn switching_sections_cancels_an_open_form() {
+    let mut app = loaded_notes(vec![]);
+    ctrl(&mut app, '6');
+    press(&mut app, Key::Char('n'));
+    assert_eq!(app.focus, Focus::Form);
+    alt(&mut app, '1');
+    assert!(app.form.is_none());
+    alt(&mut app, '6');
+    assert!(view_model::form(&app).is_none(), "no stale form card");
 }

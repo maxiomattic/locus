@@ -75,8 +75,11 @@ pub enum Msg {
     Switch(Section),
     Reload,
     Nav(Nav),
-    /// First `g` of `gg`. Sets the pending flag; the next `Nav(Top)` is the second.
+    /// First `g` of `gg` or `g n`, `g t`, .... Sets the pending flag; the next
+    /// key completes the sequence.
     GPrefix,
+    /// A key after `g` that completes no sequence. Only clears the flag.
+    ClearPrefix,
     /// Enter on the focused list row: open a note, enter a folder, open viewer.
     Activate,
     /// `i` in Notes, `e` in Calendar/Contacts.
@@ -122,6 +125,14 @@ pub enum Msg {
     Layout {
         photo_columns: usize,
     },
+    /// Mouse selection: set the current section's list cursor to this index
+    /// (clamped). Calendar uses the index into the events of the selected day.
+    Select(usize),
+    /// The shell's editor was clicked while the core had focus elsewhere.
+    /// Moves focus to the open note's editor, if one is open.
+    EditorFocus,
+    /// Mouse selection of a day in the calendar month grid.
+    SelectDay(crate::date::Date),
     /// Switch to a section and select the item with this id.
     Goto {
         section: Section,

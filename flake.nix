@@ -46,6 +46,9 @@
           ];
           locus.server.gateway.package =
             lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-gateway;
+          # Every Locus server serves the browser app at /app/ out of the box.
+          locus.server.gateway.webRoot =
+            lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-web;
         };
       nixosModules.default = self.nixosModules.server;
 
@@ -140,7 +143,7 @@
           cargoDeps = rustPlatform.fetchCargoVendor {
             src = pkgs.lib.cleanSource ./.;
             name = "locus-cargo-deps";
-            hash = "sha256-hI1WQH3w11TqAZGcVW9GtVDvI6caTSx+ERWYOAgUV4Q=";
+            hash = "sha256-6Pst2Qc2633hiNYEOJ6oBGJGOFWvo3PcckzTfxQtXpE=";
           };
 
           # Vere (urbit runtime) pin: nixpkgs-unstable `pkgs.urbit` 4.6
@@ -189,6 +192,41 @@
               description = "Locus notes client (libcosmic)";
               mainProgram = "notes-app";
             };
+          };
+
+          locus-desktop = rustPlatform.buildRustPackage {
+            pname = "locus-desktop";
+            version = "0.1.0";
+            src = pkgs.lib.cleanSource ./.;
+            inherit cargoDeps;
+            cargoBuildFlags = [ "-p" "locus-desktop" ];
+            doCheck = false;
+            nativeBuildInputs = [
+              pkgs.pkg-config
+              pkgs.cmake
+              pkgs.libcosmicAppHook
+              pkgs.rustPlatform.bindgenHook
+            ];
+            buildInputs = [
+              pkgs.fontconfig
+              pkgs.freetype
+              pkgs.expat
+              pkgs.glib
+              pkgs.dbus
+            ];
+            meta = {
+              description = "Locus desktop shell (libcosmic)";
+              mainProgram = "locus";
+            };
+          };
+
+          # Browser app bundle for the gateway's --web-root (own Cargo
+          # workspace and lockfile; see nix/pkgs/locus-web.nix).
+          locus-web = pkgs.callPackage ./nix/pkgs/locus-web.nix {
+            rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+              targets = [ "wasm32-unknown-unknown" ];
+            };
+            wasm-bindgen-cli = pkgs.callPackage ./nix/pkgs/wasm-bindgen-cli.nix { };
           };
 
           default = self.packages.${system}.notes-app;

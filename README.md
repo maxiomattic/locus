@@ -16,12 +16,11 @@ A **clan** (a group with one administrator, across any number of homes and machi
 
 ## Status
 
-Early and experimental. What exists today was built and tested against a local bring-up VM:
+Early and experimental. Works end to end against a bring-up VM and a real server:
 
-- **Server:** a NixOS module with a ZFS layout (provisioned with Disko) and an Urbit ship as a systemd service.
-- **Notes:** a hard fork of Tlon `%notes` on the `%locus` desk. It has a native libcosmic window and a `notes` CLI that share a local cache, version history and conflict handling.
-- **Command plane:** `%locus` provides clan members, named functions, an audit log, and human approval for OS-changing actions. It comes with a `locus` CLI.
-- **Early drafts, not in use:** the calendar store and the COSMIC client module.
+- **Apps:** notes, todo (checkbox lines in notes), calendar, photos, files and contacts, keyboard-first. One shared core (`locus-core`) drives two shells: the browser app (`locus-web`, iced, served at `http://<server>:8090/app/`) and the desktop app (`locus-desktop`, libcosmic, binary `locus`).
+- **Server:** a NixOS module with ZFS (Disko), the Urbit ship as a systemd service, and `locus-gateway`, which serves the browser app, stores file and photo bytes by SHA-256, and proxies the ship's API.
+- **Ship:** the `%locus` desk with `%notes` (a hard fork of Tlon's), `%calendar`, `%photos`, `%contacts`, `%files`, and the `%locus` command plane (members, named functions, approvals, audit).
 
 This repository is the product flake. Configuration for a particular clan's machines lives in a separate flake that imports these modules:
 
@@ -34,12 +33,12 @@ This repository is the product flake. Configuration for a particular clan's mach
 
 ## Layout
 
-- `flake.nix`: `notes-app`, `packages.server` (Vere), `nixosModules.server` / `client`. Cheap check: `nix flake check`.
-- `nix/`: Disko layout, modules, overlays.
-- `desk/`: Urbit desk with `%notes`, `%locus`, `%calendar`, `%photos`, `%contacts`.
-- `crates/`: Rust clients, `notes-protocol` / `notes-sync` (HTTP client, cache and CLI), `notes-app` (window), `locus-protocol` / `locus-command` (HTTP client and CLI), `photos-protocol` / `photos-sync` (catalog client and thumbnail cache).
-- `scripts/`: live checks against the bring-up VM (`server-vm.sh`, `notes-occ.sh`, `locus-check.sh`, `photos-check.sh`) and eval checks (`cosmic-check.sh`, `check.sh`). Flake-level checks: `nix flake check`.
-- `docs/`: intent, ZFS, Urbit, deploy, and one doc per component.
+- `flake.nix`: packages `locus-web`, `locus-desktop`, `locus-gateway`, `notes-app`, `server` (Vere); `nixosModules.server` / `client`. Cheap check: `nix flake check`.
+- `nix/`: Disko layout, modules, overlays, pinned tools.
+- `desk/`: the `%locus` Urbit desk.
+- `crates/`: `locus-core` (app logic), `locus-client` (async API client), `locus-effects` (runs core effects), `locus-web` / `locus-desktop` (shells), `locus-gateway`, plus older blocking clients and CLIs (`notes-*`, `locus-*`, `photos-*`).
+- `scripts/`: `desk-deploy.sh` (deploy the desk to a real ship; never wipes data), `web-build.sh`, and test harnesses for the bring-up VM (`server-vm.sh`, `notes-occ.sh`, `locus-check.sh`, `photos-check.sh`).
+- `docs/`: intent, architecture, plan, deploy, and one doc per component.
 
 Notes don't install Tlon Messenger or `%groups`.
 

@@ -120,7 +120,7 @@ fn sidebar_marks_only_the_active_section() {
     assert_eq!(items.len(), 6);
     assert_eq!(items.iter().filter(|i| i.active).count(), 1);
     assert!(items[0].active);
-    assert_eq!(items[5].shortcut, "Ctrl+6");
+    assert_eq!(items[5].shortcut, "g o");
 }
 
 #[test]

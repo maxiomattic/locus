@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Locus</title>
+  <link rel="icon" href="data:,">
+  <style>
+    /* Dark before the wasm loads, so there is no white flash. */
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #14161b; }
+    @media (prefers-color-scheme: light) {
+      html, body { background: #f6f7f9; }
+    }
+    canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+    #boot { position: fixed; inset: 0; display: grid; place-items: center;
+            font: 14px/1.5 system-ui, sans-serif; color: #9aa3b2; pointer-events: none; }
+    #boot.error { color: #e8a0a0; pointer-events: auto; }
+    #boot pre { white-space: pre-wrap; max-width: 70ch; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <script>
+    // Browser shortcuts the app uses itself: Ctrl/Cmd+K (palette), +S (save),
+    // +R (reload section), and Alt+1..6 (sections; Firefox on Linux uses them
+    // for tabs). Capturing, so it runs first; the event still reaches the app.
+    window.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+      const altDigit = e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-6]$/.test(e.code);
+      if ((mod && (k === "k" || k === "s" || k === "r")) || altDigit) {
+        e.preventDefault();
+      }
+    }, { capture: true });
+
+    // iced creates the canvas; give it keyboard focus as soon as it exists, so
+    // keys work without a click. Refocus it whenever focus falls back to the
+    // page (window focus, or an overlay such as the upload dialog closing),
+    // but never steal focus from another element that holds it.
+    const canvas = () => document.querySelector("canvas");
+    const refocus = () => {
+      const c = canvas();
+      const active = document.activeElement;
+      if (c && (!active || active === document.body || active === document.documentElement)) {
+        c.focus({ preventScroll: true });
+      }
+    };
+    new MutationObserver(() => {
+      const c = canvas();
+      if (c && !c.hasAttribute("tabindex")) c.setAttribute("tabindex", "0");
+      refocus();
+    }).observe(document.body, { childList: true });
+    window.addEventListener("focus", refocus);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refocus();
+    });
+  </script>
+  <div id="boot">Loading Locus…</div>
+  <script>
+    // Draw with WebGL only. WebGPU on Linux browsers is unreliable (Brave and
+    // Electron can hand out an adapter that never presents a frame, leaving a
+    // blank page). wgpu picks WebGPU whenever navigator.gpu exists, so hide it.
+    try { Object.defineProperty(Navigator.prototype, "gpu", { get: () => undefined, configurable: true }); } catch (_) {}
+
+    // Never fail silently: show startup errors, and explain a canvas that
+    // never draws (WebGL disabled, e.g. LibreWolf's default).
+    const boot = document.getElementById("boot");
+    const fail = (msg) => {
+      boot.className = "error";
+      boot.innerHTML = "<div><b>Locus could not start.</b><pre></pre></div>";
+      boot.querySelector("pre").textContent = msg;
+    };
+    // winit throws this on purpose to start its event loop; it is not an error.
+    const benign = (m) => m.includes("Using exceptions for control flow");
+    window.addEventListener("error", (e) => {
+      const m = String(e.message || e.error);
+      if (!benign(m)) fail(m);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      const m = String(e.reason);
+      if (!benign(m)) fail(m);
+    });
+    const probe = document.createElement("canvas");
+    if (!probe.getContext("webgl2") && !probe.getContext("webgl")) {
+      fail("This browser has WebGL turned off, and Locus needs it to draw.\n" +
+           "Firefox/LibreWolf: set webgl.disabled = false in about:config.");
+    }
+    const ready = setInterval(() => {
+      const c = document.querySelector("canvas");
+      if (c && c.width > 300 && !boot.classList.contains("error")) {
+        boot.remove(); clearInterval(ready);
+      }
+    }, 100);
+    setTimeout(() => {
+      if (document.body.contains(boot) && !boot.classList.contains("error")) {
+        fail("The app loaded but never drew a frame. Try reloading; if it " +
+             "persists, check that hardware acceleration is on.");
+      }
+    }, 20000);
+  </script>
+  <script type="module">
+    // ?v= is the build's content hash: the gateway lets browsers cache these
+    // for a few minutes, and a rebuild must not load a stale module.
+    import init from "./locus.js?v=@VERSION@";
+    init({ module_or_path: "./locus_bg.wasm?v=@VERSION@" }).catch((e) => {
+      // iced throws a control-flow "exception" after starting the event loop;
+      // only treat real failures as errors.
+      if (!benign(String(e))) fail(String(e));
+    });
+  </script>
+</body>
+</html>

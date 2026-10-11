@@ -1,6 +1,10 @@
 //! Framework-agnostic key handling. Shells translate their native key events
 //! into [`Key`] and [`Mods`] and call [`keymap`]. Plain characters only become
-//! commands when no text field has focus; Escape and Ctrl-combos always are.
+//! commands when no text field has focus; Escape, Ctrl-combos and Alt+digit
+//! always are.
+//!
+//! Section switching and the palette have platform-neutral bindings (`g n`,
+//! `:`, Alt+1..6) because browsers reserve Ctrl+1..6 for tab switching.
 
 use crate::msg::{Msg, Nav, TextEdit};
 use crate::state::{App, Focus, Section};
@@ -51,6 +55,13 @@ impl Mods {
 /// `None` means the shell should handle the key itself (for example, typing
 /// into the editor widget).
 pub fn keymap(app: &App, key: Key, mods: Mods) -> Option<Msg> {
+    if mods.alt && !mods.ctrl && !mods.logo {
+        // Alt+1..6 switch sections everywhere, like Ctrl+1..6.
+        return match key {
+            Key::Char(c @ '1'..='6') => Some(Msg::Switch(Section::from_digit(c as u8 - b'0')?)),
+            _ => None,
+        };
+    }
     if mods.alt || mods.logo {
         return None;
     }
@@ -80,7 +91,12 @@ pub fn keymap(app: &App, key: Key, mods: Mods) -> Option<Msg> {
             Key::Escape | Key::Char('?') => Some(Msg::ToggleHelp),
             _ => None,
         },
-        Focus::List | Focus::Detail => list_key(app, key),
+        Focus::List | Focus::Detail => match list_key(app, key) {
+            // An unbound key after `g` cancels the prefix, so a later `n`
+            // does not still switch sections.
+            None if app.pending_g => Some(Msg::ClearPrefix),
+            other => other,
+        },
     }
 }
 
@@ -115,8 +131,32 @@ fn text_focus_key(app: &App, key: Key, mods: Mods) -> Option<Msg> {
     }
 }
 
+/// The letter after `g` that switches to each section, in sidebar order.
+pub const GO_KEYS: [(char, Section); 6] = [
+    ('n', Section::Notes),
+    ('t', Section::Todo),
+    ('c', Section::Calendar),
+    ('p', Section::Photos),
+    ('f', Section::Files),
+    ('o', Section::Contacts),
+];
+
+/// The letter that follows `g` to switch to `section`.
+pub fn go_key(section: Section) -> char {
+    GO_KEYS
+        .iter()
+        .find(|(_, s)| *s == section)
+        .map_or('?', |(c, _)| *c)
+}
+
 fn list_key(app: &App, key: Key) -> Option<Msg> {
     let section = app.section;
+    if app.pending_g
+        && let Key::Char(c) = key
+        && let Some((_, s)) = GO_KEYS.iter().find(|(k, _)| *k == c)
+    {
+        return Some(Msg::Switch(*s));
+    }
     Some(match key {
         Key::Escape => Msg::Escape,
         Key::Enter => Msg::Activate,
@@ -138,6 +178,7 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
             'g' => Msg::GPrefix,
             'G' => Msg::Nav(Nav::Bottom),
             '/' => Msg::FocusFilter,
+            ':' => Msg::OpenPalette,
             '?' => Msg::ToggleHelp,
             'i' | 'e' => Msg::Edit,
             'n' => Msg::New,
@@ -161,8 +202,9 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
 /// The bindings shown in the help overlay for `section`, as `(keys, what)`.
 pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
     let mut out = vec![
-        ("Ctrl+1..6", "switch section"),
-        ("Ctrl+K", "command palette"),
+        ("g n/t/c/p/f/o", "go to Notes/Todo/Calendar/Photos/Files/Contacts"),
+        ("Alt+1..6, Ctrl+1..6", "switch section"),
+        (": or Ctrl+K", "command palette"),
         ("/", "filter this list"),
         ("Esc", "close / leave / clear filter"),
         ("Ctrl+R", "reload section"),

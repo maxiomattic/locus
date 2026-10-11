@@ -58,3 +58,9 @@ Import `nixosModules.server` from a **separate** host flake (operator accounts, 
 ## COSMIC client
 
 Import `nixosModules.client` on a machine whose disk is the Locus desktop. Prove with `./scripts/cosmic-check.sh` first. Firefox is declared there; it is not an Urbit app.
+
+## Deploy to a real server
+
+1. In the clan flake, update the Locus input and switch: `nix flake update locus && sudo nixos-rebuild switch --flake .#<host>`. This installs the gateway, which serves the browser app on port 8090.
+2. On the server, from a checkout of this repo: `EYRE_URL=http://127.0.0.1 ./scripts/desk-deploy.sh`. It snapshots the pier dataset, commits the desk, and waits for every agent. It never wipes or uninstalls anything.
+3. Open `http://<server>:8090/app/` and sign in with the ship's code (`sudo urbit-code`).

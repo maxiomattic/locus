@@ -30,6 +30,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             }
         }
         Msg::GPrefix => app.pending_g = true,
+        // The flag was cleared above.
+        Msg::ClearPrefix => {}
         Msg::Switch(s) => switch_section(app, fx, s),
         Msg::Reload => {
             let s = app.section;
@@ -75,6 +77,24 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::SaveTimer(token) => notes::save_timer(app, token, fx),
         Msg::Layout { photo_columns } => app.photos.columns = photo_columns.max(1),
         Msg::Goto { section, id } => goto(app, fx, section, id),
+        Msg::Select(i) => {
+            // Picking a row (a click) while typing in the editor moves focus
+            // to the list, so list keys work again.
+            if app.focus == Focus::Editor {
+                notes::flush_editor(app, fx);
+                app.focus = Focus::List;
+            }
+            select_index(app, i);
+        }
+        Msg::EditorFocus => {
+            if app.editor.is_some() {
+                app.focus = Focus::Editor;
+            }
+        }
+        Msg::SelectDay(day) => {
+            app.calendar.day = day;
+            app.calendar.sel = 0;
+        }
         Msg::ExecuteDelete { section, id } => execute_delete(app, fx, section, id),
         Msg::BeginLogin => {
             app.input = Input::default();
@@ -155,6 +175,9 @@ pub(crate) fn switch_section(app: &mut App, fx: &mut Vec<Effect>, section: Secti
     app.filter.clear();
     app.focus = Focus::List;
     app.confirm = None;
+    // An open form belongs to the section being left; leaving cancels it,
+    // like Escape, rather than leaving a card that no longer takes input.
+    app.form = None;
     if !app.loaded[section.index()] {
         load_section(app, section, fx);
     }
@@ -479,5 +502,40 @@ fn goto(app: &mut App, fx: &mut Vec<Effect>, section: Section, id: u64) {
         Section::Files => files::select_file(app, id),
         Section::Contacts => contacts::select(app, id),
         _ => {}
+    }
+}
+
+/// Set the current section's cursor to `i`, clamped to the rows it shows.
+fn select_index(app: &mut App, i: usize) {
+    if app.focus == Focus::Palette {
+        let len = palette::ranked(app).len();
+        app.palette.sel = clamp_sel(i, len);
+        return;
+    }
+    match app.section {
+        Section::Notes => {
+            let len = notes::visible(app).len();
+            app.notes.sel = clamp_sel(i, len);
+        }
+        Section::Todo => {
+            let len = todo::visible(app).len();
+            app.todo.sel = clamp_sel(i, len);
+        }
+        Section::Calendar => {
+            let len = calendar::events_on(app, app.calendar.day).len();
+            app.calendar.sel = clamp_sel(i, len);
+        }
+        Section::Photos => {
+            let len = photos::visible(app).len();
+            app.photos.sel = clamp_sel(i, len);
+        }
+        Section::Files => {
+            let len = files::rows(app).len();
+            app.files.sel = clamp_sel(i, len);
+        }
+        Section::Contacts => {
+            let len = contacts::visible(app).len();
+            app.contacts.sel = clamp_sel(i, len);
+        }
     }
 }

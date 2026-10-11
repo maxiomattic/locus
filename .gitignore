@@ -5,3 +5,5 @@
 .pre-commit-config.yaml
 *.swp
 *~
+/dist
+/crates/locus-web/target

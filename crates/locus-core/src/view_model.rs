@@ -32,7 +32,7 @@ const MONTHS: [&str; 12] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SidebarItem {
     pub label: &'static str,
-    /// e.g. `Ctrl+1`.
+    /// e.g. `g n`.
     pub shortcut: String,
     pub active: bool,
     /// A count worth showing (notes total, tasks due, events today).
@@ -45,7 +45,7 @@ pub fn sidebar(app: &App) -> Vec<SidebarItem> {
         .into_iter()
         .map(|s| SidebarItem {
             label: s.label(),
-            shortcut: format!("Ctrl+{}", s.index() + 1),
+            shortcut: format!("g {}", keymap::go_key(s)),
             active: s == app.section,
             badge: match s {
                 Section::Notes => Some(app.notes.items.len()),
@@ -65,7 +65,11 @@ pub fn sidebar(app: &App) -> Vec<SidebarItem> {
 
 /// One line for the bottom bar: section, status, loading and filter state.
 pub fn status_line(app: &App) -> String {
-    let mut s = format!("{} | {}", app.section.label(), app.status.text);
+    let mut s = app.section.label().to_string();
+    if !app.status.text.is_empty() {
+        s.push_str(" | ");
+        s.push_str(&app.status.text);
+    }
     if app.is_loading(app.section) {
         s.push_str(" | loading...");
     }
