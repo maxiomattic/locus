@@ -4,7 +4,9 @@
 use locus_client::contacts::Contact;
 
 use crate::msg::{Msg, Nav};
-use crate::state::{App, Focus, PaletteState, Section};
+use crate::state::{App, Focus, PaletteState, Section, Target};
+use crate::update::load_section;
+use crate::msg::Effect;
 use crate::update::step;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,13 +17,20 @@ pub struct Item {
     pub action: Msg,
 }
 
-/// All palette entries in their default order.
+/// All palette entries in their default order. In a window locked to one
+/// section, entries for other sections open that section's own window (the
+/// core turns them into [`Effect::OpenSection`]).
 pub fn items(app: &App) -> Vec<Item> {
+    let elsewhere = |s: Section| app.locked.is_some_and(|l| l != s);
+    let open = |section: Section, target: Target| Msg::Open {
+        section,
+        target: Some(target),
+    };
     let mut out: Vec<Item> = Section::ALL
         .into_iter()
         .map(|s| Item {
             label: format!("Go to {}", s.label()),
-            hint: "section",
+            hint: if elsewhere(s) { "app" } else { "section" },
             action: Msg::Switch(s),
         })
         .collect();
@@ -29,27 +38,27 @@ pub fn items(app: &App) -> Vec<Item> {
         Item {
             label: "New note".into(),
             hint: "command",
-            action: Msg::Batch(vec![Msg::Switch(Section::Notes), Msg::New]),
+            action: open(Section::Notes, Target::New),
         },
         Item {
             label: "New event".into(),
             hint: "command",
-            action: Msg::Batch(vec![Msg::Switch(Section::Calendar), Msg::New]),
+            action: open(Section::Calendar, Target::New),
         },
         Item {
             label: "New folder".into(),
             hint: "command",
-            action: Msg::Batch(vec![Msg::Switch(Section::Files), Msg::New]),
+            action: open(Section::Files, Target::New),
         },
         Item {
             label: "New contact".into(),
             hint: "command",
-            action: Msg::Batch(vec![Msg::Switch(Section::Contacts), Msg::New]),
+            action: open(Section::Contacts, Target::New),
         },
         Item {
             label: "Upload photos".into(),
             hint: "command",
-            action: Msg::Batch(vec![Msg::Switch(Section::Photos), Msg::Upload]),
+            action: open(Section::Photos, Target::Upload),
         },
         Item {
             label: "Reload section".into(),
@@ -136,9 +145,18 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<u32> {
     Some(400u32.saturating_sub(span.min(300)))
 }
 
-pub fn open(app: &mut App) {
+/// Open the palette. A locked window has only loaded its own section, so it
+/// also fetches the lists the palette searches (notes, files, contacts).
+pub fn open(app: &mut App, fx: &mut Vec<Effect>) {
     app.palette = PaletteState::default();
     app.focus = Focus::Palette;
+    if app.locked.is_some() {
+        for s in [Section::Notes, Section::Files, Section::Contacts] {
+            if !app.loaded[s.index()] {
+                load_section(app, s, fx);
+            }
+        }
+    }
 }
 
 pub fn move_sel(app: &mut App, nav: Nav) {

@@ -10,7 +10,7 @@ use locus_client::{
 use serde::{Deserialize, Serialize};
 
 use crate::date::Date;
-use crate::state::Section;
+use crate::state::{Section, Target};
 
 /// The clock, passed into every [`crate::update`] call so the core never reads
 /// time itself. `tz_offset_secs` follows the convention `local = utc + offset`.
@@ -133,6 +133,13 @@ pub enum Msg {
     EditorFocus,
     /// Mouse selection of a day in the calendar month grid.
     SelectDay(crate::date::Date),
+    /// Open a section and then `target` in it. In a window locked to
+    /// another section this asks the shell to open that section's window
+    /// ([`Effect::OpenSection`]). Shells send it for incoming cross-links.
+    Open {
+        section: Section,
+        target: Option<Target>,
+    },
     /// Switch to a section and select the item with this id.
     Goto {
         section: Section,
@@ -349,6 +356,9 @@ pub enum Effect {
         token: u64,
     },
     CopyToClipboard(String),
+    /// Open or focus the window (desktop) or tab (web) that is `section`'s
+    /// own app, and show `target` there. Shell-handled; no result message.
+    OpenSection(Section, Option<Target>),
     Login {
         code: String,
     },

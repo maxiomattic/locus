@@ -3,7 +3,7 @@
 //! the shell must perform.
 
 use crate::msg::{Effect, Msg, Nav, Now, TextEdit};
-use crate::state::{App, Focus, Input, InputKind, Section, clamp_sel};
+use crate::state::{App, Focus, Input, InputKind, Section, Target, clamp_sel};
 use crate::{calendar, contacts, files, notes, palette, photos, todo};
 
 /// Apply one message. Returns effects in the order the shell should run them.
@@ -14,7 +14,22 @@ pub fn update(app: &mut App, msg: Msg, now: Now) -> Vec<Effect> {
     }
     app.now = now;
     let mut fx = Vec::new();
+    // A load that finishes may complete a cross-link that was waiting for it.
+    let settles = matches!(
+        msg,
+        Msg::NotesLoaded { .. }
+            | Msg::FilesLoaded { .. }
+            | Msg::ContactsLoaded { .. }
+            | Msg::EventsLoaded { .. }
+            | Msg::PhotosLoaded { .. }
+    );
     dispatch(app, msg, now, &mut fx);
+    if settles && let Some(target) = app.pending_target.take() {
+        let here = target.section().is_none_or(|s| s == app.section);
+        if here {
+            apply_target(app, &mut fx, target);
+        }
+    }
     fx
 }
 
@@ -32,7 +47,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::GPrefix => app.pending_g = true,
         // The flag was cleared above.
         Msg::ClearPrefix => {}
-        Msg::Switch(s) => switch_section(app, fx, s),
+        Msg::Switch(s) => open(app, fx, s, None),
+        Msg::Open { section, target } => open(app, fx, section, target),
         Msg::Reload => {
             let s = app.section;
             app.info(format!("Reloading {}", s.label()));
@@ -60,7 +76,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
                 Focus::Help
             };
         }
-        Msg::OpenPalette => palette::open(app),
+        Msg::OpenPalette => palette::open(app, fx),
         Msg::Escape => escape(app, fx),
         Msg::Submit => submit(app, now, fx),
         Msg::SaveForm => {
@@ -76,7 +92,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::EditorChanged(body) => notes::editor_changed(app, body, fx),
         Msg::SaveTimer(token) => notes::save_timer(app, token, fx),
         Msg::Layout { photo_columns } => app.photos.columns = photo_columns.max(1),
-        Msg::Goto { section, id } => goto(app, fx, section, id),
+        Msg::Goto { section, id } => open(app, fx, section, Target::item(section, id)),
         Msg::Select(i) => {
             // Picking a row (a click) while typing in the editor moves focus
             // to the list, so list keys work again.
@@ -146,6 +162,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         }
         Msg::LoginFailed { error } => app.error(format!("Login failed: {error}")),
         Msg::LoadFailed { section, error } => {
+            app.pending_target = None;
             for s in loading_group(section) {
                 app.loading[s.index()] = false;
                 app.loaded[s.index()] = false;
@@ -171,6 +188,11 @@ fn loading_group(section: Section) -> Vec<Section> {
 
 pub(crate) fn switch_section(app: &mut App, fx: &mut Vec<Effect>, section: Section) {
     notes::flush_editor(app, fx);
+    if app.section != section {
+        // A cross-link still waiting for data is dropped once the user
+        // moves on; a switch to the same section (at startup) keeps it.
+        app.pending_target = None;
+    }
     app.section = section;
     app.filter.clear();
     app.focus = Focus::List;
@@ -494,14 +516,70 @@ fn confirm_answer(app: &mut App, now: Now, fx: &mut Vec<Effect>, yes: bool) {
     }
 }
 
-/// Open `section` and select the item with `id` (used by the palette).
-fn goto(app: &mut App, fx: &mut Vec<Effect>, section: Section, id: u64) {
+/// Open `section`, then `target` in it. A window locked to another section
+/// hands both to the shell, which opens or focuses that section's window.
+pub(crate) fn open(
+    app: &mut App,
+    fx: &mut Vec<Effect>,
+    section: Section,
+    target: Option<Target>,
+) {
+    if let Some(locked) = app.locked
+        && locked != section
+    {
+        app.info(format!("Opening {}", section.label()));
+        fx.push(Effect::OpenSection(section, target));
+        return;
+    }
     switch_section(app, fx, section);
-    match section {
-        Section::Notes => notes::select_and_open(app, fx, id),
-        Section::Files => files::select_file(app, id),
-        Section::Contacts => contacts::select(app, id),
-        _ => {}
+    if let Some(target) = target {
+        app.pending_target = None;
+        apply_target(app, fx, target);
+    }
+}
+
+/// Show `target` in the current section. When the data it needs has not
+/// arrived yet, it waits in `pending_target` until the section's load ends.
+fn apply_target(app: &mut App, fx: &mut Vec<Effect>, target: Target) {
+    if target.section().is_some_and(|s| s != app.section) {
+        return;
+    }
+    let waiting = |app: &App, s: Section| !app.loaded[s.index()] || app.is_loading(s);
+    match target {
+        Target::Note(id) => {
+            if app.notes.items.iter().any(|n| n.id == id) {
+                notes::select_and_open(app, fx, id);
+            } else if waiting(app, Section::Notes) {
+                app.pending_target = Some(target);
+            } else {
+                app.info("Note not found");
+            }
+        }
+        Target::File(id) => {
+            if app.files.files.iter().any(|f| f.id == id) || !waiting(app, Section::Files) {
+                files::select_file(app, id);
+            } else {
+                app.pending_target = Some(target);
+            }
+        }
+        Target::Contact(id) => {
+            if app.contacts.items.iter().any(|c| c.id == id) {
+                contacts::select(app, id);
+            } else if waiting(app, Section::Contacts) {
+                app.pending_target = Some(target);
+            } else {
+                app.info("Contact not found");
+            }
+        }
+        Target::New => {
+            // A new note needs the notebook, which arrives with the notes.
+            if matches!(app.section, Section::Notes | Section::Todo) && app.notebook.is_none() {
+                app.pending_target = Some(target);
+            } else {
+                new_item(app, fx);
+            }
+        }
+        Target::Upload => upload(app, fx),
     }
 }
 

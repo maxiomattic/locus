@@ -8,8 +8,9 @@ use locus_client::tasks::{add_task, parse_tasks, toggle_task};
 use crate::date::Date;
 use crate::msg::Effect;
 use crate::notes;
-use crate::state::{App, Focus, Input, InputKind, PendingTask, Section, clamp_sel, matches_filter};
-use crate::update::switch_section;
+use crate::state::{
+    App, Focus, Input, InputKind, PendingTask, Section, Target, clamp_sel, matches_filter,
+};
 
 pub const INBOX_TITLE: &str = "Inbox";
 
@@ -291,6 +292,5 @@ pub fn jump_to_source(app: &mut App, fx: &mut Vec<Effect>) {
         app.info("No task selected");
         return;
     };
-    switch_section(app, fx, Section::Notes);
-    notes::select_and_open(app, fx, task.note_id);
+    crate::update::open(app, fx, Section::Notes, Some(Target::Note(task.note_id)));
 }

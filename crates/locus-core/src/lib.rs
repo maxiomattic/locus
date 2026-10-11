@@ -31,5 +31,5 @@ pub use date::Date;
 pub use keymap::{Key, Mods, bindings, keymap};
 pub use locus_client;
 pub use msg::{Effect, FileEntry, FilePatch, Msg, Nav, Now, TextEdit};
-pub use state::{App, CalMode, Focus, InputKind, Level, Section};
+pub use state::{App, CalMode, Focus, InputKind, Level, Section, Target};
 pub use update::update;

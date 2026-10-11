@@ -63,6 +63,21 @@ pub fn sidebar(app: &App) -> Vec<SidebarItem> {
         .collect()
 }
 
+/// The window or page title: `Locus`, or `Locus Notes` for a window locked
+/// to one section.
+pub fn window_title(app: &App) -> String {
+    match app.locked {
+        Some(s) => format!("Locus {}", s.label()),
+        None => "Locus".into(),
+    }
+}
+
+/// Whether to draw the section sidebar / nav bar. A locked window is one
+/// section's own app, so it has none.
+pub fn show_sections(app: &App) -> bool {
+    app.locked.is_none()
+}
+
 /// One line for the bottom bar: section, status, loading and filter state.
 pub fn status_line(app: &App) -> String {
     let mut s = app.section.label().to_string();
@@ -565,11 +580,22 @@ pub fn palette_query(app: &App) -> &str {
     &app.palette.query
 }
 
-/// `(keys, description)` pairs for the current section.
+/// `(keys, description)` pairs for the current section. A locked window
+/// opens other sections in their own windows, and says so.
 pub fn help(app: &App) -> Vec<(String, String)> {
+    let locked = app.locked.is_some();
     keymap::bindings(app.section)
         .into_iter()
-        .map(|(k, d)| (k.to_string(), d.to_string()))
+        .map(|(k, d)| {
+            let d = match d {
+                "go to Notes/Todo/Calendar/Photos/Files/Contacts" if locked => {
+                    "open the Notes/Todo/Calendar/Photos/Files/Contacts app"
+                }
+                "switch section" if locked => "open another section's app",
+                d => d,
+            };
+            (k.to_string(), d.to_string())
+        })
         .collect()
 }
 

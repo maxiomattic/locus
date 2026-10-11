@@ -53,6 +53,92 @@ impl Section {
     pub fn from_digit(n: u8) -> Option<Section> {
         Section::ALL.get(usize::from(n).checked_sub(1)?).copied()
     }
+
+    /// The lowercase name used on the command line (`locus notes`) and in
+    /// web routes (`/app/notes`).
+    pub fn slug(self) -> &'static str {
+        match self {
+            Section::Notes => "notes",
+            Section::Todo => "todo",
+            Section::Calendar => "calendar",
+            Section::Photos => "photos",
+            Section::Files => "files",
+            Section::Contacts => "contacts",
+        }
+    }
+
+    /// Inverse of [`Section::slug`], case-insensitive.
+    pub fn from_slug(s: &str) -> Option<Section> {
+        Section::ALL
+            .into_iter()
+            .find(|sec| sec.slug().eq_ignore_ascii_case(s.trim()))
+    }
+}
+
+/// What to show once a section is open, carried across windows by a
+/// cross-link (`--open note:12` on the desktop, `#note:12` on the web).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Target {
+    Note(u64),
+    File(u64),
+    Contact(u64),
+    /// Start a new item in the section (`n`).
+    New,
+    /// Open the upload picker (Photos, Files).
+    Upload,
+}
+
+impl Target {
+    /// Parse `note:12`, `file:3`, `contact:9`, `new` or `upload`.
+    pub fn parse(s: &str) -> Option<Target> {
+        let s = s.trim();
+        match s {
+            "new" => return Some(Target::New),
+            "upload" => return Some(Target::Upload),
+            _ => {}
+        }
+        let (kind, id) = s.split_once(':')?;
+        let id: u64 = id.parse().ok()?;
+        match kind {
+            "note" => Some(Target::Note(id)),
+            "file" => Some(Target::File(id)),
+            "contact" => Some(Target::Contact(id)),
+            _ => None,
+        }
+    }
+
+    /// The section an item target lives in; `None` for `New` and `Upload`,
+    /// which apply to whatever section is open.
+    pub fn section(self) -> Option<Section> {
+        match self {
+            Target::Note(_) => Some(Section::Notes),
+            Target::File(_) => Some(Section::Files),
+            Target::Contact(_) => Some(Section::Contacts),
+            Target::New | Target::Upload => None,
+        }
+    }
+
+    /// The target for the item `id` in `section`, where items are addressable.
+    pub fn item(section: Section, id: u64) -> Option<Target> {
+        match section {
+            Section::Notes => Some(Target::Note(id)),
+            Section::Files => Some(Target::File(id)),
+            Section::Contacts => Some(Target::Contact(id)),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Target::Note(id) => write!(f, "note:{id}"),
+            Target::File(id) => write!(f, "file:{id}"),
+            Target::Contact(id) => write!(f, "contact:{id}"),
+            Target::New => f.write_str("new"),
+            Target::Upload => f.write_str("upload"),
+        }
+    }
 }
 
 /// Which single-line prompt has the keyboard. Filter edits `App::filter`;
@@ -239,6 +325,12 @@ pub struct ContactsState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct App {
     pub section: Section,
+    /// Set when this window is one section's own app (`locus notes`,
+    /// `/app/notes`). Switching to another section then asks the shell to
+    /// open that section's window instead of switching in place.
+    pub locked: Option<Section>,
+    /// A cross-link waiting for its section's data to load.
+    pub pending_target: Option<Target>,
     pub focus: Focus,
     pub status: Status,
     /// Per section, indexed by [`Section::index`].
@@ -281,6 +373,8 @@ impl App {
         });
         App {
             section: Section::Notes,
+            locked: None,
+            pending_target: None,
             focus: Focus::List,
             status: Status::default(),
             loading: [false; 6],
@@ -316,6 +410,15 @@ impl App {
                 tz_offset_secs: 0,
             },
             clock_seen: false,
+        }
+    }
+
+    /// Lock this window to one section (`Some`), or show every section
+    /// (`None`). A locked window starts on its section.
+    pub fn focus_section(&mut self, section: Option<Section>) {
+        self.locked = section;
+        if let Some(s) = section {
+            self.section = s;
         }
     }
 

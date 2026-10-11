@@ -9,6 +9,8 @@
 //!
 //! - [`Effect::CopyToClipboard`]: needs the window system, so [`run`] returns
 //!   no messages and the shell copies the text.
+//! - [`Effect::OpenSection`]: the shell opens or focuses that section's own
+//!   window (desktop) or tab (web).
 //!
 //! Everything else is performed here. [`Effect::OpenBlob`] and
 //! [`Effect::UploadFiles`] go through the [`Platform`] trait because they need
@@ -121,7 +123,7 @@ pub async fn session_ok(client: &Client) -> bool {
 pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> Vec<Msg> {
     match effect {
         // Shell-handled: nothing to do here.
-        Effect::CopyToClipboard(_) => Vec::new(),
+        Effect::CopyToClipboard(_) | Effect::OpenSection(..) => Vec::new(),
 
         Effect::LoadNotebooks => match client.list_notebooks().await {
             Ok(notebooks) => vec![Msg::NotebooksLoaded { notebooks }],
