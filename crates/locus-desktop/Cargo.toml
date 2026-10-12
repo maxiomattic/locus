@@ -10,7 +10,7 @@ name = "locus"
 path = "src/main.rs"
 
 [dependencies]
-cosmic = { workspace = true }
+cosmic = { workspace = true, features = ["single-instance"] }
 locus-core = { path = "../locus-core" }
 locus-client = { path = "../locus-client" }
 locus-effects = { path = "../locus-effects" }

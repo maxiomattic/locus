@@ -24,7 +24,7 @@ use cosmic::widget::{nav_bar, text_editor};
 use cosmic::{Element, executor, widget};
 use locus_client::Client;
 use locus_core::state::{App as Ui, Focus, InputKind};
-use locus_core::{Effect, Key, Mods, Msg, Section, TextEdit, view_model};
+use locus_core::{Effect, Key, Mods, Msg, Section, Target, TextEdit, view_model};
 use url::Url;
 
 /// Local UTC offset, read in `main` before any thread exists (the `time`
@@ -39,7 +39,19 @@ const TICK: Duration = Duration::from_secs(30);
 const THUMB_GRID: u32 = 256;
 const THUMB_VIEW: u32 = 1024;
 
+const USAGE: &str = "usage: locus [notes|todo|calendar|photos|files|contacts] [--open <target>]
+  locus              all sections in one window
+  locus <section>    that section as its own app (own window, own app id)
+  --open <target>    show note:<id>, file:<id>, contact:<id>, new or upload";
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let flags = match Flags::parse(std::env::args().skip(1)) {
+        Ok(flags) => flags,
+        Err(msg) => {
+            eprintln!("locus: {msg}\n{USAGE}");
+            std::process::exit(2);
+        }
+    };
     let tz = time::UtcOffset::current_local_offset()
         .map(|o| o.whole_seconds())
         .unwrap_or(0);
@@ -50,8 +62,92 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .resizable(Some(8.0))
         .size(Size::new(1200.0, 780.0))
         .size_limits(cosmic::iced::Limits::NONE.min_width(640.0).min_height(420.0));
-    cosmic::app::run::<App>(settings, ())?;
+    // One `cosmic::Application` type per app id: libcosmic takes the id from
+    // a const. Section windows are single-instance per id, so a second
+    // `locus notes` focuses the running one and hands it the target.
+    macro_rules! launch {
+        ($($n:literal),*) => {
+            match flags.section.map_or(0, |s| s.index() + 1) {
+                0 => cosmic::app::run::<Window<0>>(settings, flags)?,
+                $($n => cosmic::app::run_single_instance::<Window<$n>>(settings, flags)?,)*
+                _ => unreachable!("Section::index is below 6"),
+            }
+        };
+    }
+    launch!(1, 2, 3, 4, 5, 6);
     Ok(())
+}
+
+/// The app id COSMIC files a window under: one for the all-sections window
+/// and one per section, so each section is its own app (taskbar entry,
+/// tiling, `.desktop` file). Index 0 is all sections, 1..=6 follow
+/// [`Section::ALL`].
+pub(crate) const fn app_id(n: u8) -> &'static str {
+    match n {
+        1 => "org.locus.Notes",
+        2 => "org.locus.Todo",
+        3 => "org.locus.Calendar",
+        4 => "org.locus.Photos",
+        5 => "org.locus.Files",
+        6 => "org.locus.Contacts",
+        _ => "org.locus.Desktop",
+    }
+}
+
+/// Command-line launch: which section to lock to, and what to open in it.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Flags {
+    section: Option<Section>,
+    target: Option<Target>,
+    /// The single-instance hand-off: `open` plus the target, sent over D-Bus
+    /// to an already running window with the same app id.
+    action: String,
+    args: Vec<String>,
+}
+
+impl Flags {
+    fn parse(mut args: impl Iterator<Item = String>) -> Result<Flags, String> {
+        let mut flags = Flags {
+            action: "open".into(),
+            ..Flags::default()
+        };
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "-h" | "--help" => {
+                    println!("{USAGE}");
+                    std::process::exit(0);
+                }
+                "--open" => {
+                    let raw = args.next().ok_or("--open needs a target")?;
+                    let target =
+                        Target::parse(&raw).ok_or_else(|| format!("bad target {raw:?}"))?;
+                    flags.target = Some(target);
+                    flags.args = vec![target.to_string()];
+                }
+                other if flags.section.is_none() && !other.starts_with('-') => {
+                    flags.section = Some(
+                        Section::from_slug(other)
+                            .ok_or_else(|| format!("unknown section {other:?}"))?,
+                    );
+                }
+                other => return Err(format!("unexpected argument {other:?}")),
+            }
+        }
+        Ok(flags)
+    }
+}
+
+impl cosmic::app::CosmicFlags for Flags {
+    type SubCommand = String;
+    type Args = Vec<String>;
+
+    fn action(&self) -> Option<&String> {
+        self.target.is_some().then_some(&self.action)
+    }
+
+    fn args(&self) -> Vec<&str> {
+        self.args.iter().map(String::as_str).collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,11 +262,68 @@ impl App {
         match effect {
             Effect::CopyToClipboard(text) => clipboard::write::<Message>(text).map(cosmic::Action::App),
             Effect::Login { code } => self.login(code),
+            Effect::OpenSection(section, target) => self.open_section(section, target),
             other => match self.client.clone() {
                 Some(client) => run_effect(client, other),
                 None => Task::none(),
             },
         }
+    }
+
+    /// Open or focus `section`'s own window and show `target` there: run
+    /// `locus <section> [--open <target>]`. A running window with that app
+    /// id takes the hand-off over D-Bus and the new process exits. On
+    /// Wayland an activation token goes along, so the compositor lets the
+    /// other window take focus.
+    fn open_section(&mut self, section: Section, target: Option<Target>) -> Task<Message> {
+        let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let window = self.core.main_window_id();
+        if !wayland || window.is_none() {
+            spawn_section(section, target, None);
+            return Task::none();
+        }
+        use cosmic::iced::runtime::platform_specific::{self, wayland::activation};
+        let app_id = app_id(section.index() as u8 + 1).to_string();
+        cosmic::iced::runtime::task::oneshot(move |channel| {
+            cosmic::iced::runtime::Action::PlatformSpecific(platform_specific::Action::Wayland(
+                platform_specific::wayland::Action::Activation(activation::Action::RequestToken {
+                    app_id: Some(app_id),
+                    window,
+                    channel,
+                }),
+            ))
+        })
+        .then(move |token| {
+            spawn_section(section, target, token);
+            Task::none()
+        })
+    }
+
+    /// Another launch of this window's app id handed over (single instance):
+    /// show its target. libcosmic raises the window itself.
+    fn on_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<Message> {
+        let cosmic::dbus_activation::Details::ActivateAction { action, args } = msg.msg else {
+            return Task::none();
+        };
+        let Some(target) = (action == "open")
+            .then(|| args.first().and_then(|a| Target::parse(a)))
+            .flatten()
+        else {
+            return Task::none();
+        };
+        if self.screen != Screen::Main {
+            // Not logged in yet: open it once the section has loaded.
+            self.ui.pending_target = Some(target);
+            return Task::none();
+        }
+        let section = target
+            .section()
+            .or(self.ui.locked)
+            .unwrap_or(self.ui.section);
+        self.dispatch(Msg::Open {
+            section,
+            target: Some(target),
+        })
     }
 
     /// Build a client for the form's server and send the code to the ship.
@@ -202,11 +355,11 @@ impl App {
     fn sync(&mut self) -> Task<Message> {
         let section = self.ui.section;
         let title = if self.screen == Screen::Main {
-            section.label()
+            section.label().to_string()
         } else {
-            "Locus"
+            view_model::window_title(&self.ui)
         };
-        self.set_header_title(title.into());
+        self.core.set_header_title(title);
         let target = self
             .nav
             .iter()
@@ -316,7 +469,10 @@ impl App {
         {
             return *w;
         }
-        let nav = if self.core.is_condensed() || !self.core.nav_bar_active() {
+        let nav = if self.core.is_condensed()
+            || !self.core.nav_bar_active()
+            || !view_model::show_sections(&self.ui)
+        {
             0.0
         } else {
             view::NAV_W
@@ -431,7 +587,10 @@ impl App {
     fn on_probe(&mut self, ok: bool) -> Task<Message> {
         if ok {
             self.screen = Screen::Main;
-            return self.dispatch(Msg::Switch(Section::Notes));
+            // The window's section (or Notes); a pending `--open` target
+            // survives this switch and opens once the section has loaded.
+            let section = self.ui.section;
+            return self.dispatch(Msg::Switch(section));
         }
         self.screen = Screen::Login;
         let code = std::mem::take(&mut self.startup_code);
@@ -473,6 +632,31 @@ fn run_effect(client: Client, effect: Effect) -> Task<Message> {
     })
 }
 
+/// Start `locus <section> [--open <target>]` detached from this window.
+fn spawn_section(section: Section, target: Option<Target>, token: Option<String>) {
+    use std::os::unix::process::CommandExt;
+    let exe = std::env::current_exe().unwrap_or_else(|_| "locus".into());
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(section.slug());
+    if let Some(target) = target {
+        cmd.arg("--open").arg(target.to_string());
+    }
+    cmd.env_remove("XDG_ACTIVATION_TOKEN")
+        .env_remove("DESKTOP_STARTUP_ID")
+        .stdin(std::process::Stdio::null())
+        .process_group(0);
+    if let Some(token) = token {
+        cmd.env("XDG_ACTIVATION_TOKEN", token);
+    }
+    match cmd.spawn() {
+        // Reap it: a launch that hands off to a running window exits at once.
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        Err(e) => eprintln!("locus: could not start locus {}: {e}", section.slug()),
+    }
+}
+
 /// Take keyboard focus away from every widget.
 fn unfocus() -> Task<Message> {
     cosmic::iced::runtime::task::effect(cosmic::iced::runtime::Action::widget(
@@ -484,22 +668,9 @@ pub(crate) fn thumb_key(sha: &str, size: u32) -> String {
     format!("{sha}@{size}")
 }
 
-impl cosmic::Application for App {
-    type Executor = executor::Default;
-    type Flags = ();
-    type Message = Message;
-
-    const APP_ID: &'static str = "org.locus.Desktop";
-
-    fn core(&self) -> &Core {
-        &self.core
-    }
-
-    fn core_mut(&mut self) -> &mut Core {
-        &mut self.core
-    }
-
-    fn init(mut core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
+/// The libcosmic hooks, called by [`Window`].
+impl App {
+    fn init(mut core: Core, flags: Flags) -> (Self, Task<Message>) {
         // Tab and Escape belong to the core's keymap, not to libcosmic's
         // focus cycling.
         core.set_keyboard_nav(false);
@@ -531,11 +702,18 @@ impl cosmic::Application for App {
             viewports: HashMap::new(),
             last_rect: None,
         };
+        app.ui.focus_section(flags.section);
+        if let Some(target) = flags.target {
+            // `locus --open note:3` opens Notes; a locked window keeps its own.
+            if flags.section.is_none()
+                && let Some(section) = target.section()
+            {
+                app.ui.section = section;
+            }
+            app.ui.pending_target = Some(target);
+        }
         app.core.nav_bar_set_toggled(true);
         let mut tasks = Vec::new();
-        if let Some(id) = app.core.main_window_id() {
-            tasks.push(app.set_window_title("Locus".into(), id));
-        }
 
         let client = Url::parse(&app.server).ok().and_then(|u| Client::new(u).ok());
         match client {
@@ -557,39 +735,39 @@ impl cosmic::Application for App {
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
-        (self.screen == Screen::Main).then_some(&self.nav)
+        (self.screen == Screen::Main && view_model::show_sections(&self.ui)).then_some(&self.nav)
     }
 
-    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Self::Message> {
+    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Message> {
         match self.nav.data::<Section>(id).copied() {
             Some(section) => self.dispatch(Msg::Switch(section)),
             None => Task::none(),
         }
     }
 
-    fn header_end(&self) -> Vec<Element<'_, Self::Message>> {
+    fn header_end(&self) -> Vec<Element<'_, Message>> {
         if self.screen != Screen::Main {
             return Vec::new();
         }
         view::header_end()
     }
 
-    fn footer(&self) -> Option<Element<'_, Self::Message>> {
+    fn footer(&self) -> Option<Element<'_, Message>> {
         (self.screen == Screen::Main).then(|| view::footer(self))
     }
 
-    fn dialog(&self) -> Option<Element<'_, Self::Message>> {
+    fn dialog(&self) -> Option<Element<'_, Message>> {
         if self.screen != Screen::Main {
             return None;
         }
         view::overlay(self)
     }
 
-    fn on_window_resize(&mut self, _id: window::Id, width: f32, height: f32) {
+    fn on_window_resize(&mut self, width: f32, height: f32) {
         self.window = Size::new(width, height);
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> {
+    fn subscription(&self) -> Subscription<Message> {
         Subscription::batch(vec![
             // Captured events are included on purpose: a focused text widget
             // captures keys (Enter, Escape, Tab) the core also needs.
@@ -604,7 +782,7 @@ impl cosmic::Application for App {
         ])
     }
 
-    fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Core(msg) => self.dispatch(msg),
             Message::Key(key, mods) => self.on_key(key, mods),
@@ -636,8 +814,80 @@ impl cosmic::Application for App {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<'_, Message> {
         view::content(self)
+    }
+}
+
+/// The `cosmic::Application` for app id [`app_id`]`(N)`. Each section's
+/// window is its own type because libcosmic reads the app id from a const;
+/// everything else is [`App`].
+pub(crate) struct Window<const N: u8>(App);
+
+impl<const N: u8> cosmic::Application for Window<N> {
+    type Executor = executor::Default;
+    type Flags = Flags;
+    type Message = Message;
+
+    const APP_ID: &'static str = app_id(N);
+
+    fn core(&self) -> &Core {
+        &self.0.core
+    }
+
+    fn core_mut(&mut self) -> &mut Core {
+        &mut self.0.core
+    }
+
+    fn init(core: Core, flags: Flags) -> (Self, Task<Message>) {
+        let (app, task) = App::init(core, flags);
+        let mut window = Window(app);
+        let title = view_model::window_title(&window.0.ui);
+        let title_task = match window.0.core.main_window_id() {
+            Some(id) => window.set_window_title(title, id),
+            None => Task::none(),
+        };
+        (window, Task::batch([title_task, task]))
+    }
+
+    fn nav_model(&self) -> Option<&nav_bar::Model> {
+        self.0.nav_model()
+    }
+
+    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Message> {
+        self.0.on_nav_select(id)
+    }
+
+    fn header_end(&self) -> Vec<Element<'_, Message>> {
+        self.0.header_end()
+    }
+
+    fn footer(&self) -> Option<Element<'_, Message>> {
+        self.0.footer()
+    }
+
+    fn dialog(&self) -> Option<Element<'_, Message>> {
+        self.0.dialog()
+    }
+
+    fn on_window_resize(&mut self, _id: window::Id, width: f32, height: f32) {
+        self.0.on_window_resize(width, height);
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        self.0.subscription()
+    }
+
+    fn update(&mut self, message: Message) -> Task<Message> {
+        self.0.update(message)
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        self.0.view()
+    }
+
+    fn dbus_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<Message> {
+        self.0.on_activation(msg)
     }
 }
 

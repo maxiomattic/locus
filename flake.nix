@@ -143,7 +143,7 @@
           cargoDeps = rustPlatform.fetchCargoVendor {
             src = pkgs.lib.cleanSource ./.;
             name = "locus-cargo-deps";
-            hash = "sha256-6Pst2Qc2633hiNYEOJ6oBGJGOFWvo3PcckzTfxQtXpE=";
+            hash = "sha256-p/TaBK4e/Nm9djXw5E8oWKN1C1Rz1rJI7PAm5QAmlpE=";
           };
 
           # Vere (urbit runtime) pin: nixpkgs-unstable `pkgs.urbit` 4.6
@@ -214,6 +214,34 @@
               pkgs.glib
               pkgs.dbus
             ];
+            # One launcher for all sections plus one per section. Each section
+            # is its own app (`locus notes`, app id org.locus.Notes), so COSMIC
+            # gives it its own taskbar entry and tiles it separately.
+            postInstall = ''
+              mkdir -p $out/share/applications
+              entry() { # app-id name exec-args icon comment
+                cat > "$out/share/applications/$1.desktop" <<EOF
+              [Desktop Entry]
+              Type=Application
+              Name=$2
+              Comment=$5
+              Exec=$out/bin/locus $3
+              Icon=$4
+              StartupWMClass=$1
+              StartupNotify=true
+              Terminal=false
+              Categories=Office;
+              EOF
+                sed -i 's/^ *//' "$out/share/applications/$1.desktop"
+              }
+              entry org.locus.Desktop "Locus" "" view-app-grid-symbolic "Notes, tasks, calendar, photos, files and contacts"
+              entry org.locus.Notes "Locus Notes" notes accessories-text-editor-symbolic "Notes"
+              entry org.locus.Todo "Locus Todo" todo object-select-symbolic "Tasks from your notes"
+              entry org.locus.Calendar "Locus Calendar" calendar x-office-calendar-symbolic "Calendar"
+              entry org.locus.Photos "Locus Photos" photos image-x-generic-symbolic "Photos"
+              entry org.locus.Files "Locus Files" files folder-symbolic "Files"
+              entry org.locus.Contacts "Locus Contacts" contacts x-office-address-book-symbolic "Contacts"
+            '';
             meta = {
               description = "Locus desktop shell (libcosmic)";
               mainProgram = "locus";
