@@ -336,14 +336,11 @@
             shellHook = ''
               echo "Locus dev shell"
               echo "  rustc: $(rustc --version)"
-              echo "  cargo run --release -p notes-app"
-              echo "  cargo run -p locus-command --bin locus -- help"
-              echo "  nix build .#notes-app"
-              echo "  nix build .#server    # Vere 4.6 binary"
-              echo "  ./scripts/cosmic-check.sh  # COSMIC client eval (not a laptop rebuild)"
-              echo "  ./scripts/check.sh          # photos cargo tests + photos dataset eval"
-              echo "  nix flake check --no-build  # flake eval checks"
-              echo "  # ship: nixosConfigurations.server → urbit.service (docs/urbit.md)"
+              echo "  cargo run -p locus-desktop [-- notes|calendar|...]  # desktop app"
+              echo "  ./scripts/web-build.sh      # browser app -> dist/web"
+              echo "  cargo test --workspace      # shared core, client, gateway"
+              echo "  ./scripts/server-vm.sh      # local test VM ship"
+              echo "  ./scripts/desk-deploy.sh    # safe desk deploy to a real ship"
               export XDG_DATA_DIRS="${pkgs.cosmic-icons}/share:${pkgs.adwaita-icon-theme}/share''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
             '';
           };
