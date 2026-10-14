@@ -63,4 +63,6 @@ Import `nixosModules.client` on a machine whose disk is the Locus desktop. Prove
 
 1. In the clan flake, update the Locus input and switch: `nix flake update locus && sudo nixos-rebuild switch --flake .#<host>`. This installs the gateway, which serves the browser app on port 8090.
 2. On the server, from a checkout of this repo: `EYRE_URL=http://127.0.0.1 ./scripts/desk-deploy.sh`. It snapshots the pier dataset, commits the desk, and waits for every agent. It never wipes or uninstalls anything.
+   New ships come with Tlon's `%groups` desk, which runs agents named `%notes` and `%contacts`. Gall runs an agent name from one desk only, so the script stops and names the clashing desk. Suspend it in the dojo (its state is kept; `|revive %groups` undoes this), then rerun: `|suspend %groups`.
 3. Open `http://<server>:8090/app/` and sign in with the ship's code (`sudo urbit-code`).
+4. Import Obsidian vaults (safe to rerun; never overwrites a note edited in Locus): `locus import-obsidian --url http://<server>:8090 --code-file <file> --notebook <title> <vault>`. Add `--dry-run` to preview.
