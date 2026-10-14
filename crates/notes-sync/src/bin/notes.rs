@@ -130,15 +130,12 @@ fn cmd_open(id: u64) -> Result<(), String> {
         print!("{}", note.body_md);
         return Ok(());
     }
-    if let Some(session) = try_session() {
-        match session.note_open(id) {
-            Ok(n) => {
-                let _ = store.upsert_head(&n);
-                print!("{}", n.body_md);
-                return Ok(());
-            }
-            Err(_) => {}
-        }
+    if let Some(session) = try_session()
+        && let Ok(n) = session.note_open(id)
+    {
+        let _ = store.upsert_head(&n);
+        print!("{}", n.body_md);
+        return Ok(());
     }
     let note = store
         .head(id)

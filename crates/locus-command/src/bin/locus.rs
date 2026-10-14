@@ -1,8 +1,6 @@
 //! `locus` — clan command plane (same functions the ship audits).
 
-use locus_command::{
-    execute_allowed, load_saved, run_approved_job, Session,
-};
+use locus_command::{Session, execute_allowed, import, load_saved, run_approved_job};
 use std::env;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
@@ -28,12 +26,20 @@ fn run() -> Result<(), String> {
         "login" => cmd_login(args.next()),
         "whoami" => {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&s.whoami().map_err(|e| e.to_string())?).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&s.whoami().map_err(|e| e.to_string())?)
+                    .unwrap_or_default()
+            );
             Ok(())
         }
         "members" => {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&s.members().map_err(|e| e.to_string())?).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&s.members().map_err(|e| e.to_string())?)
+                    .unwrap_or_default()
+            );
             Ok(())
         }
         "add" => {
@@ -41,7 +47,9 @@ fn run() -> Result<(), String> {
             let name = args.next().ok_or("usage: locus add <ship> <name> <role>")?;
             let role = args.next().ok_or("usage: locus add <ship> <name> <role>")?;
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            let env = s.add_member(&ship, &name, &role).map_err(|e| e.to_string())?;
+            let env = s
+                .add_member(&ship, &name, &role)
+                .map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&env).unwrap_or_default());
             Ok(())
         }
@@ -60,7 +68,9 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         "call" => {
-            let fn_name = args.next().ok_or("usage: locus call <fn> [--as ~ship] [json-args]")?;
+            let fn_name = args
+                .next()
+                .ok_or("usage: locus call <fn> [--as ~ship] [json-args]")?;
             let (as_ship, rest) = take_as(args.collect())?;
             let json_args = if rest.is_empty() {
                 serde_json::json!({})
@@ -68,13 +78,19 @@ fn run() -> Result<(), String> {
                 serde_json::from_str(&rest.join(" ")).map_err(|e| e.to_string())?
             };
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            let env = s.call(&fn_name, as_ship.as_deref(), json_args).map_err(|e| e.to_string())?;
+            let env = s
+                .call(&fn_name, as_ship.as_deref(), json_args)
+                .map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&env).unwrap_or_default());
             Ok(())
         }
         "pending" => {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&s.pending().map_err(|e| e.to_string())?).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&s.pending().map_err(|e| e.to_string())?)
+                    .unwrap_or_default()
+            );
             Ok(())
         }
         "approve" => {
@@ -98,9 +114,14 @@ fn run() -> Result<(), String> {
         }
         "audit" => {
             let s = Session::connect_saved().map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&s.audit().map_err(|e| e.to_string())?).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&s.audit().map_err(|e| e.to_string())?)
+                    .unwrap_or_default()
+            );
             Ok(())
         }
+        "import-obsidian" => cmd_import_obsidian(args.collect()),
         other => Err(format!("unknown command {other}. try: locus help")),
     }
 }
@@ -141,11 +162,47 @@ fn print_help() {
          locus deny <id>\n\
          locus execute <id>        # dry-activate unless LOCUS_OS_EXECUTE=1\n\
          locus audit\n\
+         locus import-obsidian [--dry-run] --url <gateway-url> --code-file <path>\n\
+         \x20                     --notebook <title> [--files-dir <dir>] <vault>\n\
          \n\
          Agents authenticate with their own X-Api-Key (from add / issue-key).\n\
          They can queue os.rebuild / os.rollback. They cannot\n\
          approve, execute, or call history.purge / zfs.destroy. --as is owner-only."
     );
+}
+
+const IMPORT_USAGE: &str = "usage: locus import-obsidian [--dry-run] --url <gateway-url> \
+--code-file <path> --notebook <title> [--files-dir <dir>] <vault-path>";
+
+fn cmd_import_obsidian(args: Vec<String>) -> Result<(), String> {
+    let (mut dry_run, mut url, mut code_file, mut notebook, mut files_dir, mut vault) =
+        (false, None, None, None, None, None);
+    let mut it = args.into_iter();
+    while let Some(a) = it.next() {
+        let mut val = |flag: &str| {
+            it.next()
+                .ok_or(format!("{flag} needs a value\n{IMPORT_USAGE}"))
+        };
+        match a.as_str() {
+            "--dry-run" => dry_run = true,
+            "--url" => url = Some(val("--url")?),
+            "--code-file" => code_file = Some(val("--code-file")?),
+            "--notebook" => notebook = Some(val("--notebook")?),
+            "--files-dir" => files_dir = Some(val("--files-dir")?),
+            f if f.starts_with("--") => return Err(format!("unknown flag {f}\n{IMPORT_USAGE}")),
+            _ if vault.is_none() => vault = Some(a),
+            _ => return Err(IMPORT_USAGE.into()),
+        }
+    }
+    let missing = || IMPORT_USAGE.to_string();
+    import::run(import::Options {
+        vault: vault.ok_or_else(missing)?.into(),
+        url: url.ok_or_else(missing)?,
+        code_file: code_file.ok_or_else(missing)?.into(),
+        notebook: notebook.ok_or_else(missing)?,
+        files_dir,
+        dry_run,
+    })
 }
 
 fn cmd_login(code_file: Option<String>) -> Result<(), String> {
@@ -154,7 +211,9 @@ fn cmd_login(code_file: Option<String>) -> Result<(), String> {
         std::fs::read_to_string(path).map_err(|e| e.to_string())?
     } else if !io::stdin().is_terminal() {
         let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf).map_err(|e| e.to_string())?;
+        io::stdin()
+            .read_to_string(&mut buf)
+            .map_err(|e| e.to_string())?;
         buf
     } else {
         return Err("usage: locus login <code-file>  (or pipe +code on stdin)".into());

@@ -114,13 +114,10 @@ pub fn handle(
         && modifiers.control()
         && !modifiers.shift()
         && !modifiers.alt()
-    {
-        if let Key::Character(c) = key {
-            if c.as_str().eq_ignore_ascii_case("v") {
+        && let Key::Character(c) = key
+            && c.as_str().eq_ignore_ascii_case("v") {
                 return mode(state, Mode::VisualBlock);
             }
-        }
-    }
     if modifiers.command() || modifiers.alt() {
         return Vec::new();
     }
@@ -184,14 +181,13 @@ fn normal(
     let Some(ch) = ch else {
         return Vec::new();
     };
-    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty()) {
-        if state.pending.chars().all(|c| c.is_ascii_digit()) {
+    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty())
+        && state.pending.chars().all(|c| c.is_ascii_digit()) {
             if state.pending.len() < 3 {
                 state.pending.push(ch);
             }
             return vec![Effect::Keys];
         }
-    }
     if ch == ':' && state.pending.is_empty() {
         state.mode = Mode::Command;
         state.pending.clear();
@@ -300,12 +296,11 @@ fn visual(state: &mut State, key: &Key, text: Option<&str>) -> Vec<Effect> {
     let Some(ch) = ch else {
         return Vec::new();
     };
-    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty()) {
-        if state.pending.chars().all(|c| c.is_ascii_digit()) && state.pending.len() < 3 {
+    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty())
+        && state.pending.chars().all(|c| c.is_ascii_digit()) && state.pending.len() < 3 {
             state.pending.push(ch);
             return vec![Effect::Keys];
         }
-    }
     let (count, _) = split_count(&state.pending);
     state.pending.clear();
     let count = count.clamp(1, 99);

@@ -287,11 +287,10 @@ impl canvas::Program<Message, cosmic::Theme> for GraphPlot {
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
                 let mut redraw = false;
                 if let Some(pos) = over {
-                    if let Some(start) = state.press_start {
-                        if (pos.x - start.x).hypot(pos.y - start.y) > DRAG_CLICK_PX {
+                    if let Some(start) = state.press_start
+                        && (pos.x - start.x).hypot(pos.y - start.y) > DRAG_CLICK_PX {
                             state.dragged = true;
                         }
-                    }
                     match state.drag {
                         Drag::Node { index, grab } => {
                             if state.dragged {
@@ -328,11 +327,10 @@ impl canvas::Program<Message, cosmic::Theme> for GraphPlot {
                     return Some(action);
                 }
             }
-            Event::Mouse(mouse::Event::CursorLeft) => {
-                if state.hover.take().is_some() {
+            Event::Mouse(mouse::Event::CursorLeft)
+                if state.hover.take().is_some() => {
                     return Some(canvas::Action::request_redraw());
                 }
-            }
             _ => {}
         }
         if !state.settled {

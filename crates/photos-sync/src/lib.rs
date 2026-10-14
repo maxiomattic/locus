@@ -62,6 +62,10 @@ impl ThumbCache {
             .query_row("SELECT COUNT(*) FROM thumbs", [], |r| r.get(0))?;
         Ok(n as usize)
     }
+
+    pub fn is_empty(&self) -> Result<bool> {
+        Ok(self.len()? == 0)
+    }
 }
 
 pub fn default_db_path() -> PathBuf {

@@ -417,6 +417,7 @@ pub fn view_visible(body: &str, files_dir: &Path) -> Element<'static, Message> {
 }
 
 #[derive(Clone, Copy)]
+#[derive(Default)]
 struct Inline {
     heading: u8,
     bold: bool,
@@ -426,18 +427,6 @@ struct Inline {
     quote: bool,
 }
 
-impl Default for Inline {
-    fn default() -> Self {
-        Self {
-            heading: 0,
-            bold: false,
-            italic: false,
-            strike: false,
-            code: false,
-            quote: false,
-        }
-    }
-}
 
 enum OpenLink {
     Url(String),

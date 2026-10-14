@@ -7,6 +7,16 @@
 //!
 //! Default ship URL is the bring-up VM: 127.0.0.1:8080.
 
+// Superseded by locus-desktop; kept building, not polished for newer lints.
+#![allow(
+    clippy::question_mark,
+    clippy::unnecessary_sort_by,
+    clippy::manual_strip,
+    clippy::redundant_guards,
+    clippy::manual_clamp,
+    clippy::too_many_arguments
+)]
+
 mod chrome;
 mod graph;
 mod highlight;
@@ -555,9 +565,7 @@ impl cosmic::Application for App {
         if self.show_history {
             return Some(chrome::version_history_dialog(&self.history, self.history_pick));
         }
-        if self.pending_delete.is_none() {
-            return None;
-        }
+        self.pending_delete?;
         Some(
             widget::dialog()
                 .title("Delete this note?")
@@ -691,11 +699,10 @@ impl cosmic::Application for App {
                 self.busy = false;
                 self.merge_listed(notes);
                 self.sync_nav_model();
-                if self.selected.is_none() {
-                    if let Some(id) = self.notes.first().map(|n| n.id) {
+                if self.selected.is_none()
+                    && let Some(id) = self.notes.first().map(|n| n.id) {
                         return self.open_note(id);
                     }
-                }
                 self.refresh_status();
             }
             Message::Listed(Err(e)) => {
@@ -1122,11 +1129,10 @@ impl cosmic::Application for App {
             Message::PrevNote => return self.step_note(-1),
             Message::NextNote => return self.step_note(1),
             Message::DeleteCurrent => {
-                if let Some(id) = self.selected {
-                    if !self.busy {
+                if let Some(id) = self.selected
+                    && !self.busy {
                         self.pending_delete = Some(id);
                     }
-                }
             }
             Message::SetAccent(accent) => {
                 self.accent = accent;
@@ -1474,12 +1480,11 @@ impl App {
             position: text_editor::Position { line, column },
             selection: None,
         });
-        if let Some(id) = self.selected {
-            if let Some(note) = self.cache.get_mut(&id) {
+        if let Some(id) = self.selected
+            && let Some(note) = self.cache.get_mut(&id) {
                 note.title = self.title.clone();
                 note.body_md = self.body.text();
             }
-        }
         self.sync_nav_model();
     }
 
@@ -1543,12 +1548,11 @@ impl App {
     }
 
     fn after_edit(&mut self, boundary: bool) -> Task<Message> {
-        if let Some(id) = self.selected {
-            if let Some(note) = self.cache.get_mut(&id) {
+        if let Some(id) = self.selected
+            && let Some(note) = self.cache.get_mut(&id) {
                 note.title = self.title.clone();
                 note.body_md = self.body.text();
             }
-        }
         if boundary {
             return self.snapshot_and_sync();
         }
@@ -1610,8 +1614,8 @@ impl App {
                 self.cache.insert(n.id, n);
             }
         }
-        if refresh_editor {
-            if let Some(id) = selected {
+        if refresh_editor
+            && let Some(id) = selected {
                 if let Some(n) = self.cache.get(&id).cloned() {
                     if n.body_md != editor {
                         self.apply_note(&n);
@@ -1622,7 +1626,6 @@ impl App {
                     self.body = text_editor::Content::new();
                 }
             }
-        }
         self.sync_nav_model();
         self.refresh_status();
     }
@@ -1689,7 +1692,7 @@ impl App {
                 self.apply_note(&host);
                 let _ = self.store.upsert_head(&host);
                 self.refresh_status();
-                return self.update_win_title();
+                self.update_win_title()
             }
             ConflictChoice::Both => {
                 let merged = keep_both(&self.body.text(), &host);
@@ -1752,15 +1755,14 @@ impl App {
 
     /// Open history-aware: pushes the current note onto the back stack.
     fn open_note(&mut self, id: u64) -> Task<Message> {
-        if let Some(prev) = self.selected {
-            if prev != id && self.back.last() != Some(&prev) {
+        if let Some(prev) = self.selected
+            && prev != id && self.back.last() != Some(&prev) {
                 self.back.push(prev);
                 if self.back.len() > 64 {
                     self.back.remove(0);
                 }
                 self.forward.clear();
             }
-        }
         self.open_note_silent(id)
     }
 
@@ -1891,8 +1893,8 @@ impl App {
                 continue;
             }
             let mut note = incoming;
-            if note.body_md.is_empty() {
-                if let Ok(Some(local)) = self.store.head(note.id) {
+            if note.body_md.is_empty()
+                && let Ok(Some(local)) = self.store.head(note.id) {
                     if !local.body_md.is_empty() {
                         note.body_md = local.body_md;
                     }
@@ -1900,7 +1902,6 @@ impl App {
                         note.title = local.title;
                     }
                 }
-            }
             if self.selected == Some(note.id) {
                 note.title = self.title.clone();
                 note.body_md = self.body.text();
@@ -1988,11 +1989,10 @@ impl App {
             position: text_editor::Position { line, column },
             selection: None,
         });
-        if let Some(id) = self.selected {
-            if let Some(note) = self.cache.get_mut(&id) {
+        if let Some(id) = self.selected
+            && let Some(note) = self.cache.get_mut(&id) {
                 note.body_md = next;
             }
-        }
         if matches!(self.pane, Pane::Write) {
             source::snap_formatted_caret(&mut self.body, true);
         }
@@ -2032,11 +2032,10 @@ impl App {
             position: text_editor::Position { line, column },
             selection: None,
         });
-        if let Some(id) = self.selected {
-            if let Some(note) = self.cache.get_mut(&id) {
+        if let Some(id) = self.selected
+            && let Some(note) = self.cache.get_mut(&id) {
                 note.body_md = next;
             }
-        }
         if matches!(self.pane, Pane::Write) {
             source::snap_formatted_caret(&mut self.body, true);
         }

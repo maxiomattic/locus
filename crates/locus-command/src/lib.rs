@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod import;
+
 pub const APP_ID: &str = "org.locus.household";
 
 #[derive(Debug, thiserror::Error)]
@@ -148,11 +150,7 @@ impl Session {
     }
 
     pub fn queue_rebuild(&self, flake: &str, as_ship: Option<&str>) -> Result<Envelope> {
-        self.call(
-            "os.rebuild",
-            as_ship,
-            serde_json::json!({ "flake": flake }),
-        )
+        self.call("os.rebuild", as_ship, serde_json::json!({ "flake": flake }))
     }
 
     pub fn queue_rollback(&self, as_ship: Option<&str>) -> Result<Envelope> {
@@ -247,11 +245,7 @@ pub fn run_approved_job(job: &Job, execute: bool) -> Result<String> {
 fn flake_dir(flake: &str) -> Option<&Path> {
     let path = flake.split('#').next()?;
     let p = Path::new(path);
-    if p.is_dir() {
-        Some(p)
-    } else {
-        p.parent()
-    }
+    if p.is_dir() { Some(p) } else { p.parent() }
 }
 
 #[cfg(test)]

@@ -146,6 +146,7 @@ pub fn sync(store: &Store, root: &Path) -> crate::Result<Report> {
     Ok(report)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn import_existing(
     store: &Store,
     id: u64,

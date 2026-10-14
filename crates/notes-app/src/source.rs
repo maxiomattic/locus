@@ -139,10 +139,7 @@ impl<P: Paragraph> State<P> {
                 .now
                 .checked_duration_since(self.blink_at)
                 .unwrap_or_default()
-                .as_millis()
-                / Self::BLINK_MS)
-                % 2
-                == 0
+                .as_millis() / Self::BLINK_MS).is_multiple_of(2)
     }
 
     fn schedule_blink(&self, shell: &mut Shell<'_, Message>) {
@@ -244,14 +241,13 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                         &state.kinds,
                         state.formatted,
                     ) {
-                        if state.command {
-                            if let Some(target) = wiki {
+                        if state.command
+                            && let Some(target) = wiki {
                                 shell.publish((self.on_wiki)(target));
                                 shell.capture_event();
                                 shell.request_redraw();
                                 return;
                             }
-                        }
                         let now = Instant::now();
                         let count = match state.last_click {
                             Some((at, x, y, n))
@@ -392,7 +388,7 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                 if modifiers.command() {
                     match key.as_ref() {
                         keyboard::Key::Character(c)
-                            if matches!(c.as_ref(), "c" | "x" | "v" | "a" | "C" | "X" | "V" | "A") =>
+                            if matches!(c, "c" | "x" | "v" | "a" | "C" | "X" | "V" | "A") =>
                         {}
                         _ => return,
                     }
@@ -929,8 +925,8 @@ fn wiki_at(line: &str, col: usize) -> Option<String> {
     let bytes = line.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'[' && bytes.get(i + 1) == Some(&b'[') {
-            if let Some(rel) = line[i + 2..].find("]]") {
+        if bytes[i] == b'[' && bytes.get(i + 1) == Some(&b'[')
+            && let Some(rel) = line[i + 2..].find("]]") {
                 let close = i + 2 + rel + 2;
                 if col >= i && col <= close {
                     let inner = &line[i + 2..close - 2];
@@ -942,7 +938,6 @@ fn wiki_at(line: &str, col: usize) -> Option<String> {
                 i = close;
                 continue;
             }
-        }
         i += 1;
     }
     None

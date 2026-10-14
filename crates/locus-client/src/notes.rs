@@ -162,6 +162,33 @@ impl Client {
             .await
     }
 
+    /// Create a folder under `parent` and return it. The create reply carries
+    /// no folder, so this lists the notebook afterwards and returns the newest
+    /// folder with that parent and name.
+    pub async fn create_folder(
+        &self,
+        host: &str,
+        name: &str,
+        parent: u64,
+        folder_name: &str,
+    ) -> Result<Folder> {
+        self.write(
+            Method::POST,
+            &format!("{}/folders", nb_path(host, name)),
+            Some(json!({ "parent": parent, "folderName": folder_name })),
+        )
+        .await?;
+        self.list_folders(host, name)
+            .await?
+            .into_iter()
+            .rev()
+            .find(|f| f.parent_folder_id == Some(parent) && f.name == folder_name)
+            .ok_or_else(|| Error::Api {
+                error: "not-found".into(),
+                message: "created folder missing from list".into(),
+            })
+    }
+
     pub async fn list_notes(&self, host: &str, name: &str) -> Result<Vec<Note>> {
         self.get_json(&format!("{}/notes", nb_path(host, name)))
             .await
