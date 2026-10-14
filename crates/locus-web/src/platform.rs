@@ -43,6 +43,102 @@ impl Platform for WebPlatform {
     }
 }
 
+/// The page's route: `/app/<section>` locks the page to that section, and
+/// `#<target>` (e.g. `#note:12`) is a cross-link to open.
+pub fn route() -> (Option<locus_core::Section>, Option<locus_core::Target>) {
+    let Some(location) = web_sys::window().map(|w| w.location()) else {
+        return (None, None);
+    };
+    let path = location.pathname().unwrap_or_default();
+    let section = path
+        .trim_end_matches('/')
+        .rsplit_once("/app/")
+        .and_then(|(_, rest)| locus_core::Section::from_slug(rest));
+    (section, hash_target())
+}
+
+/// The cross-link in the URL hash, if any.
+pub fn hash_target() -> Option<locus_core::Target> {
+    let hash = web_sys::window()?.location().hash().ok()?;
+    locus_core::Target::parse(hash.trim_start_matches('#'))
+}
+
+/// Drop the hash once its target is handled, so the same link sent again
+/// is a change the page hears about.
+pub fn clear_hash() {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let path = window.location().pathname().unwrap_or_default();
+    if let Ok(history) = window.history() {
+        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
+    }
+}
+
+/// The tab name a section's page goes by, so `window.open` finds it again.
+fn tab_name(section: locus_core::Section) -> String {
+    format!("locus-{}", section.slug())
+}
+
+/// Name this tab after its section and set the page title.
+pub fn claim_tab(section: Option<locus_core::Section>, title: &str) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    // An all-sections page drops a name left by a section page in this tab.
+    let _ = window.set_name(&section.map(tab_name).unwrap_or_default());
+    if let Some(doc) = window.document() {
+        doc.set_title(title);
+    }
+}
+
+/// Open or focus the tab for `section` (`/app/<section>#<target>`). The
+/// named target reuses the section's tab when the browser can find it.
+pub fn open_section(section: locus_core::Section, target: Option<locus_core::Target>) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    // index.html sets <base href="/app/">; section pages live right below it.
+    let base = window
+        .document()
+        .and_then(|d| d.base_uri().ok().flatten())
+        .unwrap_or_else(|| "/app/".into());
+    let mut url = format!("{base}{}", section.slug());
+    if let Some(target) = target {
+        url.push('#');
+        url.push_str(&target.to_string());
+    }
+    match window.open_with_url_and_target(&url, &tab_name(section)) {
+        Ok(Some(tab)) => {
+            let _ = tab.focus();
+        }
+        _ => web_sys::console::warn_1(&"locus: the browser blocked opening a tab".into()),
+    }
+}
+
+/// Every new URL hash, as it changes (another page sent a cross-link).
+pub fn hash_changes() -> impl iced::futures::Stream<Item = String> {
+    iced::stream::channel(8, async |sender: iced::futures::channel::mpsc::Sender<String>| {
+        use wasm_bindgen::JsCast;
+        use wasm_bindgen::closure::Closure;
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let mut sender = sender;
+        let listener = Closure::<dyn FnMut()>::new(move || {
+            let hash = web_sys::window()
+                .and_then(|w| w.location().hash().ok())
+                .unwrap_or_default();
+            let _ = sender.try_send(hash);
+        });
+        let _ = window
+            .add_event_listener_with_callback("hashchange", listener.as_ref().unchecked_ref());
+        // Lives as long as the page.
+        listener.forget();
+        std::future::pending::<()>().await;
+    })
+}
+
 /// One-shot timer on the JS event loop.
 async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {

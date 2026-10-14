@@ -48,11 +48,13 @@ pub fn root(s: &Shell) -> Element<'_, Message> {
     if !s.logged_in {
         return login_screen(s);
     }
-    let body = row![
-        sidebar(s),
-        column![main_pane(s), status_bar(s)].width(Fill).height(Fill),
-    ]
-    .height(Fill);
+    let main = column![main_pane(s), status_bar(s)].width(Fill).height(Fill);
+    // A section page (`/app/notes`) is that section's own app: no sidebar.
+    let body = if view_model::show_sections(&s.app) {
+        row![sidebar(s), main].height(Fill)
+    } else {
+        row![main].height(Fill)
+    };
     let mut layers: Vec<Element<'_, Message>> = vec![body.into()];
     if let Some(overlay) = overlay(s) {
         layers.push(overlay);
@@ -67,7 +69,7 @@ fn login_screen(s: &Shell) -> Element<'_, Message> {
     let status_color = level_color(c, view_model::status_level(&s.app));
     let card = container(
         column![
-            text("Locus").size(20).color(c.text),
+            text(view_model::window_title(&s.app)).size(20).color(c.text),
             text("Enter the web code for your ship.").size(14).color(c.muted),
             text_input("+code", &s.app.input.text)
                 .id("login")
@@ -629,8 +631,8 @@ fn photos_pane(s: &Shell) -> Element<'_, Message> {
     if s.app.focus == Focus::Detail {
         return viewer(s);
     }
-    let cols = photo_columns(s.window.width);
-    let tile = tile_px(s.window.width);
+    let cols = photo_columns(s.pane_w());
+    let tile = tile_px(s.pane_w());
     let grid = view_model::photo_grid(&s.app, cols);
     if grid.rows.is_empty() {
         let hint = empty_hint(s, "Press u to upload photos.");

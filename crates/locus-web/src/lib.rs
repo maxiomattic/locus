@@ -84,9 +84,11 @@ pub enum Message {
     Editor(text_editor::Action),
     Scrolled(&'static str, scrollable::Viewport),
     Thumb(String, Result<Vec<u8>, String>),
+    /// The URL hash changed: another page sent a cross-link.
+    Hash(String),
 }
 
-/// Photo grid columns for a window of `width` pixels.
+/// Photo grid columns for a main pane of `width` pixels.
 pub fn photo_columns(width: f32) -> usize {
     let inner = photo_inner(width);
     ((inner + GAP) / (TILE_TARGET + GAP)).floor().max(1.0) as usize
@@ -94,10 +96,10 @@ pub fn photo_columns(width: f32) -> usize {
 
 /// Width available to the photo grid.
 fn photo_inner(width: f32) -> f32 {
-    (width - SIDEBAR_W - 2.0 * PAD - SCROLLBAR_W).max(1.0)
+    (width - 2.0 * PAD - SCROLLBAR_W).max(1.0)
 }
 
-/// Square tile edge for `width` pixels, filling the row.
+/// Square tile edge for a main pane of `width` pixels, filling the row.
 pub fn tile_px(width: f32) -> f32 {
     let cols = photo_columns(width) as f32;
     ((photo_inner(width) - (cols - 1.0) * GAP) / cols).max(48.0)
@@ -111,6 +113,7 @@ impl Shell {
             Colors::dark()
         };
         let client = platform::client();
+        let (locked, target) = platform::route();
         let mut shell = Shell {
             app: App::new(),
             client: client.clone(),
@@ -127,6 +130,18 @@ impl Shell {
             focused: None,
             last_rect: None,
         };
+        shell.app.focus_section(locked);
+        if let Some(target) = target {
+            // `/app/#note:3` opens Notes; a section page keeps its section.
+            if locked.is_none()
+                && let Some(section) = target.section()
+            {
+                shell.app.section = section;
+            }
+            shell.app.pending_target = Some(target);
+            platform::clear_hash();
+        }
+        platform::claim_tab(locked, &view_model::window_title(&shell.app));
         // Show the login card until the session check says otherwise.
         let mut tasks = vec![shell.apply(Msg::BeginLogin)];
         tasks.push(Task::future(async move {
@@ -151,6 +166,7 @@ impl Shell {
         Subscription::batch([
             event::listen_raw(on_event),
             window::resize_events().map(|(_, size)| Message::Resized(size)),
+            Subscription::run(platform::hash_changes).map(Message::Hash),
         ])
     }
 
@@ -171,7 +187,10 @@ impl Shell {
             Message::Session(ok) => {
                 if ok {
                     self.logged_in = true;
-                    self.apply(Msg::Switch(Section::Notes))
+                    // The page's section (or Notes); a pending `#target`
+                    // survives this switch and opens once it has loaded.
+                    let section = self.app.section;
+                    self.apply(Msg::Switch(section))
                 } else {
                     self.apply(Msg::BeginLogin)
                 }
@@ -179,7 +198,25 @@ impl Shell {
             Message::Resized(size) => {
                 self.window = size;
                 self.apply(Msg::Layout {
-                    photo_columns: photo_columns(size.width),
+                    photo_columns: photo_columns(self.pane_w()),
+                })
+            }
+            Message::Hash(hash) => {
+                let Some(target) = locus_core::Target::parse(hash.trim_start_matches('#')) else {
+                    return Task::none();
+                };
+                platform::clear_hash();
+                if !self.logged_in {
+                    self.app.pending_target = Some(target);
+                    return Task::none();
+                }
+                let section = target
+                    .section()
+                    .or(self.app.locked)
+                    .unwrap_or(self.app.section);
+                self.apply(Msg::Open {
+                    section,
+                    target: Some(target),
                 })
             }
             Message::Editor(action) => self.editor_action(action),
@@ -223,8 +260,13 @@ impl Shell {
     }
 
     fn effect(&self, effect: Effect) -> Task<Message> {
-        if let Effect::CopyToClipboard(text) = effect {
-            return iced::clipboard::write::<Message>(text);
+        match effect {
+            Effect::CopyToClipboard(text) => return iced::clipboard::write::<Message>(text),
+            Effect::OpenSection(section, target) => {
+                platform::open_section(section, target);
+                return Task::none();
+            }
+            _ => {}
         }
         let client = self.client.clone();
         Task::future(async move {
@@ -387,9 +429,9 @@ impl Shell {
                 if app.focus == Focus::Detail {
                     return None;
                 }
-                let cols = photo_columns(self.window.width);
+                let cols = photo_columns(self.pane_w());
                 let grid = view_model::photo_grid(app, cols);
-                let row_h = tile_px(self.window.width) + GAP;
+                let row_h = tile_px(self.pane_w()) + GAP;
                 Some(("photos", (grid.selected / cols) as f32 * row_h, row_h))
             }
             Section::Files => {
@@ -413,14 +455,14 @@ impl Shell {
                     wanted.push((format!("{hash}@1024"), hash, 1024));
                 }
             } else {
-                let cols = photo_columns(self.window.width);
+                let cols = photo_columns(self.pane_w());
                 let grid = view_model::photo_grid(app, cols);
                 let (offset, view_h) = self
                     .viewports
                     .get("photos")
                     .copied()
                     .unwrap_or((0.0, self.window.height));
-                let row_h = tile_px(self.window.width) + GAP;
+                let row_h = tile_px(self.pane_w()) + GAP;
                 let first = (offset / row_h).floor().max(0.0) as usize;
                 let last = ((offset + view_h) / row_h).ceil() as usize + 1;
                 for row in grid.rows.iter().skip(first).take(last.saturating_sub(first)) {
@@ -445,6 +487,16 @@ impl Shell {
             }));
         }
         tasks
+    }
+
+    /// Width of the main pane: the window, less the sidebar when it shows.
+    pub fn pane_w(&self) -> f32 {
+        let sidebar = if view_model::show_sections(&self.app) {
+            SIDEBAR_W
+        } else {
+            0.0
+        };
+        self.window.width - sidebar
     }
 
     /// Thumbnail for a hash at a size, if it has arrived.
@@ -527,7 +579,7 @@ fn map_key(key: &keyboard::Key) -> Option<Key> {
 /// Start the app. Called by wasm-bindgen when the module loads.
 pub fn run() -> iced::Result {
     iced::application(Shell::boot, Shell::update, view::root)
-        .title("Locus")
+        .title(|s: &Shell| view_model::window_title(&s.app))
         .theme(Shell::theme)
         .subscription(Shell::subscription)
         .run()
