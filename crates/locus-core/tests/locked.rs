@@ -48,7 +48,11 @@ fn section_keys_in_a_locked_window_open_the_other_app() {
     press(&mut app, Key::Char('g'));
     let fx = press(&mut app, Key::Char('n'));
     assert_eq!(fx, vec![Effect::OpenSection(Section::Notes, None)]);
-    assert_eq!(app.section, Section::Todo, "the window stays on its section");
+    assert_eq!(
+        app.section,
+        Section::Todo,
+        "the window stays on its section"
+    );
     assert!(!app.pending_g);
 
     let fx = press_with(&mut app, Key::Char('3'), ALT, now());
@@ -82,7 +86,7 @@ fn enter_on_a_task_in_locked_todo_opens_the_note_in_the_notes_app() {
     let fx = press(&mut app, Key::Enter);
     assert_eq!(
         fx,
-        vec![Effect::OpenSection(Section::Notes, Some(Target::Note(1)))]
+        vec![Effect::OpenSection(Section::Notes, Some(note_target(1)))]
     );
     assert_eq!(app.section, Section::Todo);
     assert!(app.editor.is_none());
@@ -272,7 +276,7 @@ fn palette_hits_in_a_locked_window_open_in_their_own_app() {
     let fx = press(&mut app, Key::Enter);
     assert_eq!(
         fx,
-        vec![Effect::OpenSection(Section::Notes, Some(Target::Note(7)))]
+        vec![Effect::OpenSection(Section::Notes, Some(note_target(7)))]
     );
     assert_eq!(app.section, Section::Calendar);
     assert_eq!(app.focus, Focus::List);
@@ -333,6 +337,7 @@ fn view_model_titles_and_hides_sections_when_locked() {
 fn targets_and_slugs_round_trip() {
     for t in [
         Target::Note(12),
+        note_target(12),
         Target::File(3),
         Target::Contact(9),
         Target::New,
@@ -341,6 +346,12 @@ fn targets_and_slugs_round_trip() {
         assert_eq!(Target::parse(&t.to_string()), Some(t));
     }
     assert_eq!(Target::parse("note:x"), None);
+    assert_eq!(Target::parse("note:~zod/notes/x"), None);
+    assert_eq!(Target::parse("note:~zod/12"), None);
+    assert_eq!(Target::parse("note://12"), None);
+    assert_eq!(Target::parse("note:~zod/a/b/12"), None);
+    assert_eq!(note_target(12).to_string(), "note:~zod/notes/12");
+    assert_eq!(Target::Note(12).to_string(), "note:12");
     assert_eq!(Target::parse("event:1"), None);
     for s in Section::ALL {
         assert_eq!(Section::from_slug(s.slug()), Some(s));

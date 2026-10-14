@@ -300,15 +300,24 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     } else {
         let mut col = Column::new();
         for (i, r) in rows.iter().enumerate() {
-            col = col.push(list_row(c, i, &r.title, &r.subtitle, r.selected));
+            let title = if r.is_dir {
+                format!("{}/", r.title)
+            } else {
+                r.title.clone()
+            };
+            col = col.push(list_row(c, i, &title, &r.subtitle, r.selected));
         }
         col.into()
     };
     let left = container(
-        scrollable(list)
-            .id("notes")
-            .on_scroll(scroll_msg("notes"))
-            .height(Fill),
+        column![
+            muted_text(c, view_model::notes_breadcrumb(&s.app)),
+            scrollable(list)
+                .id("notes")
+                .on_scroll(scroll_msg("notes"))
+                .height(Fill),
+        ]
+        .spacing(8),
     )
     .width(300)
     .height(Fill);
@@ -893,9 +902,11 @@ fn palette_card(s: &Shell) -> Element<'_, Message> {
         for (i, r) in rows.iter().enumerate() {
             let content = row![
                 text(r.label.clone()).size(14).color(c.text),
+                muted_text(c, r.detail.clone()),
                 space::horizontal(),
                 muted_text(c, r.hint),
             ]
+            .spacing(8)
             .align_y(Center);
             col = col.push(
                 button(content)

@@ -33,7 +33,10 @@ fn select_uses_the_current_section() {
     let mut app = loaded_notes((1..=3).map(|i| note(i, "n", "", 1, i)).collect());
     send(&mut app, Msg::Switch(Section::Photos));
     send(&mut app, Msg::Select(1));
-    assert_eq!(app.photos.sel, 0, "no photos loaded, so the cursor stays at 0");
+    assert_eq!(
+        app.photos.sel, 0,
+        "no photos loaded, so the cursor stays at 0"
+    );
     assert_eq!(app.notes.sel, 0);
 }
 
@@ -41,13 +44,21 @@ fn select_uses_the_current_section() {
 fn editor_focus_only_when_a_note_is_open() {
     let mut app = loaded_notes(vec![note(1, "n", "", 1, 1)]);
     send(&mut app, Msg::EditorFocus);
-    assert_eq!(app.focus, locus_core::Focus::List, "no open note, no focus change");
+    assert_eq!(
+        app.focus,
+        locus_core::Focus::List,
+        "no open note, no focus change"
+    );
     send(&mut app, Msg::Activate);
     assert_eq!(app.focus, locus_core::Focus::Editor);
     send(&mut app, Msg::Escape);
     assert_eq!(app.focus, locus_core::Focus::List);
     send(&mut app, Msg::EditorFocus);
-    assert_eq!(app.focus, locus_core::Focus::Editor, "editor still open after Escape");
+    assert_eq!(
+        app.focus,
+        locus_core::Focus::Editor,
+        "editor still open after Escape"
+    );
 }
 
 #[test]

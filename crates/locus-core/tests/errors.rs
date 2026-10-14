@@ -154,5 +154,5 @@ fn a_flood_of_unknown_messages_leaves_state_valid() {
     send(&mut app, Msg::Batch(vec![Msg::Escape, Msg::Escape]));
     assert_eq!(app.focus, Focus::List);
     assert!(app.form.is_none());
-    assert_eq!(app.notes.items.len(), 1, "no data was dropped");
+    assert_eq!(app.notes.note_count(), 1, "no data was dropped");
 }

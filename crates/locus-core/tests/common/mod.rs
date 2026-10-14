@@ -162,3 +162,42 @@ pub fn save_notes(fx: &[Effect]) -> Vec<&Effect> {
 pub fn section_of(app: &App) -> Section {
     app.section
 }
+
+/// The full cross-link to note `id` of the fixture notebook.
+pub fn note_target(id: u64) -> locus_core::Target {
+    locus_core::Target::NoteAt(locus_core::NoteRef {
+        nb: locus_core::NbKey::of(&nb()),
+        id,
+    })
+}
+
+/// A second notebook on the same ship.
+pub fn nb_journal() -> NotebookSummary {
+    NotebookSummary {
+        host: "~zod".into(),
+        flag_name: "journal".into(),
+        notebook: Notebook {
+            id: 2,
+            title: "Journal".into(),
+            root_folder_id: 20,
+        },
+        visibility: "private".into(),
+    }
+}
+
+pub fn folder(id: u64, name: &str, parent: Option<u64>) -> locus_core::locus_client::notes::Folder {
+    locus_core::locus_client::notes::Folder {
+        id,
+        notebook_id: 0,
+        name: name.into(),
+        parent_folder_id: parent,
+    }
+}
+
+/// A note in `folder_id` (ids are per notebook, so callers may reuse them).
+pub fn note_in(id: u64, folder_id: u64, title: &str, body: &str, updated_at: u64) -> Note {
+    Note {
+        folder_id,
+        ..note(id, title, body, 1, updated_at)
+    }
+}

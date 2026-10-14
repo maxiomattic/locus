@@ -48,7 +48,7 @@ pub fn sidebar(app: &App) -> Vec<SidebarItem> {
             shortcut: format!("g {}", keymap::go_key(s)),
             active: s == app.section,
             badge: match s {
-                Section::Notes => Some(app.notes.items.len()),
+                Section::Notes => Some(app.notes.note_count()),
                 Section::Todo => Some(
                     todo::groups(app, today)
                         .iter()
@@ -110,24 +110,62 @@ pub struct Row {
     pub title: String,
     pub subtitle: String,
     pub selected: bool,
+    /// A notebook or folder: Enter opens it instead of an editor.
+    pub is_dir: bool,
 }
 
 pub fn notes_list(app: &App) -> Vec<Row> {
     let tz = app.now.tz_offset_secs;
-    notes::visible(app)
+    let plural =
+        |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    notes::rows(app)
         .into_iter()
         .enumerate()
-        .map(|(i, n)| Row {
-            title: n.title.clone(),
-            subtitle: date_label(n.updated_at, tz),
-            selected: i == app.notes.sel,
+        .map(|(i, row)| {
+            let selected = i == app.notes.sel;
+            match row {
+                notes::Row::Notebook(b) => Row {
+                    title: b.nb.notebook.title.clone(),
+                    subtitle: plural(b.notes.len(), "note", "notes"),
+                    selected,
+                    is_dir: true,
+                },
+                notes::Row::Folder(b, f) => {
+                    let items = b.notes.iter().filter(|n| n.folder_id == f.id).count()
+                        + b.folders
+                            .iter()
+                            .filter(|c| c.parent_folder_id == Some(f.id))
+                            .count();
+                    Row {
+                        title: f.name.clone(),
+                        subtitle: plural(items, "item", "items"),
+                        selected,
+                        is_dir: true,
+                    }
+                }
+                notes::Row::Note(_, n) => Row {
+                    title: n.title.clone(),
+                    subtitle: date_label(n.updated_at, tz),
+                    selected,
+                    is_dir: false,
+                },
+            }
         })
         .collect()
+}
+
+/// The line above the Notes list: `Notebook / Folder / Sub`, or `Notebooks`
+/// at the notebook list.
+pub fn notes_breadcrumb(app: &App) -> String {
+    notes::breadcrumb(app)
 }
 
 /// The editor pane, when a note is open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorView {
+    /// Identifies the note across notebooks (`host/flag_name/id`). Shells
+    /// compare it, not `note_id`, to tell when a different note opened.
+    pub uid: String,
     pub note_id: u64,
     pub title: String,
     pub body: String,
@@ -139,6 +177,7 @@ pub struct EditorView {
 
 pub fn editor(app: &App) -> Option<EditorView> {
     app.editor.as_ref().map(|e| EditorView {
+        uid: e.uid(),
         note_id: e.note_id,
         title: e.title.clone(),
         body: e.body.clone(),
@@ -172,6 +211,7 @@ pub struct Group {
 
 pub fn todo_groups(app: &App) -> Vec<Group> {
     let today = app.now.today;
+    let many_books = app.notes.books.len() > 1;
     let mut index = 0usize;
     todo::groups(app, today)
         .into_iter()
@@ -188,7 +228,11 @@ pub fn todo_groups(app: &App) -> Vec<Group> {
                         overdue: kind == GroupKind::Overdue,
                         text: t.text,
                         done: t.done,
-                        source_note_title: t.note_title,
+                        source_note_title: if many_books {
+                            format!("{} / {}", t.notebook_title, t.note_title)
+                        } else {
+                            t.note_title
+                        },
                         selected,
                     });
                 }
@@ -558,6 +602,8 @@ pub fn confirm_prompt(app: &App) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteRow {
     pub label: String,
+    /// Secondary text, e.g. `Notebook / Folder` for a note; often empty.
+    pub detail: String,
     pub hint: &'static str,
     pub selected: bool,
 }
@@ -569,6 +615,7 @@ pub fn palette_rows(app: &App) -> Vec<PaletteRow> {
         .enumerate()
         .map(|(i, item)| PaletteRow {
             label: item.label,
+            detail: item.detail,
             hint: item.hint,
             selected: i == sel,
         })

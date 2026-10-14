@@ -121,8 +121,8 @@ impl Flags {
                     let raw = args.next().ok_or("--open needs a target")?;
                     let target =
                         Target::parse(&raw).ok_or_else(|| format!("bad target {raw:?}"))?;
-                    flags.target = Some(target);
                     flags.args = vec![target.to_string()];
+                    flags.target = Some(target);
                 }
                 other if flags.section.is_none() && !other.starts_with('-') => {
                     flags.section = Some(
@@ -202,7 +202,7 @@ pub(crate) struct App {
     thumbs_pending: HashSet<String>,
     /// The editor widget's text, kept equal to the core's editor body.
     content: text_editor::Content,
-    synced_note: Option<u64>,
+    synced_note: Option<String>,
     synced_body: String,
     /// The widget id keyboard focus was last moved to for the core's focus.
     focused: Option<String>,
@@ -294,7 +294,7 @@ impl App {
             ))
         })
         .then(move |token| {
-            spawn_section(section, target, token);
+            spawn_section(section, target.clone(), token);
             Task::none()
         })
     }
@@ -410,9 +410,9 @@ impl App {
     fn sync_editor(&mut self) {
         match &self.ui.editor {
             Some(ed) => {
-                if self.synced_note != Some(ed.note_id) || self.synced_body != ed.body {
+                if self.synced_note.as_deref() != Some(ed.uid().as_str()) || self.synced_body != ed.body {
                     self.content = text_editor::Content::with_text(&ed.body);
-                    self.synced_note = Some(ed.note_id);
+                    self.synced_note = Some(ed.uid());
                     self.synced_body = ed.body.clone();
                 }
             }

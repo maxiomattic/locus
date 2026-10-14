@@ -61,7 +61,13 @@ fn first_load_creates_notebook_when_none_exist() {
         }]
     );
     let fx = send(&mut app, Msg::NotebookCreated { notebook: nb() });
-    assert_eq!(fx, vec![Effect::LoadNotes { nb: nb() }]);
+    assert_eq!(
+        fx,
+        vec![
+            Effect::LoadNotes { nb: nb() },
+            Effect::LoadFolders { nb: nb() }
+        ]
+    );
 }
 
 #[test]
@@ -199,7 +205,7 @@ fn delete_asks_first_and_n_cancels() {
     assert!(fx.is_empty());
     assert_eq!(app.focus, Focus::List);
     assert!(app.confirm.is_none());
-    assert_eq!(app.notes.items.len(), 1);
+    assert_eq!(app.notes.note_count(), 1);
 }
 
 #[test]
@@ -210,7 +216,7 @@ fn delete_then_y_emits_delete_effect() {
     assert_eq!(fx, vec![Effect::DeleteNote { nb: nb(), id: 7 }]);
     let fx = send(&mut app, Msg::NoteDeleted { nb: nb(), id: 7 });
     assert!(fx.is_empty());
-    assert!(app.notes.items.is_empty());
+    assert!((app.notes.note_count() == 0));
 }
 
 #[test]
@@ -229,7 +235,7 @@ fn help_overlay_toggles_and_lists_section_bindings() {
     let help = view_model::help(&app);
     assert!(help.iter().any(|(k, _)| k == ": or Ctrl+K"));
     assert!(help.iter().any(|(k, _)| k == "g n/t/c/p/f/o"));
-    assert!(help.iter().any(|(k, _)| k == "Enter / i"));
+    assert!(help.iter().any(|(k, _)| k == "Enter / l"));
     press(&mut app, Key::Char('?'));
     assert_eq!(app.focus, Focus::List);
 }
@@ -351,7 +357,7 @@ fn g_n_switches_instead_of_creating_a_note() {
     let fx = press(&mut app, Key::Char('n'));
     assert_eq!(app.section, Section::Notes);
     assert!(fx.is_empty(), "no note is created: {fx:?}");
-    assert!(app.notes.items.is_empty());
+    assert!((app.notes.note_count() == 0));
 }
 
 #[test]

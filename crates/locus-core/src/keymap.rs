@@ -164,7 +164,7 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
         Key::Down => Msg::Nav(Nav::Down),
         Key::Left => Msg::Nav(Nav::Left),
         Key::Right => Msg::Nav(Nav::Right),
-        Key::Backspace if section == Section::Files => Msg::Nav(Nav::Left),
+        Key::Backspace if matches!(section, Section::Files | Section::Notes) => Msg::Nav(Nav::Left),
         Key::Home => Msg::Nav(Nav::Top),
         Key::End => Msg::Nav(Nav::Bottom),
         Key::PageUp => Msg::Nav(Nav::HalfUp),
@@ -202,7 +202,10 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
 /// The bindings shown in the help overlay for `section`, as `(keys, what)`.
 pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
     let mut out = vec![
-        ("g n/t/c/p/f/o", "go to Notes/Todo/Calendar/Photos/Files/Contacts"),
+        (
+            "g n/t/c/p/f/o",
+            "go to Notes/Todo/Calendar/Photos/Files/Contacts",
+        ),
         ("Alt+1..6, Ctrl+1..6", "switch section"),
         (": or Ctrl+K", "command palette"),
         ("/", "filter this list"),
@@ -218,8 +221,10 @@ pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
     ];
     match section {
         Section::Notes => out.extend([
-            ("Enter / i", "open in editor"),
-            ("r", "rename"),
+            ("Enter / l", "open notebook, folder or note"),
+            ("h / Backspace", "up to parent folder / notebooks"),
+            ("i", "edit the selected note"),
+            ("r", "rename note"),
             ("Ctrl+S", "save now"),
         ]),
         Section::Todo => out.extend([

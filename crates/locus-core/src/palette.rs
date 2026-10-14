@@ -3,15 +3,17 @@
 
 use locus_client::contacts::Contact;
 
-use crate::msg::{Msg, Nav};
-use crate::state::{App, Focus, PaletteState, Section, Target};
-use crate::update::load_section;
 use crate::msg::Effect;
+use crate::msg::{Msg, Nav};
+use crate::state::{App, Focus, NoteRef, PaletteState, Section, Target};
+use crate::update::load_section;
 use crate::update::step;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
     pub label: String,
+    /// Secondary text after the label, e.g. a note's notebook and folder.
+    pub detail: String,
     /// Short category shown beside the label, e.g. `section` or `note`.
     pub hint: &'static str,
     pub action: Msg,
@@ -30,6 +32,7 @@ pub fn items(app: &App) -> Vec<Item> {
         .into_iter()
         .map(|s| Item {
             label: format!("Go to {}", s.label()),
+            detail: String::new(),
             hint: if elsewhere(s) { "app" } else { "section" },
             action: Msg::Switch(s),
         })
@@ -37,50 +40,64 @@ pub fn items(app: &App) -> Vec<Item> {
     out.extend([
         Item {
             label: "New note".into(),
+            detail: String::new(),
             hint: "command",
             action: open(Section::Notes, Target::New),
         },
         Item {
             label: "New event".into(),
+            detail: String::new(),
             hint: "command",
             action: open(Section::Calendar, Target::New),
         },
         Item {
             label: "New folder".into(),
+            detail: String::new(),
             hint: "command",
             action: open(Section::Files, Target::New),
         },
         Item {
             label: "New contact".into(),
+            detail: String::new(),
             hint: "command",
             action: open(Section::Contacts, Target::New),
         },
         Item {
             label: "Upload photos".into(),
+            detail: String::new(),
             hint: "command",
             action: open(Section::Photos, Target::Upload),
         },
         Item {
             label: "Reload section".into(),
+            detail: String::new(),
             hint: "command",
             action: Msg::Reload,
         },
         Item {
             label: "Log in".into(),
+            detail: String::new(),
             hint: "command",
             action: Msg::BeginLogin,
         },
     ]);
-    out.extend(app.notes.items.iter().map(|n| Item {
-        label: n.title.clone(),
-        hint: "note",
-        action: Msg::Goto {
-            section: Section::Notes,
-            id: n.id,
-        },
-    }));
+    for book in &app.notes.books {
+        out.extend(book.notes.iter().map(|n| Item {
+            label: n.title.clone(),
+            detail: crate::notes::path_label(book, n.folder_id),
+            hint: "note",
+            action: open(
+                Section::Notes,
+                Target::NoteAt(NoteRef {
+                    nb: book.key(),
+                    id: n.id,
+                }),
+            ),
+        }));
+    }
     out.extend(app.files.files.iter().map(|f| Item {
         label: f.name.clone(),
+        detail: String::new(),
         hint: "file",
         action: Msg::Goto {
             section: Section::Files,
@@ -89,6 +106,7 @@ pub fn items(app: &App) -> Vec<Item> {
     }));
     out.extend(app.contacts.items.iter().map(|c: &Contact| Item {
         label: c.name.clone(),
+        detail: String::new(),
         hint: "contact",
         action: Msg::Goto {
             section: Section::Contacts,

@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use locus_client::{
     calendar::Event,
     contacts::Contact,
-    notes::{Note, NotebookSummary},
+    notes::{Folder, Note, NotebookSummary},
     photos::Photo,
 };
 use serde::{Deserialize, Serialize};
@@ -77,9 +77,12 @@ impl Section {
 
 /// What to show once a section is open, carried across windows by a
 /// cross-link (`--open note:12` on the desktop, `#note:12` on the web).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Target {
+    /// A note in the default notebook (kept for old links).
     Note(u64),
+    /// A note in a named notebook: `note:<host>/<flag_name>/<id>`.
+    NoteAt(NoteRef),
     File(u64),
     Contact(u64),
     /// Start a new item in the section (`n`).
@@ -98,6 +101,21 @@ impl Target {
             _ => {}
         }
         let (kind, id) = s.split_once(':')?;
+        if kind == "note"
+            && let Some((book, id)) = id.rsplit_once('/')
+        {
+            let (host, flag_name) = book.split_once('/')?;
+            if host.is_empty() || flag_name.is_empty() || flag_name.contains('/') {
+                return None;
+            }
+            return Some(Target::NoteAt(NoteRef {
+                nb: NbKey {
+                    host: host.to_string(),
+                    flag_name: flag_name.to_string(),
+                },
+                id: id.parse().ok()?,
+            }));
+        }
         let id: u64 = id.parse().ok()?;
         match kind {
             "note" => Some(Target::Note(id)),
@@ -109,9 +127,9 @@ impl Target {
 
     /// The section an item target lives in; `None` for `New` and `Upload`,
     /// which apply to whatever section is open.
-    pub fn section(self) -> Option<Section> {
+    pub fn section(&self) -> Option<Section> {
         match self {
-            Target::Note(_) => Some(Section::Notes),
+            Target::Note(_) | Target::NoteAt(_) => Some(Section::Notes),
             Target::File(_) => Some(Section::Files),
             Target::Contact(_) => Some(Section::Contacts),
             Target::New | Target::Upload => None,
@@ -133,12 +151,40 @@ impl std::fmt::Display for Target {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Target::Note(id) => write!(f, "note:{id}"),
+            Target::NoteAt(r) => write!(f, "note:{}/{}/{}", r.nb.host, r.nb.flag_name, r.id),
             Target::File(id) => write!(f, "file:{id}"),
             Target::Contact(id) => write!(f, "contact:{id}"),
             Target::New => f.write_str("new"),
             Target::Upload => f.write_str("upload"),
         }
     }
+}
+
+/// Identifies a notebook across the ship: note ids are only unique inside one.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct NbKey {
+    pub host: String,
+    pub flag_name: String,
+}
+
+impl NbKey {
+    pub fn of(nb: &NotebookSummary) -> NbKey {
+        NbKey {
+            host: nb.host.clone(),
+            flag_name: nb.flag_name.clone(),
+        }
+    }
+
+    pub fn is(&self, nb: &NotebookSummary) -> bool {
+        self.host == nb.host && self.flag_name == nb.flag_name
+    }
+}
+
+/// A note anywhere on the ship: its notebook and its id there.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct NoteRef {
+    pub nb: NbKey,
+    pub id: u64,
 }
 
 /// Which single-line prompt has the keyboard. Filter edits `App::filter`;
@@ -206,6 +252,16 @@ pub struct Editor {
 }
 
 impl Editor {
+    /// Does this editor hold note `id` of notebook `nb`?
+    pub fn is(&self, nb: &NbKey, id: u64) -> bool {
+        self.note_id == id && nb.is(&self.nb)
+    }
+
+    /// `host/flag_name/id`: names this note across notebooks.
+    pub fn uid(&self) -> String {
+        format!("{}/{}/{}", self.nb.host, self.nb.flag_name, self.note_id)
+    }
+
     pub fn dirty(&self) -> bool {
         self.body != self.last_saved
     }
@@ -256,17 +312,87 @@ pub struct PaletteState {
     pub sel: usize,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct NotesState {
-    pub items: Vec<Note>,
+/// One notebook with everything loaded from it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Book {
+    pub nb: NotebookSummary,
+    pub folders: Vec<Folder>,
+    pub notes: Vec<Note>,
     /// Ids whose `body_md` is known to be the full body.
     pub bodies: BTreeSet<u64>,
+    /// Ids a body fetch was already sent for (Todo), so it is sent once.
+    pub requested: BTreeSet<u64>,
+    pub notes_loaded: bool,
+}
+
+impl Book {
+    pub fn new(nb: NotebookSummary) -> Book {
+        Book {
+            nb,
+            folders: Vec::new(),
+            notes: Vec::new(),
+            bodies: BTreeSet::new(),
+            requested: BTreeSet::new(),
+            notes_loaded: false,
+        }
+    }
+
+    pub fn key(&self) -> NbKey {
+        NbKey::of(&self.nb)
+    }
+
+    pub fn note(&self, id: u64) -> Option<&Note> {
+        self.notes.iter().find(|n| n.id == id)
+    }
+
+    pub fn folder(&self, id: u64) -> Option<&Folder> {
+        self.folders.iter().find(|f| f.id == id)
+    }
+}
+
+/// Where the Notes list is: the notebook list, or inside a folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum NotesLoc {
+    #[default]
+    Books,
+    Folder {
+        nb: NbKey,
+        folder: u64,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NotesState {
+    /// Every notebook on the ship, in the order the ship lists them.
+    pub books: Vec<Book>,
+    pub loc: NotesLoc,
+    /// The start location has been chosen (once, on the first notebook load).
+    pub loc_init: bool,
+    /// The notebook opened most recently; where `n` creates from the list.
+    pub last_nb: Option<NbKey>,
     pub sel: usize,
     /// Set by `n` so the created note opens in the editor.
     pub open_on_create: bool,
+    /// The note a rename prompt is for.
+    pub rename: Option<NoteRef>,
     /// Source of debounce tokens. Global so a timer for one editor can never
     /// match another editor's current token.
     pub token_seq: u64,
+}
+
+impl NotesState {
+    pub fn book(&self, key: &NbKey) -> Option<&Book> {
+        self.books.iter().find(|b| b.key() == *key)
+    }
+
+    pub fn book_mut(&mut self, key: &NbKey) -> Option<&mut Book> {
+        self.books.iter_mut().find(|b| b.key() == *key)
+    }
+
+    /// Notes in all notebooks.
+    pub fn note_count(&self) -> usize {
+        self.books.iter().map(|b| b.notes.len()).sum()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -295,6 +421,7 @@ pub struct TodoState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingTask {
+    pub nb: NbKey,
     pub text: String,
     pub due: Option<Date>,
 }
@@ -343,8 +470,6 @@ pub struct App {
     pub confirm: Option<Confirm>,
     pub palette: PaletteState,
     pub pending_g: bool,
-    /// The notebook the Notes and Todo sections work in (the first one on the ship).
-    pub notebook: Option<NotebookSummary>,
     pub editor: Option<Editor>,
     pub notes: NotesState,
     pub todo: TodoState,
@@ -385,7 +510,6 @@ impl App {
             confirm: None,
             palette: PaletteState::default(),
             pending_g: false,
-            notebook: None,
             editor: None,
             notes: NotesState::default(),
             todo: TodoState::default(),

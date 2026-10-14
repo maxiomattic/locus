@@ -366,8 +366,13 @@ fn notes(app: &App) -> Element<'_, Message> {
     } else {
         let mut list = widget::list_column();
         for (i, row) in rows.into_iter().enumerate() {
+            let title = if row.is_dir {
+                format!("{}/", row.title)
+            } else {
+                row.title
+            };
             list = list.add(list_item(
-                two_lines(row.title, row.subtitle),
+                two_lines(title, row.subtitle),
                 ROW2_H,
                 row.selected,
                 Msg::Select(i),
@@ -375,9 +380,12 @@ fn notes(app: &App) -> Element<'_, Message> {
         }
         scroll(NOTES_SCROLL, list)
     };
-    let left = widget::container(list)
+    let left = widget::column::with_capacity(2)
+        .spacing(s.space_xxs)
         .width(Length::Fixed(LIST_W))
-        .height(Length::Fill);
+        .height(Length::Fill)
+        .push(widget::text::caption(view_model::notes_breadcrumb(&app.ui)))
+        .push(list);
     let right: Element<'_, Message> = match view_model::editor(&app.ui) {
         Some(editor) => editor_pane(app, editor),
         None => empty("No note open", "Select a note and press Enter.".into()),
@@ -1005,10 +1013,11 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
             } else {
                 let mut list = widget::list_column();
                 for (i, row) in rows.into_iter().enumerate() {
-                    let content = widget::row::with_capacity(2)
+                    let content = widget::row::with_capacity(3)
                         .spacing(s.space_s)
                         .align_y(Alignment::Center)
-                        .push(widget::text::body(row.label).width(Length::Fill))
+                        .push(widget::text::body(row.label))
+                        .push(widget::text::caption(row.detail).width(Length::Fill))
                         .push(widget::text::caption(row.hint));
                     list = list.add(
                         widget::list::button(

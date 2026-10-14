@@ -9,13 +9,16 @@ use crate::date::Date;
 use crate::msg::Effect;
 use crate::notes;
 use crate::state::{
-    App, Focus, Input, InputKind, PendingTask, Section, Target, clamp_sel, matches_filter,
+    App, Focus, Input, InputKind, NbKey, NoteRef, PendingTask, Section, Target, clamp_sel,
+    matches_filter,
 };
 
 pub const INBOX_TITLE: &str = "Inbox";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskEntry {
+    pub nb: NbKey,
+    pub notebook_title: String,
     pub note_id: u64,
     pub note_title: String,
     /// 0-based line in the note body.
@@ -46,22 +49,26 @@ impl GroupKind {
     }
 }
 
-/// Every task in the filter, from all note bodies that are loaded.
+/// Every task in the filter, from all loaded note bodies in all notebooks.
 fn all_tasks(app: &App) -> Vec<TaskEntry> {
     let mut out = Vec::new();
-    for note in &app.notes.items {
-        for t in parse_tasks(&note.body_md) {
-            if !matches_filter(&app.filter, &[&t.text, &note.title]) {
-                continue;
+    for book in &app.notes.books {
+        for note in &book.notes {
+            for t in parse_tasks(&note.body_md) {
+                if !matches_filter(&app.filter, &[&t.text, &note.title]) {
+                    continue;
+                }
+                out.push(TaskEntry {
+                    nb: book.key(),
+                    notebook_title: book.nb.notebook.title.clone(),
+                    note_id: note.id,
+                    note_title: note.title.clone(),
+                    line: t.line,
+                    done: t.done,
+                    text: t.text,
+                    due: t.due.and_then(|(y, m, d)| Date::new(y, m, d)),
+                });
             }
-            out.push(TaskEntry {
-                note_id: note.id,
-                note_title: note.title.clone(),
-                line: t.line,
-                done: t.done,
-                text: t.text,
-                due: t.due.and_then(|(y, m, d)| Date::new(y, m, d)),
-            });
         }
     }
     out
@@ -99,6 +106,7 @@ pub fn groups(app: &App, today: Date) -> Vec<(GroupKind, Vec<TaskEntry>)> {
                 a.due
                     .cmp(&b.due)
                     .then_with(|| a.note_title.cmp(&b.note_title))
+                    .then_with(|| a.nb.cmp(&b.nb))
                     .then(a.note_id.cmp(&b.note_id))
                     .then(a.line.cmp(&b.line))
             });
@@ -116,16 +124,20 @@ pub fn visible(app: &App) -> Vec<TaskEntry> {
         .collect()
 }
 
-/// Ids of notes whose bodies are not loaded yet. Todo needs every body.
+/// Ask for the body of every note that has none yet. Todo needs every body.
 pub fn ensure_bodies(app: &mut App, fx: &mut Vec<Effect>) {
-    let Some(nb) = app.notebook.clone() else {
-        return;
-    };
-    for note in &app.notes.items {
-        if !app.notes.bodies.contains(&note.id) {
+    for book in &mut app.notes.books {
+        let missing: Vec<u64> = book
+            .notes
+            .iter()
+            .map(|n| n.id)
+            .filter(|id| !book.bodies.contains(id) && !book.requested.contains(id))
+            .collect();
+        for id in missing {
+            book.requested.insert(id);
             fx.push(Effect::LoadNote {
-                nb: nb.clone(),
-                id: note.id,
+                nb: book.nb.clone(),
+                id,
             });
         }
     }
@@ -140,21 +152,25 @@ pub fn after_notes_changed(app: &mut App, fx: &mut Vec<Effect>) {
     let Some(pending) = app.todo.pending_add.clone() else {
         return;
     };
-    let inbox = inbox_note(app).map(|n| (n.id, app.notes.bodies.contains(&n.id)));
-    match inbox {
-        // Inbox body is loaded: append now.
-        Some((_, true)) => {}
-        // Inbox still loading: wait for it.
-        Some((_, false)) => return,
-        // Inbox gone: create it.
-        None => {}
+    let inbox = inbox_note(app, &pending.nb).map(|n| {
+        app.notes
+            .book(&pending.nb)
+            .is_some_and(|b| b.bodies.contains(&n.id))
+    });
+    // Inbox still loading: wait for it. Loaded, or gone: add now.
+    if inbox == Some(false) {
+        return;
     }
     app.todo.pending_add = None;
-    add_to_inbox(app, fx, pending.text, pending.due);
+    add_to_inbox(app, fx, &pending.nb, pending.text, pending.due);
 }
 
-fn inbox_note(app: &App) -> Option<&Note> {
-    app.notes.items.iter().find(|n| n.title == INBOX_TITLE)
+fn inbox_note<'a>(app: &'a App, nb: &NbKey) -> Option<&'a Note> {
+    app.notes
+        .book(nb)?
+        .notes
+        .iter()
+        .find(|n| n.title == INBOX_TITLE)
 }
 
 pub fn toggle_selected(app: &mut App, fx: &mut Vec<Effect>) {
@@ -162,16 +178,16 @@ pub fn toggle_selected(app: &mut App, fx: &mut Vec<Effect>) {
         app.info("No task selected");
         return;
     };
-    let Some(nb) = app.notebook.clone() else {
+    let Some(nb) = app.notes.book(&task.nb).map(|b| b.nb.clone()) else {
         return;
     };
-    let Some(note) = notes::find(app, task.note_id).cloned() else {
+    let Some(note) = notes::find(app, &task.nb, task.note_id).cloned() else {
         return;
     };
     let editing = app
         .editor
         .as_ref()
-        .filter(|e| e.note_id == note.id)
+        .filter(|e| e.is(&task.nb, note.id))
         .map(|e| (e.body.clone(), e.base_revision));
     let (base, revision) = editing.unwrap_or((note.body_md.clone(), note.revision));
     let body = toggle_task(&base, task.line);
@@ -179,7 +195,7 @@ pub fn toggle_selected(app: &mut App, fx: &mut Vec<Effect>) {
         app.info("That line is not a task");
         return;
     }
-    if let Some(ed) = app.editor.as_mut().filter(|e| e.note_id == note.id) {
+    if let Some(ed) = app.editor.as_mut().filter(|e| e.is(&task.nb, note.id)) {
         ed.body = body.clone();
         ed.in_flight = true;
         ed.save_queued = false;
@@ -203,7 +219,7 @@ pub fn toggle_done_visibility(app: &mut App) {
 }
 
 pub fn begin_add(app: &mut App) {
-    if app.notebook.is_none() {
+    if notes::default_notebook(app).is_none() {
         app.error("No notebook yet");
         return;
     }
@@ -236,21 +252,24 @@ pub fn submit_add(app: &mut App, fx: &mut Vec<Effect>) {
         Ok((text, due)) => {
             app.input = Input::default();
             app.focus = Focus::List;
-            add_to_inbox(app, fx, text, due);
+            match notes::default_notebook(app).map(NbKey::of) {
+                Some(nb) => add_to_inbox(app, fx, &nb, text, due),
+                None => app.error("No notebook yet"),
+            }
         }
         Err(e) => app.error(e),
     }
 }
 
-/// Append a task to the Inbox note, creating it when missing. If the Inbox
-/// body is not loaded yet, the add waits for it.
-fn add_to_inbox(app: &mut App, fx: &mut Vec<Effect>, text: String, due: Option<Date>) {
-    let Some(nb) = app.notebook.clone() else {
+/// Append a task to the Inbox note of notebook `key`, creating it when
+/// missing. If the Inbox body is not loaded yet, the add waits for it.
+fn add_to_inbox(app: &mut App, fx: &mut Vec<Effect>, key: &NbKey, text: String, due: Option<Date>) {
+    let Some(nb) = app.notes.book(key).map(|b| b.nb.clone()) else {
         app.error("No notebook yet");
         return;
     };
     let due_tuple = due.map(|d| (d.y, d.m, d.d));
-    let Some(inbox) = inbox_note(app).map(|n| (n.id, n.body_md.clone(), n.revision)) else {
+    let Some(inbox) = inbox_note(app, key).map(|n| (n.id, n.body_md.clone(), n.revision)) else {
         let folder = nb.notebook.root_folder_id;
         fx.push(Effect::CreateNote {
             nb,
@@ -261,19 +280,23 @@ fn add_to_inbox(app: &mut App, fx: &mut Vec<Effect>, text: String, due: Option<D
         return;
     };
     let (id, cached_body, cached_rev) = inbox;
-    if !app.notes.bodies.contains(&id) {
-        app.todo.pending_add = Some(PendingTask { text, due });
+    if !app.notes.book(key).is_some_and(|b| b.bodies.contains(&id)) {
+        app.todo.pending_add = Some(PendingTask {
+            nb: key.clone(),
+            text,
+            due,
+        });
         fx.push(Effect::LoadNote { nb, id });
         return;
     }
     let editing = app
         .editor
         .as_ref()
-        .filter(|e| e.note_id == id)
+        .filter(|e| e.is(key, id))
         .map(|e| (e.body.clone(), e.base_revision));
     let (base, revision) = editing.unwrap_or((cached_body, cached_rev));
     let body = add_task(&base, &text, due_tuple);
-    if let Some(ed) = app.editor.as_mut().filter(|e| e.note_id == id) {
+    if let Some(ed) = app.editor.as_mut().filter(|e| e.is(key, id)) {
         ed.body = body.clone();
         ed.in_flight = true;
         ed.save_queued = false;
@@ -292,5 +315,13 @@ pub fn jump_to_source(app: &mut App, fx: &mut Vec<Effect>) {
         app.info("No task selected");
         return;
     };
-    crate::update::open(app, fx, Section::Notes, Some(Target::Note(task.note_id)));
+    crate::update::open(
+        app,
+        fx,
+        Section::Notes,
+        Some(Target::NoteAt(NoteRef {
+            nb: task.nb,
+            id: task.note_id,
+        })),
+    );
 }

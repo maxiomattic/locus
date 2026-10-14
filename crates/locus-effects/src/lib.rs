@@ -137,6 +137,10 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             Ok(notes) => vec![Msg::NotesLoaded { nb, notes }],
             Err(e) => vec![load_failed(Section::Notes, &e)],
         },
+        Effect::LoadFolders { nb } => match client.list_folders(&nb.host, &nb.flag_name).await {
+            Ok(folders) => vec![Msg::FoldersLoaded { nb, folders }],
+            Err(e) => vec![load_failed(Section::Notes, &e)],
+        },
         Effect::LoadNote { nb, id } => match client.get_note(&nb.host, &nb.flag_name, id).await {
             Ok(note) => vec![Msg::NoteLoaded { nb, note }],
             Err(e) => vec![load_failed(Section::Notes, &e)],

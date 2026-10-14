@@ -3,7 +3,7 @@
 //! the shell must perform.
 
 use crate::msg::{Effect, Msg, Nav, Now, TextEdit};
-use crate::state::{App, Focus, Input, InputKind, Section, Target, clamp_sel};
+use crate::state::{App, Focus, Input, InputKind, NbKey, Section, Target, clamp_sel};
 use crate::{calendar, contacts, files, notes, palette, photos, todo};
 
 /// Apply one message. Returns effects in the order the shell should run them.
@@ -54,7 +54,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             app.info(format!("Reloading {}", s.label()));
             load_section(app, s, fx);
         }
-        Msg::Nav(nav) => nav_key(app, nav),
+        Msg::Nav(nav) => nav_key(app, fx, nav),
         Msg::Activate => activate(app, fx),
         Msg::Edit => edit(app, fx),
         Msg::New => new_item(app, fx),
@@ -112,6 +112,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             app.calendar.sel = 0;
         }
         Msg::ExecuteDelete { section, id } => execute_delete(app, fx, section, id),
+        Msg::ExecuteDeleteNote(note) => notes::execute_delete(app, fx, note),
         Msg::BeginLogin => {
             app.input = Input::default();
             app.focus = Focus::Input(InputKind::Login);
@@ -121,6 +122,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NotebooksLoaded { notebooks } => notes::notebooks_loaded(app, fx, notebooks),
         Msg::NotebookCreated { notebook } => notes::notebook_created(app, fx, notebook),
         Msg::NotesLoaded { nb, notes } => notes::notes_loaded(app, fx, nb, notes),
+        Msg::FoldersLoaded { nb, folders } => notes::folders_loaded(app, nb, folders),
         Msg::NoteLoaded { nb, note } => notes::note_loaded(app, fx, nb, note),
         Msg::NoteCreated { nb, note } => notes::note_created(app, fx, nb, note),
         Msg::NoteSaved { nb, note } => notes::note_saved(app, fx, nb, note),
@@ -219,10 +221,8 @@ pub(crate) fn load_section(app: &mut App, section: Section, fx: &mut Vec<Effect>
         app.loading[s.index()] = true;
     }
     match section {
-        Section::Notes | Section::Todo => match app.notebook.clone() {
-            Some(nb) => fx.push(Effect::LoadNotes { nb }),
-            None => fx.push(Effect::LoadNotebooks),
-        },
+        // The notebook list first; each notebook's folders and notes follow.
+        Section::Notes | Section::Todo => fx.push(Effect::LoadNotebooks),
         Section::Calendar => fx.push(Effect::LoadEvents),
         Section::Photos => fx.push(Effect::LoadPhotos),
         Section::Files => {
@@ -251,7 +251,7 @@ pub(crate) fn step(sel: usize, len: usize, nav: Nav) -> usize {
     }
 }
 
-fn nav_key(app: &mut App, nav: Nav) {
+fn nav_key(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
     match app.focus {
         Focus::Palette => {
             palette::move_sel(app, nav);
@@ -261,10 +261,7 @@ fn nav_key(app: &mut App, nav: Nav) {
         _ => return,
     }
     match app.section {
-        Section::Notes => {
-            let len = notes::visible(app).len();
-            app.notes.sel = step(app.notes.sel, len, nav);
-        }
+        Section::Notes => notes::nav(app, fx, nav),
         Section::Todo => {
             let len = todo::visible(app).len();
             app.todo.sel = step(app.todo.sel, len, nav);
@@ -292,7 +289,7 @@ fn activate(app: &mut App, fx: &mut Vec<Effect>) {
 
 fn edit(app: &mut App, fx: &mut Vec<Effect>) {
     match app.section {
-        Section::Notes => notes::open_selected(app, fx),
+        Section::Notes => notes::edit_selected(app, fx),
         Section::Calendar => calendar::edit_selected(app),
         Section::Contacts => contacts::edit_selected(app),
         _ => app.info("Nothing to edit here"),
@@ -343,7 +340,7 @@ fn upload(app: &mut App, fx: &mut Vec<Effect>) {
 
 fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, section: Section, id: u64) {
     match section {
-        Section::Notes => notes::execute_delete(app, fx, id),
+        Section::Notes => {}
         Section::Calendar => calendar::execute_delete(app, fx, id),
         Section::Files => files::execute_delete(app, fx, id),
         Section::Contacts => contacts::execute_delete(app, fx, id),
@@ -518,12 +515,7 @@ fn confirm_answer(app: &mut App, now: Now, fx: &mut Vec<Effect>, yes: bool) {
 
 /// Open `section`, then `target` in it. A window locked to another section
 /// hands both to the shell, which opens or focuses that section's window.
-pub(crate) fn open(
-    app: &mut App,
-    fx: &mut Vec<Effect>,
-    section: Section,
-    target: Option<Target>,
-) {
+pub(crate) fn open(app: &mut App, fx: &mut Vec<Effect>, section: Section, target: Option<Target>) {
     if let Some(locked) = app.locked
         && locked != section
     {
@@ -545,15 +537,21 @@ fn apply_target(app: &mut App, fx: &mut Vec<Effect>, target: Target) {
         return;
     }
     let waiting = |app: &App, s: Section| !app.loaded[s.index()] || app.is_loading(s);
-    match target {
+    match target.clone() {
         Target::Note(id) => {
-            if app.notes.items.iter().any(|n| n.id == id) {
-                notes::select_and_open(app, fx, id);
-            } else if waiting(app, Section::Notes) {
-                app.pending_target = Some(target);
-            } else {
-                app.info("Note not found");
-            }
+            // A bare id means a note of the default notebook.
+            let key = notes::default_notebook(app).map(NbKey::of);
+            open_note(app, fx, key, id, &target, waiting(app, Section::Notes));
+        }
+        Target::NoteAt(r) => {
+            open_note(
+                app,
+                fx,
+                Some(r.nb.clone()),
+                r.id,
+                &target,
+                waiting(app, Section::Notes),
+            );
         }
         Target::File(id) => {
             if app.files.files.iter().any(|f| f.id == id) || !waiting(app, Section::Files) {
@@ -573,13 +571,31 @@ fn apply_target(app: &mut App, fx: &mut Vec<Effect>, target: Target) {
         }
         Target::New => {
             // A new note needs the notebook, which arrives with the notes.
-            if matches!(app.section, Section::Notes | Section::Todo) && app.notebook.is_none() {
+            if matches!(app.section, Section::Notes | Section::Todo)
+                && notes::default_notebook(app).is_none()
+            {
                 app.pending_target = Some(target);
             } else {
                 new_item(app, fx);
             }
         }
         Target::Upload => upload(app, fx),
+    }
+}
+
+/// Show a note by link, or keep the link waiting while notes are loading.
+fn open_note(
+    app: &mut App,
+    fx: &mut Vec<Effect>,
+    key: Option<NbKey>,
+    id: u64,
+    target: &Target,
+    waiting: bool,
+) {
+    match key {
+        Some(key) if notes::find(app, &key, id).is_some() => notes::goto_note(app, fx, &key, id),
+        _ if waiting => app.pending_target = Some(target.clone()),
+        _ => app.info("Note not found"),
     }
 }
 
@@ -592,7 +608,7 @@ fn select_index(app: &mut App, i: usize) {
     }
     match app.section {
         Section::Notes => {
-            let len = notes::visible(app).len();
+            let len = notes::len(app);
             app.notes.sel = clamp_sel(i, len);
         }
         Section::Todo => {

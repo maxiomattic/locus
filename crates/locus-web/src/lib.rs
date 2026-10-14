@@ -59,7 +59,7 @@ pub struct Shell {
     requested: HashSet<String>,
     editor: text_editor::Content,
     /// The note the editor widget shows, and the body it was last synced to.
-    editor_note: Option<u64>,
+    editor_note: Option<String>,
     editor_synced: String,
     /// Last known scroll state per scrollable id: `(offset_y, height)`.
     viewports: HashMap<&'static str, (f32, f32)>,
@@ -313,10 +313,10 @@ impl Shell {
     fn sync(&mut self) -> Task<Message> {
         match &self.app.editor {
             Some(ed) => {
-                if self.editor_note != Some(ed.note_id) || self.editor_synced != ed.body {
+                if self.editor_note.as_deref() != Some(ed.uid().as_str()) || self.editor_synced != ed.body {
                     self.editor = text_editor::Content::with_text(&ed.body);
                     self.editor_synced = ed.body.clone();
-                    self.editor_note = Some(ed.note_id);
+                    self.editor_note = Some(ed.uid());
                 }
             }
             None => self.editor_note = None,

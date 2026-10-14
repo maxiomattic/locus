@@ -4,13 +4,13 @@
 use locus_client::{
     calendar::{Event, EventPatch},
     contacts::{Contact, ContactPatch},
-    notes::{Note, NotebookSummary},
+    notes::{Folder, Note, NotebookSummary},
     photos::Photo,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::date::Date;
-use crate::state::{Section, Target};
+use crate::state::{NoteRef, Section, Target};
 
 /// The clock, passed into every [`crate::update`] call so the core never reads
 /// time itself. `tz_offset_secs` follows the convention `local = utc + offset`.
@@ -152,6 +152,8 @@ pub enum Msg {
         section: Section,
         id: u64,
     },
+    /// Internal target of a note delete confirmation.
+    ExecuteDeleteNote(NoteRef),
     BeginLogin,
 
     // ----- IO results -----
@@ -164,6 +166,10 @@ pub enum Msg {
     NotesLoaded {
         nb: NotebookSummary,
         notes: Vec<Note>,
+    },
+    FoldersLoaded {
+        nb: NotebookSummary,
+        folders: Vec<Folder>,
     },
     NoteLoaded {
         nb: NotebookSummary,
@@ -265,6 +271,9 @@ pub enum Effect {
         title: String,
     },
     LoadNotes {
+        nb: NotebookSummary,
+    },
+    LoadFolders {
         nb: NotebookSummary,
     },
     LoadNote {
