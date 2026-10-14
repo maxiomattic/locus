@@ -314,6 +314,7 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
             muted_text(c, view_model::notes_breadcrumb(&s.app)),
             scrollable(list)
                 .id("notes")
+                .spacing(4)
                 .on_scroll(scroll_msg("notes"))
                 .height(Fill),
         ]
@@ -430,6 +431,7 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
     }
     scrollable(col)
         .id("todo")
+        .spacing(4)
         .on_scroll(scroll_msg("todo"))
         .width(Fill)
         .height(Fill)
@@ -529,6 +531,7 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
     }
     scrollable(col)
         .id("agenda")
+        .spacing(4)
         .on_scroll(scroll_msg("agenda"))
         .width(Fill)
         .height(Fill)
@@ -807,6 +810,7 @@ fn files_pane(s: &Shell) -> Element<'_, Message> {
         header,
         scrollable(col)
             .id("files")
+            .spacing(4)
             .on_scroll(scroll_msg("files"))
             .width(Fill)
             .height(Fill),
@@ -833,6 +837,7 @@ fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     let left = container(
         scrollable(list)
             .id("contacts")
+            .spacing(4)
             .on_scroll(scroll_msg("contacts"))
             .height(Fill),
     )
@@ -930,6 +935,7 @@ fn palette_card(s: &Shell) -> Element<'_, Message> {
             .size(14),
         scrollable(list)
             .id("palette-list")
+            .spacing(4)
             .on_scroll(scroll_msg("palette-list"))
             .height(Length::Fixed(360.0))
             .width(Fill),
