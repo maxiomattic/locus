@@ -757,11 +757,13 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
 
 fn files_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
+    // The root crumb is "/" itself, so the trail reads `/obsidian/Notes`.
     let crumbs: Vec<String> = view_model::breadcrumb(&s.app)
         .into_iter()
+        .skip(1)
         .map(|crumb| crumb.label)
         .collect();
-    let trail = crumbs.join(" / ");
+    let trail = format!("/{}", crumbs.join("/"));
     let header = row![
         muted_text(c, "Name").width(Fill),
         muted_text(c, "Size").width(96),
