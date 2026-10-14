@@ -48,21 +48,25 @@ if [ "${#AGENTS[@]}" -eq 0 ]; then
 fi
 echo "desk %$LOCUS_DESK agents: ${AGENTS[*]}"
 
-# Tlon desks that ship agents with the same names as ours. This script will
-# not uninstall them; the operator decides.
-pikes="$(conn_eval '=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  (pure:m !>(.^(* %gx /(scot %p our)/hood/(scot %da now)/kiln/pikes/noun)))' || true)"
-for d in groups landscape notes; do
-  if printf '%s\n' "$pikes" | grep -Eq "%${d}[^]]*live"; then
-    cat >&2 <<EOF
-Tlon desk %$d is installed and live. Its agents clash with %$LOCUS_DESK
-(%notes, %contacts). desk-deploy.sh does not uninstall anything. If this ship
-should run Locus only, uninstall it yourself in the dojo (agent state is kept):
-  |uninstall %$d
-then run this script again.
-EOF
-    exit 1
+# Gall runs each agent name from one desk only. If another desk (Tlon's, or
+# an older Locus desk) runs one of ours, installing would fail. This script
+# does not uninstall anything; the operator decides.
+clash=0
+for a in "${AGENTS[@]}"; do
+  d="$(agent_desk "$a")"
+  if [ -n "$d" ] && [ "$d" != "$LOCUS_DESK" ]; then
+    echo "%$a already runs from desk %$d" >&2
+    clash=1
   fi
 done
+if [ "$clash" = 1 ]; then
+  cat >&2 <<EOF
+Those agents clash with %$LOCUS_DESK. Suspend the other desk in the dojo
+(agent state is kept), then run this script again:
+  |suspend %<desk>
+EOF
+  exit 1
+fi
 
 if [ "${LOCUS_SNAPSHOT:-1}" = 1 ] && sudo sh -c "command -v zfs" >/dev/null 2>&1; then
   dataset="$(sudo zfs list -H -o name "$(dirname "$URBIT_PIER")" 2>/dev/null || true)"

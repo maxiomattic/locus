@@ -208,6 +208,15 @@ agent_running() {
   printf '%s\n' "$out" | grep -Fq "${app}-runs-yes"
 }
 
+# Desk that runs agent $1, or nothing if it is not running.
+agent_desk() {
+  local app=$1 out
+  out="$(conn_eval "=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  now=@da  bind:m  get-time  =/  pre=path  /(scot %p our)/${app}/(scot %da now)  (pure:m !>(?.(.^(? %gu (weld pre /\$)) %agentdesk (cat 3 %agentdesk .^(desk %gd (weld pre /\$))))))" || true)"
+  out="$(printf '%s\n' "$out" | grep -o 'agentdesk[a-z0-9-]*' | head -1)"
+  out="${out#agentdesk}"
+  [ -z "$out" ] || printf '%s\n' "$out"
+}
+
 wait_openapi() {
   local path=$1 name=$2 tries=${3:-150}
   local i
