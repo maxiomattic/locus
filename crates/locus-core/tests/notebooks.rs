@@ -158,6 +158,25 @@ fn enter_goes_down_and_h_comes_back_to_the_row_it_left() {
 }
 
 #[test]
+fn a_save_that_resorts_the_list_keeps_the_saved_note_selected() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    press(&mut app, Key::Enter);
+    key(&mut app, 'G');
+    assert_eq!(selected_title(&app), "Top note");
+    // Saving makes it the newest note, so it sorts above "Newer top".
+    send(
+        &mut app,
+        Msg::NoteSaved {
+            nb: nb(),
+            note: note_in(1, 10, "Top note", "edited", 99),
+        },
+    );
+    assert_eq!(titles(&app), ["Alpha", "beta", "Top note", "Newer top"]);
+    assert_eq!(selected_title(&app), "Top note");
+}
+
+#[test]
 fn l_opens_a_note_in_the_editor() {
     let mut app = two_books();
     key(&mut app, 'j');

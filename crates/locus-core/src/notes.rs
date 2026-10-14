@@ -108,6 +108,33 @@ fn clamp(app: &mut App) {
     app.notes.sel = clamp_sel(app.notes.sel, len(app));
 }
 
+/// What a list row shows, independent of where it sorts.
+#[derive(PartialEq)]
+enum RowId {
+    Notebook(NbKey),
+    Folder(NbKey, u64),
+    Note(NbKey, u64),
+}
+
+fn row_id(row: &Row<'_>) -> RowId {
+    match row {
+        Row::Notebook(b) => RowId::Notebook(b.key()),
+        Row::Folder(b, f) => RowId::Folder(b.key(), f.id),
+        Row::Note(b, n) => RowId::Note(b.key(), n.id),
+    }
+}
+
+/// Run `change` and keep the same row selected, wherever it now sorts (a
+/// saved note moves to the top). Falls back to clamping when the row is gone.
+fn keeping_selection(app: &mut App, change: impl FnOnce(&mut App)) {
+    let before = selected(app).map(|r| row_id(&r));
+    change(app);
+    match before.and_then(|id| rows(app).iter().position(|r| row_id(r) == id)) {
+        Some(pos) => app.notes.sel = pos,
+        None => clamp(app),
+    }
+}
+
 /// Folder names from just below the root down to `folder`.
 pub fn folder_names(book: &Book, folder: u64) -> Vec<String> {
     let mut names = Vec::new();
@@ -174,12 +201,14 @@ fn ensure_book<'a>(app: &'a mut App, nb: &NotebookSummary) -> &'a mut Book {
 }
 
 fn upsert(app: &mut App, nb: &NotebookSummary, note: Note) {
-    let book = ensure_book(app, nb);
-    book.bodies.insert(note.id);
-    match book.notes.iter_mut().find(|n| n.id == note.id) {
-        Some(slot) => *slot = note,
-        None => book.notes.push(note),
-    }
+    keeping_selection(app, |app| {
+        let book = ensure_book(app, nb);
+        book.bodies.insert(note.id);
+        match book.notes.iter_mut().find(|n| n.id == note.id) {
+            Some(slot) => *slot = note,
+            None => book.notes.push(note),
+        }
+    });
 }
 
 fn editor_is(app: &App, nb: &NbKey, id: u64) -> bool {
@@ -473,23 +502,23 @@ pub fn notebook_created(app: &mut App, fx: &mut Vec<Effect>, notebook: NotebookS
 }
 
 pub fn folders_loaded(app: &mut App, nb: NotebookSummary, folders: Vec<Folder>) {
-    ensure_book(app, &nb).folders = folders;
-    clamp(app);
+    keeping_selection(app, |app| ensure_book(app, &nb).folders = folders);
 }
 
 pub fn notes_loaded(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, notes: Vec<Note>) {
     let key = NbKey::of(&nb);
-    let book = ensure_book(app, &nb);
-    book.nb = nb;
-    book.bodies = notes
-        .iter()
-        .filter(|n| !n.body_md.is_empty())
-        .map(|n| n.id)
-        .collect();
-    book.requested.clear();
-    book.notes = notes;
-    book.notes_loaded = true;
-    clamp(app);
+    keeping_selection(app, |app| {
+        let book = ensure_book(app, &nb);
+        book.nb = nb;
+        book.bodies = notes
+            .iter()
+            .filter(|n| !n.body_md.is_empty())
+            .map(|n| n.id)
+            .collect();
+        book.requested.clear();
+        book.notes = notes;
+        book.notes_loaded = true;
+    });
     if app.notes.books.iter().all(|b| b.notes_loaded) {
         for s in [Section::Notes, Section::Todo] {
             app.loading[s.index()] = false;
