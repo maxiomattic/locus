@@ -211,8 +211,8 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         Section::Notes => vec![
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "New folder", "", Some(Msg::NewFolder)),
-            tool(c, "Rename", "F2", when(item, Msg::Rename)),
-            tool(c, "Move", "", when(item, Msg::Move)),
+            tool(c, "Rename", "F2", when(view_model::can_rename(app), Msg::Rename)),
+            tool(c, "Move", "", when(view_model::can_rename(app), Msg::Move)),
             tool(
                 c,
                 if app.notes.history.is_some() { "Close history" } else { "History" },

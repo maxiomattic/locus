@@ -140,6 +140,10 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             notes::folders_loaded(app, nb, folders);
             app.info("Created folder");
         }
+        Msg::NoteFolderUpdated { nb, folders, moved } => {
+            notes::folders_loaded(app, nb, folders);
+            app.info(if moved { "Moved folder" } else { "Renamed folder" });
+        }
         Msg::NoteLoaded { nb, note } => notes::note_loaded(app, fx, nb, note),
         Msg::NoteCreated { nb, note } => notes::note_created(app, fx, nb, note),
         Msg::NoteSaved { nb, note } => notes::note_saved(app, fx, nb, note),
@@ -471,6 +475,8 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::RenamePhoto => photos::submit_rename(app, fx),
         InputKind::MovePhoto => photos::submit_move(app, fx),
         InputKind::MoveNote => notes::submit_move(app, fx),
+        InputKind::RenameNoteFolder => notes::submit_folder_rename(app, fx),
+        InputKind::MoveNoteFolder => notes::submit_folder_move(app, fx),
         InputKind::Login => {
             let code = std::mem::take(&mut app.input.text);
             app.input = Input::default();

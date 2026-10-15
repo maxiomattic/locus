@@ -304,6 +304,27 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }
         }
+        Effect::UpdateNoteFolder {
+            nb,
+            id,
+            name,
+            parent,
+        } => {
+            match client
+                .update_folder(&nb.host, &nb.flag_name, id, name.as_deref(), parent)
+                .await
+            {
+                Ok(()) => match client.list_folders(&nb.host, &nb.flag_name).await {
+                    Ok(folders) => vec![Msg::NoteFolderUpdated {
+                        nb,
+                        folders,
+                        moved: parent.is_some(),
+                    }],
+                    Err(e) => vec![load_failed(Section::Notes, &e)],
+                },
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
         Effect::DeleteContact { id } => match client.delete_contact(id, None).await {
             Ok(()) => vec![Msg::ContactDeleted { id }],
             Err(e) => vec![write_failed(Section::Contacts, &e)],

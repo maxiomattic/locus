@@ -883,8 +883,19 @@ pub fn notebook_deleted(app: &mut App, nb: NotebookSummary) {
 
 /// Move: ask for the folder, as a path inside the note's notebook.
 pub fn begin_move(app: &mut App) {
+    if let Some(Row::Folder(b, f)) = selected(app) {
+        let (key, id) = (b.key(), f.id);
+        let parent = f.parent_folder_id.unwrap_or(b.nb.notebook.root_folder_id);
+        app.input = Input {
+            text: folder_path(b, parent),
+            target: Some(id),
+        };
+        app.notes.folder_edit = Some((key, id));
+        app.focus = Focus::Input(InputKind::MoveNoteFolder);
+        return;
+    }
     let Some((note, _)) = selected_note(app) else {
-        app.info("Select a note to move");
+        app.info("Select a note or folder to move");
         return;
     };
     let path = app
@@ -1018,8 +1029,18 @@ pub fn submit_new_notebook(app: &mut App, fx: &mut Vec<Effect>) {
 }
 
 pub fn begin_rename(app: &mut App) {
+    if let Some(Row::Folder(b, f)) = selected(app) {
+        let (key, id, name) = (b.key(), f.id, f.name.clone());
+        app.input = Input {
+            text: name,
+            target: Some(id),
+        };
+        app.notes.folder_edit = Some((key, id));
+        app.focus = Focus::Input(InputKind::RenameNoteFolder);
+        return;
+    }
     let Some((note, title)) = selected_note(app) else {
-        app.info("Select a note to rename");
+        app.info("Select a note or folder to rename");
         return;
     };
     app.input = Input {
@@ -1048,6 +1069,108 @@ pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
     app.input = Input::default();
     app.focus = Focus::List;
     fx.push(Effect::RenameNote { nb, id, title });
+}
+
+/// Whether the selected row is a note or a folder, which Rename and Move
+/// apply to.
+pub fn can_rename(app: &App) -> bool {
+    matches!(selected(app), Some(Row::Note(..) | Row::Folder(..)))
+}
+
+/// The folder a folder prompt is for, with its notebook.
+fn folder_edit_target(app: &App) -> Option<(&Book, u64)> {
+    let (key, id) = app.notes.folder_edit.clone()?;
+    let book = app.notes.book(&key)?;
+    book.folder(id).map(|_| (book, id))
+}
+
+/// Another folder under `parent` already has `name`: paths would be ambiguous.
+fn name_taken(book: &Book, parent: u64, name: &str, except: u64) -> bool {
+    book.folders
+        .iter()
+        .any(|f| f.parent_folder_id == Some(parent) && f.name == name && f.id != except)
+}
+
+fn end_folder_prompt(app: &mut App) {
+    app.notes.folder_edit = None;
+    app.input = Input::default();
+    app.focus = Focus::List;
+}
+
+pub fn submit_folder_rename(app: &mut App, fx: &mut Vec<Effect>) {
+    let name = app.input.text.trim().to_string();
+    let Some((book, id)) = folder_edit_target(app) else {
+        end_folder_prompt(app);
+        return;
+    };
+    let root = book.nb.notebook.root_folder_id;
+    let parent = book.folder(id).and_then(|f| f.parent_folder_id).unwrap_or(root);
+    let err = if name.is_empty() || name.contains('/') {
+        Some("A folder name cannot be empty or contain /".to_string())
+    } else if name_taken(book, parent, &name, id) {
+        Some(format!("A folder \"{name}\" is already there"))
+    } else {
+        None
+    };
+    if let Some(err) = err {
+        app.error(err);
+        return;
+    }
+    let unchanged = book.folder(id).is_some_and(|f| f.name == name);
+    let nb = book.nb.clone();
+    end_folder_prompt(app);
+    if unchanged {
+        return;
+    }
+    fx.push(Effect::UpdateNoteFolder {
+        nb,
+        id,
+        name: Some(name),
+        parent: None,
+    });
+    app.info("Renaming folder");
+}
+
+pub fn submit_folder_move(app: &mut App, fx: &mut Vec<Effect>) {
+    let path = app.input.text.trim().to_string();
+    let Some((book, id)) = folder_edit_target(app) else {
+        end_folder_prompt(app);
+        return;
+    };
+    let Some(dest) = resolve_folder(book, &path) else {
+        let msg = format!("No folder {path} in {}", book.nb.notebook.title);
+        app.error(msg);
+        return;
+    };
+    let Some(folder) = book.folder(id) else {
+        end_folder_prompt(app);
+        return;
+    };
+    let err = if subtree(book, id).contains(&dest) {
+        Some("A folder cannot move into itself".to_string())
+    } else if name_taken(book, dest, &folder.name, id) {
+        Some(format!("A folder \"{}\" is already there", folder.name))
+    } else {
+        None
+    };
+    if let Some(err) = err {
+        app.error(err);
+        return;
+    }
+    let unchanged = folder.parent_folder_id == Some(dest);
+    let nb = book.nb.clone();
+    end_folder_prompt(app);
+    if unchanged {
+        app.info("The folder is already there");
+        return;
+    }
+    fx.push(Effect::UpdateNoteFolder {
+        nb,
+        id,
+        name: None,
+        parent: Some(dest),
+    });
+    app.info("Moving folder");
 }
 
 // ----- history -----

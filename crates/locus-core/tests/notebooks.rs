@@ -416,16 +416,17 @@ fn rename_and_delete_use_the_selected_notes_notebook() {
 }
 
 #[test]
-fn rename_and_edit_ignore_folder_rows() {
+fn edit_ignores_folder_rows_and_notebooks_cannot_be_renamed() {
     let mut app = two_books();
-    press(&mut app, Key::Enter);
-    assert_eq!(selected_title(&app), "Daily");
-    assert!(!view_model::has_item_selected(&app));
-    assert!(view_model::can_delete(&app));
+    assert!(!view_model::can_rename(&app));
     key(&mut app, 'r');
     assert_eq!(app.focus, Focus::List);
     send(&mut app, Msg::Move);
     assert_eq!(app.focus, Focus::List);
+    press(&mut app, Key::Enter);
+    assert_eq!(selected_title(&app), "Daily");
+    assert!(!view_model::has_item_selected(&app));
+    assert!(view_model::can_delete(&app));
     send(&mut app, Msg::Edit);
     assert_eq!(app.focus, Focus::List);
 }
@@ -817,4 +818,78 @@ fn history_closes_on_error_on_toggle_and_when_a_note_opens() {
     assert_eq!(selected_title(&app), "Alpha");
     let fx = send(&mut app, Msg::History);
     assert_eq!(fx, vec![Effect::LoadHistory { nb: nb(), id: 1 }]);
+}
+
+fn clear_input(app: &mut App) {
+    send(app, Msg::Text(locus_core::TextEdit::Set(String::new())));
+}
+
+#[test]
+fn folders_rename_and_move_with_checks() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    press(&mut app, Key::Enter);
+    assert!(!view_model::can_rename(&App::new()));
+    key(&mut app, 'j');
+    assert_eq!(selected_title(&app), "beta");
+    assert!(view_model::can_rename(&app));
+
+    // Rename: the prompt starts with the name; a sibling's name is refused.
+    key(&mut app, 'r');
+    assert_eq!(app.focus, Focus::Input(InputKind::RenameNoteFolder));
+    assert_eq!(app.input.text, "beta");
+    clear_input(&mut app);
+    type_str(&mut app, "Alpha");
+    assert!(press(&mut app, Key::Enter).is_empty());
+    assert!(view_model::status_line(&app).contains("already there"));
+    clear_input(&mut app);
+    type_str(&mut app, "Gamma");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::UpdateNoteFolder {
+            nb: nb(),
+            id: 11,
+            name: Some("Gamma".into()),
+            parent: None,
+        }]
+    );
+    assert_eq!(app.focus, Focus::List);
+
+    // Move: the prompt starts with the parent's path; into itself is refused.
+    send(&mut app, Msg::Move);
+    assert_eq!(app.focus, Focus::Input(InputKind::MoveNoteFolder));
+    assert_eq!(app.input.text, "/");
+    clear_input(&mut app);
+    type_str(&mut app, "/beta/deep");
+    assert!(press(&mut app, Key::Enter).is_empty());
+    assert!(view_model::status_line(&app).contains("into itself"));
+    clear_input(&mut app);
+    type_str(&mut app, "/Alpha");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::UpdateNoteFolder {
+            nb: nb(),
+            id: 11,
+            name: None,
+            parent: Some(12),
+        }]
+    );
+
+    send(
+        &mut app,
+        Msg::NoteFolderUpdated {
+            nb: nb(),
+            folders: vec![
+                folder(10, "root", None),
+                folder(11, "beta", Some(12)),
+                folder(12, "Alpha", Some(10)),
+                folder(13, "deep", Some(11)),
+            ],
+            moved: true,
+        },
+    );
+    assert_eq!(app.status.text, "Moved folder");
+    assert_eq!(titles(&app), vec!["Alpha", "Newer top", "Top note"]);
 }

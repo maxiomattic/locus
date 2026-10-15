@@ -32,6 +32,10 @@ pub const HELP: &str = "locus notes <command>
   mkdir <notebook> <folder path>           create folders (like mkdir -p)
   rmdir <notebook> <folder path> [--recursive]
                                            delete a folder; --recursive if it is not empty
+  folder-rename <notebook> <folder path> <name>
+                                           rename a folder
+  folder-mv <notebook> <folder path> <dest folder path>
+                                           move a folder into another (/ is the top)
 
 A <ref> is <notebook>:<id>, as printed by ls and search.
 ";
@@ -54,6 +58,8 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
         "search" => search(ctx, args).await,
         "mkdir" => mkdir(ctx, args).await,
         "rmdir" => rmdir(ctx, args).await,
+        "folder-rename" => folder_rename(ctx, args).await,
+        "folder-mv" => folder_mv(ctx, args).await,
         other => Err(format!(
             "unknown notes command {other}. try: locus notes --help"
         )),
@@ -664,6 +670,106 @@ async fn rmdir(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Is `dest` the folder `id` or somewhere below it?
+pub fn is_inside(folders: &[Folder], id: u64, dest: u64) -> bool {
+    let mut cur = Some(dest);
+    // Bounded: a corrupt parent cycle must not hang the command.
+    for _ in 0..=folders.len() {
+        match cur {
+            Some(c) if c == id => return true,
+            Some(c) => cur = folders.iter().find(|f| f.id == c).and_then(|f| f.parent_folder_id),
+            None => return false,
+        }
+    }
+    false
+}
+
+/// Refuse a name that would make paths ambiguous: empty, with `/`, or
+/// already used by another folder under `parent`.
+fn check_folder_name(folders: &[Folder], parent: u64, name: &str, except: u64) -> Result<(), String> {
+    if name.is_empty() || name.contains('/') {
+        return Err(format!("not a folder name: {name:?}"));
+    }
+    if folders
+        .iter()
+        .any(|f| f.parent_folder_id == Some(parent) && f.name == name && f.id != except)
+    {
+        return Err(format!("a folder {name} is already there"));
+    }
+    Ok(())
+}
+
+async fn folder_rename(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let usage = "locus notes folder-rename <notebook> <folder path> <name>";
+    let pos = p.positionals(3, 3, usage)?;
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let nb = find_notebook(&books, &pos[0])?;
+    let names = folder_names(&pos[1]);
+    if names.is_empty() {
+        return Err("the top folder has no name to change".into());
+    }
+    let folders = client
+        .list_folders(&nb.host, &nb.flag_name)
+        .await
+        .map_err(client_error)?;
+    let root = nb.notebook.root_folder_id;
+    let id = resolve_folder(&folders, root, &names)?;
+    let new_name = pos[2].trim();
+    let parent = folders
+        .iter()
+        .find(|f| f.id == id)
+        .and_then(|f| f.parent_folder_id)
+        .unwrap_or(root);
+    check_folder_name(&folders, parent, new_name, id)?;
+    client
+        .update_folder(&nb.host, &nb.flag_name, id, Some(new_name), None)
+        .await
+        .map_err(client_error)?;
+    let mut path = names[..names.len() - 1].to_vec();
+    path.push(new_name.to_string());
+    emit(&format!("renamed to {}/{}\n", nb.flag_name, path.join("/")));
+    Ok(())
+}
+
+async fn folder_mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let usage = "locus notes folder-mv <notebook> <folder path> <dest folder path>";
+    let pos = p.positionals(3, 3, usage)?;
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let nb = find_notebook(&books, &pos[0])?;
+    let names = folder_names(&pos[1]);
+    if names.is_empty() {
+        return Err("the top folder cannot be moved".into());
+    }
+    let folders = client
+        .list_folders(&nb.host, &nb.flag_name)
+        .await
+        .map_err(client_error)?;
+    let root = nb.notebook.root_folder_id;
+    let id = resolve_folder(&folders, root, &names)?;
+    let dest = resolve_folder(&folders, root, &folder_names(&pos[2]))?;
+    if is_inside(&folders, id, dest) {
+        return Err("a folder cannot move into itself".into());
+    }
+    let name = &names[names.len() - 1];
+    check_folder_name(&folders, dest, name, id)?;
+    client
+        .update_folder(&nb.host, &nb.flag_name, id, None, Some(dest))
+        .await
+        .map_err(client_error)?;
+    let dest_path = folder_path(&folders, root, dest);
+    let new_path = if dest_path.is_empty() {
+        name.clone()
+    } else {
+        format!("{dest_path}/{name}")
+    };
+    emit(&format!("moved to {}/{new_path}\n", nb.flag_name));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,6 +795,18 @@ mod tests {
             name: name.into(),
             parent_folder_id: Some(parent),
         }
+    }
+
+    #[test]
+    fn a_folder_is_inside_itself_and_its_subfolders_only() {
+        let folders = [folder(11, 10, "a"), folder(12, 11, "b"), folder(13, 10, "c")];
+        assert!(is_inside(&folders, 11, 11));
+        assert!(is_inside(&folders, 11, 12));
+        assert!(!is_inside(&folders, 11, 13));
+        assert!(!is_inside(&folders, 11, 10));
+        assert!(check_folder_name(&folders, 10, "c", 11).is_err());
+        assert!(check_folder_name(&folders, 10, "x/y", 11).is_err());
+        assert!(check_folder_name(&folders, 10, "a", 11).is_ok());
     }
 
     #[test]

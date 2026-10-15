@@ -67,6 +67,15 @@ pub fn has_item_selected(app: &App) -> bool {
     }
 }
 
+/// Whether Rename and Move apply: in Notes a note or a folder (notebooks
+/// cannot be renamed or moved), elsewhere the selected item.
+pub fn can_rename(app: &App) -> bool {
+    match app.section {
+        Section::Notes => notes::can_rename(app),
+        _ => has_item_selected(app),
+    }
+}
+
 /// Files: any row, folder or file, is selected (Copy path works on both).
 pub fn has_file_row_selected(app: &App) -> bool {
     crate::files::selected(app).is_some()
@@ -663,6 +672,8 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::RenamePhoto => ("photo title", app.input.text.clone()),
         InputKind::MovePhoto => ("move to album", app.input.text.clone()),
         InputKind::MoveNote => ("move to folder", app.input.text.clone()),
+        InputKind::RenameNoteFolder => ("folder name", app.input.text.clone()),
+        InputKind::MoveNoteFolder => ("move folder into", app.input.text.clone()),
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
     Some(InputView {

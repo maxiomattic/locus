@@ -318,8 +318,8 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
         Section::Notes => vec![
             tool("New note", "Ctrl+N", Some(Msg::New)),
             tool("New folder", "", Some(Msg::NewFolder)),
-            tool("Rename", "F2", when(item, Msg::Rename)),
-            tool("Move", "", when(item, Msg::Move)),
+            tool("Rename", "F2", when(view_model::can_rename(ui), Msg::Rename)),
+            tool("Move", "", when(view_model::can_rename(ui), Msg::Move)),
             tool(history_label(ui), "", when(view_model::can_show_history(ui), Msg::History)),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],

@@ -190,6 +190,12 @@ pub enum Msg {
         nb: NotebookSummary,
         folders: Vec<Folder>,
     },
+    /// A folder was renamed or moved; `folders` is the new folder list.
+    NoteFolderUpdated {
+        nb: NotebookSummary,
+        folders: Vec<Folder>,
+        moved: bool,
+    },
     NoteLoaded {
         nb: NotebookSummary,
         note: Note,
@@ -413,6 +419,13 @@ pub enum Effect {
         nb: NotebookSummary,
         parent: u64,
         name: String,
+    },
+    /// Rename a folder (`name`) or move it under `parent`.
+    UpdateNoteFolder {
+        nb: NotebookSummary,
+        id: u64,
+        name: Option<String>,
+        parent: Option<u64>,
     },
     DeleteContact {
         id: u64,

@@ -215,6 +215,32 @@ impl Client {
             })
     }
 
+    /// Rename a folder (`folder_name`), move it under another folder
+    /// (`parent`), or both. The server refuses a move into its own subtree.
+    pub async fn update_folder(
+        &self,
+        host: &str,
+        name: &str,
+        id: u64,
+        folder_name: Option<&str>,
+        parent: Option<u64>,
+    ) -> Result<()> {
+        let mut body = serde_json::Map::new();
+        if let Some(n) = folder_name {
+            body.insert("folderName".into(), json!(n));
+        }
+        if let Some(p) = parent {
+            body.insert("parent".into(), json!(p));
+        }
+        self.write(
+            Method::PUT,
+            &format!("{}/folders/{id}", nb_path(host, name)),
+            Some(Value::Object(body)),
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// Delete a folder. Without `recursive` the server refuses a folder that
     /// still holds folders or notes.
     pub async fn delete_folder(

@@ -200,6 +200,8 @@ pub enum InputKind {
     RenameFile,
     MoveFile,
     MoveNote,
+    RenameNoteFolder,
+    MoveNoteFolder,
     RenamePhoto,
     MovePhoto,
     Login,
@@ -380,6 +382,8 @@ pub struct NotesState {
     pub open_on_create: bool,
     /// The note a rename or move prompt is for.
     pub rename: Option<NoteRef>,
+    /// The folder (notebook, id) a rename or move prompt is for.
+    pub folder_edit: Option<(NbKey, u64)>,
     /// Source of debounce tokens. Global so a timer for one editor can never
     /// match another editor's current token.
     pub token_seq: u64,
