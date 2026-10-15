@@ -67,13 +67,13 @@ pub fn has_item_selected(app: &App) -> bool {
     }
 }
 
-/// Whether Delete has something to act on. In Notes that includes folders
-/// and notebooks, which go with everything in them.
 /// Files: any row, folder or file, is selected (Copy path works on both).
 pub fn has_file_row_selected(app: &App) -> bool {
     crate::files::selected(app).is_some()
 }
 
+/// Whether Delete has something to act on. In Notes that includes folders
+/// and notebooks, which go with everything in them; in Files, empty folders.
 pub fn can_delete(app: &App) -> bool {
     match app.section {
         Section::Notes => notes_list(app).iter().any(|r| r.selected),
@@ -193,6 +193,58 @@ pub fn editor(app: &App) -> Option<EditorView> {
         saving: e.in_flight,
         conflict: e.conflict,
         focused: app.focus == Focus::Editor,
+    })
+}
+
+/// Notes: whether History has a note to show (or is open, to close it).
+pub fn can_show_history(app: &App) -> bool {
+    app.section == Section::Notes && notes::can_show_history(app)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionRow {
+    pub label: String,
+    /// `2026-10-14 11:14 · ~author`.
+    pub detail: String,
+    pub selected: bool,
+}
+
+/// A note's saved revisions, shown in place of the editor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryView {
+    pub title: String,
+    pub loading: bool,
+    pub rows: Vec<RevisionRow>,
+    /// Title and body of the selected revision.
+    pub rev_title: String,
+    pub body: String,
+}
+
+pub fn note_history(app: &App) -> Option<HistoryView> {
+    let h = app.notes.history.as_ref()?;
+    let tz = app.now.tz_offset_secs;
+    let revs = h.revs.as_deref().unwrap_or_default();
+    let rows = revs
+        .iter()
+        .enumerate()
+        .map(|(i, r)| RevisionRow {
+            label: format!("Revision {}", r.rev),
+            detail: format!(
+                "{} {} · {}",
+                date_label(r.at, tz),
+                hm(local_hm_of(r.at as i64, tz)),
+                short_ship(&r.author)
+            ),
+            selected: i == h.sel,
+        })
+        .collect();
+    let sel = revs.get(h.sel);
+    Some(HistoryView {
+        title: h.title.clone(),
+        loading: h.revs.is_none(),
+        rows,
+        rev_title: sel.map(|r| r.title.clone()).unwrap_or_default(),
+        body: sel.map(|r| r.body_md.clone()).unwrap_or_default(),
     })
 }
 
@@ -670,6 +722,20 @@ fn date_label(unix: u64, tz: i32) -> String {
         return String::new();
     }
     local_date_of(unix as i64, tz).iso()
+}
+
+/// A ship name short enough for one line: a comet's eight words become
+/// `~first_last`, as Urbit apps show them. Shorter names are kept.
+pub fn short_ship(ship: &str) -> String {
+    let words: Vec<&str> = ship
+        .trim_start_matches('~')
+        .split('-')
+        .filter(|w| !w.is_empty())
+        .collect();
+    match (words.first(), words.last()) {
+        (Some(first), Some(last)) if words.len() > 4 => format!("~{first}_{last}"),
+        _ => ship.to_string(),
+    }
 }
 
 pub fn size_label(bytes: u64) -> String {

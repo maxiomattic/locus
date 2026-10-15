@@ -9,7 +9,7 @@ use cosmic::iced::{Alignment, Border, Color, ContentFit, Length};
 use cosmic::widget::{self, Id};
 use cosmic::{Element, theme};
 use locus_core::state::{CalMode, Focus, InputKind, Level, Section};
-use locus_core::view_model::{self, EditorView, FormView};
+use locus_core::view_model::{self, EditorView, FormView, HistoryView};
 use locus_core::{Msg, Nav, TextEdit};
 
 use crate::{App, Message, Screen, THUMB_GRID, THUMB_VIEW, thumb_key};
@@ -22,6 +22,8 @@ pub const INPUT_ID: &str = "input";
 pub const PALETTE_ID: &str = "palette";
 pub const PHOTOS_SCROLL: &str = "scroll-photos";
 const NOTES_SCROLL: &str = "scroll-notes";
+const HISTORY_SCROLL: &str = "scroll-history";
+const REVISION_SCROLL: &str = "scroll-revision";
 const TODO_SCROLL: &str = "scroll-todo";
 const AGENDA_SCROLL: &str = "scroll-agenda";
 const FILES_SCROLL: &str = "scroll-files";
@@ -297,6 +299,7 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("New folder", "", Some(Msg::NewFolder)),
             tool("Rename", "F2", when(item, Msg::Rename)),
             tool("Move", "", when(item, Msg::Move)),
+            tool(history_label(ui), "", when(view_model::can_show_history(ui), Msg::History)),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Todo => vec![
@@ -464,9 +467,10 @@ fn notes(app: &App) -> Element<'_, Message> {
     let left = widget::container(list)
         .width(Length::Fixed(LIST_W))
         .height(Length::Fill);
-    let right: Element<'_, Message> = match view_model::editor(&app.ui) {
-        Some(editor) => editor_pane(app, editor),
-        None => empty("No note open", "Double-click a note to open it.".into()),
+    let right: Element<'_, Message> = match (view_model::note_history(&app.ui), view_model::editor(&app.ui)) {
+        (Some(history), _) => history_pane(history),
+        (None, Some(editor)) => editor_pane(app, editor),
+        (None, None) => empty("No note open", "Double-click a note to open it.".into()),
     };
     widget::row::with_capacity(2)
         .spacing(s.space_s)
@@ -486,13 +490,13 @@ fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
     } else {
         widget::text::caption("Saved").into()
     };
-    let header = widget::row::with_capacity(4)
+    // Rename and Delete live in the toolbar: they act on the selected row,
+    // which need not be the open note.
+    let header = widget::row::with_capacity(2)
         .spacing(s.space_xs)
         .align_y(Alignment::Center)
         .push(widget::text::title4(editor.title).width(Length::Fill))
-        .push(status)
-        .push(tool("Rename", "F2", Some(Msg::Rename)))
-        .push(tool("Delete", "Delete", Some(Msg::Delete)));
+        .push(status);
     let text = widget::text_editor::text_editor(&app.content)
         .id(Id::new(EDITOR_ID))
         .on_action(Message::Editor)
@@ -502,6 +506,63 @@ fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
         .spacing(s.space_xs)
         .push(header)
         .push(text)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+/// The toolbar label of the History toggle.
+fn history_label(ui: &locus_core::App) -> &'static str {
+    if ui.notes.history.is_some() {
+        "Close history"
+    } else {
+        "History"
+    }
+}
+
+/// A note's saved revisions: the list on the left, the selected one's text
+/// on the right. Read only.
+fn history_pane(history: HistoryView) -> Element<'static, Message> {
+    let s = theme::spacing();
+    let header = widget::row::with_capacity(2)
+        .spacing(s.space_xs)
+        .align_y(Alignment::Center)
+        .push(widget::text::title4(format!("History of {}", history.title)).width(Length::Fill))
+        .push(tool("Close", "Escape", Some(Msg::History)));
+    let body: Element<'static, Message> = if history.loading {
+        empty("History", "Loading...".into())
+    } else if history.rows.is_empty() {
+        empty("No saved revisions", "Earlier versions of this note appear here.".into())
+    } else {
+        let mut list = widget::list_column();
+        for (i, row) in history.rows.into_iter().enumerate() {
+            let content = two_lines(row.label, row.detail);
+            list = list.add(row_area(
+                content,
+                ROW2_H,
+                row.selected,
+                Msg::SelectRevision(i),
+                Msg::SelectRevision(i),
+            ));
+        }
+        let text = widget::column::with_capacity(2)
+            .spacing(s.space_xs)
+            .push(widget::text::heading(history.rev_title))
+            .push(widget::text::body(history.body));
+        widget::row::with_capacity(2)
+            .spacing(s.space_s)
+            .push(
+                widget::container(scroll(HISTORY_SCROLL, list))
+                    .width(Length::Fixed(LIST_W))
+                    .height(Length::Fill),
+            )
+            .push(scroll(REVISION_SCROLL, widget::container(text).padding(s.space_s)))
+            .into()
+    };
+    widget::column::with_capacity(2)
+        .spacing(s.space_xs)
+        .push(header)
+        .push(body)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()

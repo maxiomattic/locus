@@ -64,6 +64,11 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             Section::Photos => photos::begin_move(app),
             _ => app.info("Nothing to move here"),
         },
+        Msg::History => match app.section {
+            Section::Notes => notes::toggle_history(app, fx),
+            _ => app.info("History is available in Notes"),
+        },
+        Msg::SelectRevision(i) => notes::select_revision(app, fx, i),
         Msg::ToggleTask => todo::toggle_selected(app, fx),
         Msg::ToggleDoneTasks => todo::toggle_done_visibility(app),
         Msg::CalendarMode => calendar::toggle_mode(app),
@@ -99,6 +104,10 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             // to the list, so list keys work again.
             if app.focus == Focus::Editor {
                 notes::flush_editor(app, fx);
+                app.focus = Focus::List;
+            }
+            // Likewise away from the note history's revision list.
+            if app.focus == Focus::Detail && app.section == Section::Notes {
                 app.focus = Focus::List;
             }
             select_index(app, i);
@@ -139,6 +148,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NoteMoved { nb, id, folder } => notes::note_moved(app, nb, id, folder),
         Msg::NoteFolderDeleted { nb, id } => notes::folder_deleted(app, fx, nb, id),
         Msg::NotebookDeleted { nb } => notes::notebook_deleted(app, nb),
+        Msg::HistoryLoaded { nb, id, revs } => notes::history_loaded(app, nb, id, revs),
         Msg::SaveConflict {
             nb,
             id,
@@ -390,11 +400,17 @@ fn escape(app: &mut App, fx: &mut Vec<Effect>) {
             notes::flush_editor(app, fx);
             app.focus = Focus::List;
         }
+        Focus::Detail if app.section == Section::Notes => {
+            notes::close_history(app);
+            app.focus = Focus::List;
+        }
         Focus::Detail => app.focus = Focus::List,
         Focus::List => {
             if !app.filter.is_empty() {
                 app.filter.clear();
                 reset_sel(app);
+            } else if app.section == Section::Notes {
+                notes::close_history(app);
             }
         }
     }

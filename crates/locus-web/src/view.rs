@@ -8,7 +8,7 @@ use iced::widget::{
     space, stack, text, text_editor, text_input, tooltip,
 };
 use iced::{Border, Center, ContentFit, Element, Fill, Length, Shadow};
-use locus_core::view_model::{self, EditorView, FormView};
+use locus_core::view_model::{self, EditorView, FormView, HistoryView};
 use locus_core::{Focus, InputKind, Level, Msg, Section, TextEdit};
 
 use crate::style::{self, Colors};
@@ -213,6 +213,12 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "New folder", "", Some(Msg::NewFolder)),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
             tool(c, "Move", "", when(item, Msg::Move)),
+            tool(
+                c,
+                if app.notes.history.is_some() { "Close history" } else { "History" },
+                "",
+                when(view_model::can_show_history(app), Msg::History),
+            ),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Todo => {
@@ -467,9 +473,10 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     .width(300)
     .height(Fill);
 
-    let right: Element<'_, Message> = match view_model::editor(&s.app) {
-        Some(ed) => editor_pane(s, ed),
-        None => empty_card(c, "No note open", "Double-click a note to open it."),
+    let right: Element<'_, Message> = match (view_model::note_history(&s.app), view_model::editor(&s.app)) {
+        (Some(h), _) => history_pane(c, h),
+        (None, Some(ed)) => editor_pane(s, ed),
+        (None, None) => empty_card(c, "No note open", "Double-click a note to open it."),
     };
     row![left, right].spacing(16).height(Fill).into()
 }
@@ -499,6 +506,57 @@ fn editor_pane(s: &Shell, ed: EditorView) -> Element<'_, Message> {
         .size(14)
         .height(Fill);
     container(column![header, editor].spacing(8).padding(12))
+        .width(Fill)
+        .height(Fill)
+        .style(move |_| style::card(c))
+        .into()
+}
+
+/// A note's saved revisions: the list on the left, the selected one's text
+/// on the right. Read only.
+fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
+    let header = row![
+        text(format!("History of {}", h.title)).size(16).color(c.text),
+        space::horizontal(),
+        tool(c, "Close", "Escape", Some(Msg::History)),
+    ]
+    .spacing(8)
+    .align_y(Center);
+    let body: Element<'a, Message> = if h.loading {
+        muted_text(c, "Loading...").into()
+    } else if h.rows.is_empty() {
+        muted_text(c, "No saved revisions. Earlier versions of this note appear here.").into()
+    } else {
+        let mut list = Column::new();
+        for (i, r) in h.rows.into_iter().enumerate() {
+            list = list.push(click_row(
+                c,
+                column![
+                    text(r.label).size(14).color(c.text),
+                    text(r.detail).size(12).color(c.muted),
+                ]
+                .spacing(2),
+                ROW_H,
+                r.selected,
+                Msg::SelectRevision(i),
+                Msg::SelectRevision(i),
+            ));
+        }
+        let rev = column![
+            text(h.rev_title).size(15).color(c.text),
+            text(h.body).size(14).color(c.text),
+        ]
+        .spacing(8)
+        .padding(4);
+        row![
+            container(scrollable(list).id("history").spacing(4).height(Fill)).width(260),
+            scrollable(rev).id("revision").width(Fill).height(Fill),
+        ]
+        .spacing(16)
+        .height(Fill)
+        .into()
+    };
+    container(column![header, body].spacing(8).padding(12))
         .width(Fill)
         .height(Fill)
         .style(move |_| style::card(c))

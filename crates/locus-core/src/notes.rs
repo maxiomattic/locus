@@ -6,12 +6,12 @@
 //! location: the notebook list, or the inside of one folder. Note ids are only
 //! unique per notebook, so notes are always addressed by (notebook, id).
 
-use locus_client::notes::{Folder, Note, NotebookSummary};
+use locus_client::notes::{Folder, Note, NoteRevision, NotebookSummary};
 
 use crate::msg::{Effect, Msg, Nav};
 use crate::state::{
-    App, Book, Editor, Focus, Input, InputKind, NbKey, NoteRef, NotesLoc, Section, clamp_sel,
-    matches_filter,
+    App, Book, Editor, Focus, Input, InputKind, NbKey, NoteHistory, NoteRef, NotesLoc, Section,
+    clamp_sel, matches_filter,
 };
 use crate::update::step;
 
@@ -218,6 +218,19 @@ fn editor_is(app: &App, nb: &NbKey, id: u64) -> bool {
 // ----- navigation -----
 
 pub fn nav(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
+    if app.focus == Focus::Detail
+        && let Some(h) = app.notes.history.as_mut()
+    {
+        match nav {
+            Nav::Left => close_history(app),
+            Nav::Right => {}
+            other => {
+                let len = h.revs.as_ref().map_or(0, Vec::len);
+                h.sel = step(h.sel, len, other);
+            }
+        }
+        return;
+    }
     match nav {
         Nav::Left => go_up(app),
         Nav::Right => open_selected(app, fx),
@@ -405,6 +418,7 @@ pub fn open_editor(app: &mut App, fx: &mut Vec<Effect>, key: &NbKey, id: u64) {
         return;
     };
     retire_editor(app, fx);
+    app.notes.history = None;
     if !loaded {
         fx.push(Effect::LoadNote { nb: nb.clone(), id });
     }
@@ -630,6 +644,7 @@ pub fn note_deleted(app: &mut App, nb: NotebookSummary, id: u64) {
             app.focus = Focus::List;
         }
     }
+    drop_history_if_gone(app);
     clamp(app);
     app.info("Note deleted");
 }
@@ -845,6 +860,7 @@ pub fn folder_deleted(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, 
             }
         });
     }
+    drop_history_if_gone(app);
     request_notebook(fx, nb);
     crate::todo::after_notes_changed(app, fx);
     app.info("Folder deleted");
@@ -861,6 +877,7 @@ pub fn notebook_deleted(app: &mut App, nb: NotebookSummary) {
         app.notes.last_nb = None;
     }
     keeping_selection(app, |app| app.notes.books.retain(|b| b.key() != key));
+    drop_history_if_gone(app);
     app.info("Notebook deleted");
 }
 
@@ -1031,4 +1048,118 @@ pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
     app.input = Input::default();
     app.focus = Focus::List;
     fx.push(Effect::RenameNote { nb, id, title });
+}
+
+// ----- history -----
+
+/// The note History applies to: the open note while typing in it, else the
+/// selected note, else the open note.
+fn history_target(app: &App) -> Option<(NoteRef, String)> {
+    let open = app.editor.as_ref().map(|e| {
+        (
+            NoteRef {
+                nb: NbKey::of(&e.nb),
+                id: e.note_id,
+            },
+            e.title.clone(),
+        )
+    });
+    if app.focus == Focus::Editor && open.is_some() {
+        return open;
+    }
+    selected_note(app).or(open)
+}
+
+/// Whether History has a note to show.
+pub fn can_show_history(app: &App) -> bool {
+    app.notes.history.is_some() || history_target(app).is_some()
+}
+
+/// History: show the saved revisions of a note in place of the editor, or
+/// hide them again.
+pub fn toggle_history(app: &mut App, fx: &mut Vec<Effect>) {
+    if app.notes.history.is_some() {
+        close_history(app);
+        return;
+    }
+    let Some((note, title)) = history_target(app) else {
+        app.info("Select a note to see its history");
+        return;
+    };
+    let Some(nb) = app.notes.book(&note.nb).map(|b| b.nb.clone()) else {
+        app.error("Note not found");
+        return;
+    };
+    flush_editor(app, fx);
+    fx.push(Effect::LoadHistory { nb, id: note.id });
+    app.notes.history = Some(NoteHistory {
+        note,
+        title,
+        revs: None,
+        sel: 0,
+    });
+    app.focus = Focus::Detail;
+    app.info("Loading history");
+}
+
+pub fn close_history(app: &mut App) {
+    if app.notes.history.take().is_some() && app.focus == Focus::Detail {
+        app.focus = Focus::List;
+    }
+}
+
+/// A click on revision `i`.
+pub fn select_revision(app: &mut App, fx: &mut Vec<Effect>, i: usize) {
+    if app.focus == Focus::Editor {
+        flush_editor(app, fx);
+    }
+    if let Some(h) = app.notes.history.as_mut() {
+        h.sel = clamp_sel(i, h.revs.as_ref().map_or(0, Vec::len));
+        app.focus = Focus::Detail;
+    }
+}
+
+pub fn history_loaded(
+    app: &mut App,
+    nb: NotebookSummary,
+    id: u64,
+    revs: Result<Vec<NoteRevision>, String>,
+) {
+    let key = NbKey::of(&nb);
+    let Some(h) = app
+        .notes
+        .history
+        .as_mut()
+        .filter(|h| h.note.nb == key && h.note.id == id)
+    else {
+        return;
+    };
+    match revs {
+        Ok(revs) => {
+            let n = revs.len();
+            h.revs = Some(revs);
+            h.sel = 0;
+            app.info(match n {
+                0 => "No saved revisions".to_string(),
+                1 => "1 saved revision".to_string(),
+                n => format!("{n} saved revisions"),
+            });
+        }
+        Err(error) => {
+            close_history(app);
+            app.error(format!("Could not load history: {error}"));
+        }
+    }
+}
+
+/// Close the history when its note no longer exists.
+fn drop_history_if_gone(app: &mut App) {
+    let gone = app
+        .notes
+        .history
+        .as_ref()
+        .is_some_and(|h| find(app, &h.note.nb, h.note.id).is_none());
+    if gone {
+        close_history(app);
+    }
 }

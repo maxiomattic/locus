@@ -229,6 +229,13 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }
         }
+        Effect::LoadHistory { nb, id } => {
+            let revs = client
+                .history(&nb.host, &nb.flag_name, id)
+                .await
+                .map_err(|e| describe(&e));
+            vec![Msg::HistoryLoaded { nb, id, revs }]
+        }
 
         Effect::LoadEvents => match client.list_events().await {
             Ok(events) => vec![Msg::EventsLoaded { events }],

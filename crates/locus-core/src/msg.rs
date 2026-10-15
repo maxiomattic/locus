@@ -4,7 +4,7 @@
 use locus_client::{
     calendar::{Event, EventPatch},
     contacts::{Contact, ContactPatch},
-    notes::{Folder, Note, NotebookSummary},
+    notes::{Folder, Note, NoteRevision, NotebookSummary},
     photos::Photo,
 };
 use serde::{Deserialize, Serialize};
@@ -91,6 +91,10 @@ pub enum Msg {
     Upload,
     /// Move the selected file (Files) or note (Notes) to another folder.
     Move,
+    /// Show or hide the saved revisions of the selected or open note.
+    History,
+    /// Mouse selection of a revision in the note history.
+    SelectRevision(usize),
     /// Space or `x` in Todo.
     ToggleTask,
     /// `z` in Todo: show or hide the Done group.
@@ -222,6 +226,12 @@ pub enum Msg {
     NotebookDeleted {
         nb: NotebookSummary,
     },
+    /// A note's saved revisions, newest first, or why they could not load.
+    HistoryLoaded {
+        nb: NotebookSummary,
+        id: u64,
+        revs: Result<Vec<NoteRevision>, String>,
+    },
     /// Stale `expected_revision`. `body` is what we tried to write; `current`
     /// is the server revision when the shell could re-read it.
     SaveConflict {
@@ -350,6 +360,10 @@ pub enum Effect {
     },
     DeleteNotebook {
         nb: NotebookSummary,
+    },
+    LoadHistory {
+        nb: NotebookSummary,
+        id: u64,
     },
 
     LoadEvents,

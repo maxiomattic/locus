@@ -729,3 +729,92 @@ fn new_notebook_asks_for_a_title_and_creates_it() {
         }]
     );
 }
+
+fn rev(rev: u64, body: &str) -> locus_core::locus_client::notes::NoteRevision {
+    locus_core::locus_client::notes::NoteRevision {
+        rev,
+        at: 1_700_000_000 + rev * 60,
+        author: "~zod".into(),
+        title: "Top note".into(),
+        body_md: body.into(),
+    }
+}
+
+#[test]
+fn history_lists_the_selected_notes_revisions_and_escape_closes_it() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    key(&mut app, 'l');
+    key(&mut app, 'G');
+    assert_eq!(selected_title(&app), "Top note");
+    assert!(view_model::can_show_history(&app));
+    let fx = send(&mut app, Msg::History);
+    assert_eq!(fx, vec![Effect::LoadHistory { nb: nb(), id: 1 }]);
+    assert_eq!(app.focus, Focus::Detail);
+    assert!(view_model::note_history(&app).unwrap().loading);
+
+    send(
+        &mut app,
+        Msg::HistoryLoaded {
+            nb: nb(),
+            id: 1,
+            revs: Ok(vec![rev(1, "second"), rev(0, "first")]),
+        },
+    );
+    let h = view_model::note_history(&app).unwrap();
+    assert_eq!(h.title, "Top note");
+    assert_eq!(h.rows.len(), 2);
+    assert_eq!((h.rows[0].label.as_str(), h.body.as_str()), ("Revision 1", "second"));
+    assert!(h.rows[0].detail.ends_with("· ~zod"));
+    assert_eq!(
+        view_model::short_ship("~firdex-mipmex-modsul-malfer--lopwyx-togled-mormex-binzod"),
+        "~firdex_binzod"
+    );
+    assert_eq!(view_model::short_ship("~sampel-palnet"), "~sampel-palnet");
+
+    // Arrow keys move through the revisions, a click picks one.
+    press(&mut app, Key::Down);
+    assert_eq!(view_model::note_history(&app).unwrap().body, "first");
+    send(&mut app, Msg::SelectRevision(0));
+    assert_eq!(view_model::note_history(&app).unwrap().body, "second");
+    assert_eq!(selected_title(&app), "Top note");
+
+    press(&mut app, Key::Escape);
+    assert!(view_model::note_history(&app).is_none());
+    assert_eq!(app.focus, Focus::List);
+}
+
+#[test]
+fn history_closes_on_error_on_toggle_and_when_a_note_opens() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    key(&mut app, 'l');
+    key(&mut app, 'G');
+    send(&mut app, Msg::History);
+    send(
+        &mut app,
+        Msg::HistoryLoaded {
+            nb: nb(),
+            id: 1,
+            revs: Err("boom".into()),
+        },
+    );
+    assert!(view_model::note_history(&app).is_none());
+    assert!(view_model::status_line(&app).contains("boom"));
+
+    send(&mut app, Msg::History);
+    send(&mut app, Msg::History);
+    assert!(view_model::note_history(&app).is_none());
+
+    send(&mut app, Msg::History);
+    send(&mut app, Msg::Activate);
+    assert!(view_model::note_history(&app).is_none());
+    assert_eq!(view_model::editor(&app).unwrap().note_id, 1);
+
+    // A folder row has no history; the open note is used instead.
+    press(&mut app, Key::Escape);
+    press(&mut app, Key::Home);
+    assert_eq!(selected_title(&app), "Alpha");
+    let fx = send(&mut app, Msg::History);
+    assert_eq!(fx, vec![Effect::LoadHistory { nb: nb(), id: 1 }]);
+}

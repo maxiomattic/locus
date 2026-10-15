@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use locus_client::{
     calendar::Event,
     contacts::Contact,
-    notes::{Folder, Note, NotebookSummary},
+    notes::{Folder, Note, NoteRevision, NotebookSummary},
     photos::Photo,
 };
 use serde::{Deserialize, Serialize};
@@ -383,6 +383,17 @@ pub struct NotesState {
     /// Source of debounce tokens. Global so a timer for one editor can never
     /// match another editor's current token.
     pub token_seq: u64,
+    /// The saved revisions of one note, shown in place of the editor.
+    pub history: Option<NoteHistory>,
+}
+
+/// A note's revision list. `revs` is `None` while it loads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteHistory {
+    pub note: NoteRef,
+    pub title: String,
+    pub revs: Option<Vec<NoteRevision>>,
+    pub sel: usize,
 }
 
 impl NotesState {
