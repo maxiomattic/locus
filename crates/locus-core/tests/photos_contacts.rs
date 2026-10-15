@@ -30,18 +30,18 @@ fn photos_app(columns: usize) -> locus_core::App {
 #[test]
 fn grid_moves_by_one_and_by_a_row() {
     let mut app = photos_app(2);
-    press(&mut app, Key::Char('l'));
+    press(&mut app, Key::Right);
     assert_eq!(app.photos.sel, 1);
-    press(&mut app, Key::Char('j'));
+    press(&mut app, Key::Down);
     assert_eq!(app.photos.sel, 3);
-    press(&mut app, Key::Char('j'));
+    press(&mut app, Key::Down);
     assert_eq!(app.photos.sel, 4, "clamped at the last photo");
-    press(&mut app, Key::Char('k'));
+    press(&mut app, Key::Up);
     assert_eq!(app.photos.sel, 2);
-    press(&mut app, Key::Char('h'));
+    press(&mut app, Key::Left);
     assert_eq!(app.photos.sel, 1);
-    press(&mut app, Key::Char('h'));
-    press(&mut app, Key::Char('h'));
+    press(&mut app, Key::Left);
+    press(&mut app, Key::Left);
     assert_eq!(app.photos.sel, 0, "clamped at the first photo");
 }
 
@@ -74,10 +74,10 @@ fn enter_opens_viewer_where_h_and_l_step_without_wrapping() {
     let mut app = photos_app(3);
     press(&mut app, Key::Enter);
     assert_eq!(app.focus, Focus::Detail);
-    press(&mut app, Key::Char('h'));
+    press(&mut app, Key::Left);
     assert_eq!(app.photos.sel, 0);
-    press(&mut app, Key::Char('l'));
-    press(&mut app, Key::Char('l'));
+    press(&mut app, Key::Right);
+    press(&mut app, Key::Right);
     assert_eq!(app.photos.sel, 2);
     let detail = view_model::photo_detail(&app).unwrap();
     assert_eq!(detail.title, "Sunset");
@@ -90,7 +90,7 @@ fn enter_opens_viewer_where_h_and_l_step_without_wrapping() {
 #[test]
 fn u_uploads_into_photos() {
     let mut app = photos_app(3);
-    let fx = press(&mut app, Key::Char('u'));
+    let fx = ctrl(&mut app, 'o');
     assert_eq!(
         fx,
         vec![Effect::UploadFiles {
@@ -152,7 +152,7 @@ fn contacts_are_sorted_by_name_ignoring_case() {
 #[test]
 fn new_contact_requires_a_name_and_an_at_sign_in_email() {
     let mut app = contacts_app();
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     assert_eq!(app.focus, Focus::Form);
     let fx = send(&mut app, Msg::SaveForm);
     assert!(fx.is_empty());
@@ -197,7 +197,7 @@ fn new_contact_requires_a_name_and_an_at_sign_in_email() {
 #[test]
 fn edit_contact_patches_with_its_revision() {
     let mut app = contacts_app();
-    press(&mut app, Key::Char('e'));
+    press(&mut app, Key::F(2));
     let fx = send(&mut app, Msg::SaveForm);
     assert_eq!(
         fx,
@@ -217,7 +217,7 @@ fn edit_contact_patches_with_its_revision() {
 fn delete_contact_confirms_then_deletes_the_selected_one() {
     let mut app = contacts_app();
     // Sorted order: ada (id 1) first.
-    press(&mut app, Key::Char('d'));
+    press(&mut app, Key::Delete);
     assert_eq!(app.focus, Focus::Confirm);
     assert_eq!(
         press(&mut app, Key::Char('y')),
@@ -234,7 +234,7 @@ fn delete_contact_confirms_then_deletes_the_selected_one() {
 #[test]
 fn enter_opens_contact_detail() {
     let mut app = contacts_app();
-    press(&mut app, Key::Char('j'));
+    press(&mut app, Key::Down);
     press(&mut app, Key::Enter);
     assert_eq!(app.focus, Focus::Detail);
     let d = view_model::contact_detail(&app).unwrap();
@@ -245,7 +245,7 @@ fn enter_opens_contact_detail() {
 #[test]
 fn tab_in_contact_form_moves_fields() {
     let mut app = contacts_app();
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     press(&mut app, Key::Tab);
     press(&mut app, Key::Tab);
     assert!(view_model::form(&app).unwrap().fields[2].active);
@@ -254,4 +254,19 @@ fn tab_in_contact_form_moves_fields() {
         view_model::form(&app).unwrap().fields[0].active,
         "wraps around"
     );
+}
+
+#[test]
+fn delete_asks_then_removes_the_selected_photo() {
+    let mut app = photos_app(3);
+    press(&mut app, Key::Right);
+    press(&mut app, Key::Delete);
+    assert_eq!(
+        view_model::confirm_prompt(&app).as_deref(),
+        Some("Delete photo \"Dunes\"?")
+    );
+    assert_eq!(press(&mut app, Key::Enter), vec![Effect::DeletePhoto { id: 2 }]);
+    send(&mut app, Msg::PhotoDeleted { id: 2 });
+    assert_eq!(app.photos.items.len(), 4);
+    assert!(app.photos.items.iter().all(|p| p.id != 2));
 }

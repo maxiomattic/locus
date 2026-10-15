@@ -34,9 +34,6 @@ pub fn update(app: &mut App, msg: Msg, now: Now) -> Vec<Effect> {
 }
 
 fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
-    if !matches!(msg, Msg::GPrefix | Msg::Batch(_)) {
-        app.pending_g = false;
-    }
     match msg {
         // ----- intents -----
         Msg::Batch(msgs) => {
@@ -44,9 +41,6 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
                 dispatch(app, m, now, fx);
             }
         }
-        Msg::GPrefix => app.pending_g = true,
-        // The flag was cleared above.
-        Msg::ClearPrefix => {}
         Msg::Switch(s) => open(app, fx, s, None),
         Msg::Open { section, target } => open(app, fx, section, target),
         Msg::Reload => {
@@ -58,6 +52,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::Activate => activate(app, fx),
         Msg::Edit => edit(app, fx),
         Msg::New => new_item(app, fx),
+        Msg::NewFolder => notes::begin_new_folder(app),
+        Msg::NewNotebook => notes::begin_new_notebook(app),
         Msg::Delete => delete(app),
         Msg::Rename => rename(app),
         Msg::Yank => files::yank(app, fx),
@@ -142,6 +138,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::ContactsLoaded { contacts } => contacts::loaded(app, contacts),
         Msg::ContactSaved { contact } => contacts::saved(app, contact),
         Msg::ContactDeleted { id } => contacts::deleted(app, id),
+        Msg::PhotoDeleted { id } => photos::deleted(app, id),
         Msg::FilesLoaded { files } => files::files_loaded(app, files),
         Msg::DirsLoaded { dirs } => files::dirs_loaded(app, dirs),
         Msg::DirCreated { path } => files::dir_created(app, path),
@@ -303,7 +300,7 @@ fn new_item(app: &mut App, fx: &mut Vec<Effect>) {
         Section::Calendar => calendar::new_event(app),
         Section::Files => files::begin_new_dir(app),
         Section::Contacts => contacts::new_contact(app),
-        Section::Photos => app.info("Use u to upload photos"),
+        Section::Photos => app.info("Use Upload to add photos"),
     }
 }
 
@@ -313,6 +310,7 @@ fn delete(app: &mut App) {
         Section::Calendar => calendar::ask_delete(app),
         Section::Files => files::ask_delete(app),
         Section::Contacts => contacts::ask_delete(app),
+        Section::Photos => photos::ask_delete(app),
         _ => app.info("Nothing to delete here"),
     }
 }
@@ -344,7 +342,8 @@ fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, section: Section, id: u64
         Section::Calendar => calendar::execute_delete(app, fx, id),
         Section::Files => files::execute_delete(app, fx, id),
         Section::Contacts => contacts::execute_delete(app, fx, id),
-        Section::Todo | Section::Photos => {}
+        Section::Photos => photos::execute_delete(app, fx, id),
+        Section::Todo => {}
     }
 }
 
@@ -430,6 +429,8 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         }
         InputKind::TaskText => todo::submit_add(app, fx),
         InputKind::NewDir => files::submit_new_dir(app, fx),
+        InputKind::NewNoteFolder => notes::submit_new_folder(app, fx),
+        InputKind::NewNotebook => notes::submit_new_notebook(app, fx),
         InputKind::RenameNote => notes::submit_rename(app, fx),
         InputKind::RenameFile => files::submit_rename(app, fx),
         InputKind::MoveFile => files::submit_move(app, fx),

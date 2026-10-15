@@ -23,14 +23,14 @@
 </head>
 <body>
   <script>
-    // Browser shortcuts the app uses itself: Ctrl/Cmd+K (palette), +S (save),
-    // +R (reload section), and Alt+1..6 (sections; Firefox on Linux uses them
-    // for tabs). Capturing, so it runs first; the event still reaches the app.
+    // Browser shortcuts the app uses itself: Ctrl/Cmd+K (command palette),
+    // +S (save), +R (reload), +F (search the list), +O (upload), and F1
+    // (shortcuts). Capturing, so it runs first; the event still reaches the
+    // app. Ctrl+N stays the browser's, so the app also takes Alt+N.
     window.addEventListener("keydown", (e) => {
       const k = e.key.toLowerCase();
       const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
-      const altDigit = e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-6]$/.test(e.code);
-      if ((mod && (k === "k" || k === "s" || k === "r")) || altDigit) {
+      if ((mod && "ksrfo".includes(k) && k.length === 1) || e.key === "F1") {
         e.preventDefault();
       }
     }, { capture: true });

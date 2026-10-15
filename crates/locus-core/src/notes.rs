@@ -704,6 +704,56 @@ pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, note: NoteRef) {
     app.info("Deleting note");
 }
 
+pub fn begin_new_folder(app: &mut App) {
+    if !matches!(app.notes.loc, NotesLoc::Folder { .. }) {
+        app.info("Open a notebook first");
+        return;
+    }
+    app.input = Input::default();
+    app.focus = Focus::Input(InputKind::NewNoteFolder);
+}
+
+pub fn submit_new_folder(app: &mut App, fx: &mut Vec<Effect>) {
+    let name = app.input.text.trim().to_string();
+    if name.is_empty() || name.contains('/') {
+        app.error("Folder names cannot be empty or contain /");
+        return;
+    }
+    let NotesLoc::Folder { nb, folder } = app.notes.loc.clone() else {
+        app.focus = Focus::List;
+        return;
+    };
+    let Some(nb) = app.notes.book(&nb).map(|b| b.nb.clone()) else {
+        app.focus = Focus::List;
+        return;
+    };
+    app.input = Input::default();
+    app.focus = Focus::List;
+    fx.push(Effect::CreateNoteFolder {
+        nb,
+        parent: folder,
+        name,
+    });
+    app.info("Creating folder");
+}
+
+pub fn begin_new_notebook(app: &mut App) {
+    app.input = Input::default();
+    app.focus = Focus::Input(InputKind::NewNotebook);
+}
+
+pub fn submit_new_notebook(app: &mut App, fx: &mut Vec<Effect>) {
+    let title = app.input.text.trim().to_string();
+    if title.is_empty() {
+        app.error("Title cannot be empty");
+        return;
+    }
+    app.input = Input::default();
+    app.focus = Focus::List;
+    fx.push(Effect::CreateNotebook { title });
+    app.info("Creating notebook");
+}
+
 pub fn begin_rename(app: &mut App) {
     let Some((note, title)) = selected_note(app) else {
         app.info("Select a note to rename");

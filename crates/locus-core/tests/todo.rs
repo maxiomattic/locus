@@ -9,7 +9,7 @@ fn todo_app(extra: Vec<locus_core::locus_client::notes::Note>) -> locus_core::Ap
     let mut notes = vec![note(1, "Plan", BODY, 7, 10)];
     notes.extend(extra);
     let mut app = loaded_notes(notes);
-    ctrl(&mut app, '2');
+    send(&mut app, Msg::Switch(Section::Todo));
     app
 }
 
@@ -48,10 +48,10 @@ fn grouping_moves_with_the_clock() {
 fn z_shows_done_and_navigation_includes_it_only_then() {
     let mut app = todo_app(vec![]);
     // Four open tasks are navigable; the collapsed Done task is not.
-    press(&mut app, Key::Char('G'));
+    press(&mut app, Key::End);
     assert_eq!(app.todo.sel, 3);
-    press(&mut app, Key::Char('z'));
-    press(&mut app, Key::Char('G'));
+    send(&mut app, Msg::ToggleDoneTasks);
+    press(&mut app, Key::End);
     assert_eq!(app.todo.sel, 4);
     let groups = view_model::todo_groups(&app);
     assert!(!groups[4].collapsed);
@@ -62,8 +62,8 @@ fn z_shows_done_and_navigation_includes_it_only_then() {
 fn toggling_writes_exactly_one_changed_line() {
     let mut app = todo_app(vec![]);
     // Select "call mum" (the second visible task).
-    press(&mut app, Key::Char('j'));
-    let fx = press(&mut app, Key::Char('x'));
+    press(&mut app, Key::Down);
+    let fx = press(&mut app, Key::Char(' '));
     let body = match fx.as_slice() {
         [
             Effect::SaveNote {
@@ -88,8 +88,8 @@ fn toggling_writes_exactly_one_changed_line() {
 #[test]
 fn space_toggles_a_done_task_back_open() {
     let mut app = todo_app(vec![]);
-    press(&mut app, Key::Char('z'));
-    press(&mut app, Key::Char('G'));
+    send(&mut app, Msg::ToggleDoneTasks);
+    press(&mut app, Key::End);
     let fx = press(&mut app, Key::Char(' '));
     let body = match fx.as_slice() {
         [Effect::SaveNote { body, .. }] => body.clone(),
@@ -101,7 +101,7 @@ fn space_toggles_a_done_task_back_open() {
 #[test]
 fn toggle_saves_conflict_is_handled_like_the_editor() {
     let mut app = todo_app(vec![]);
-    press(&mut app, Key::Char('x'));
+    press(&mut app, Key::Char(' '));
     let fx = send(
         &mut app,
         Msg::SaveConflict {
@@ -123,8 +123,8 @@ fn toggle_saves_conflict_is_handled_like_the_editor() {
 fn enter_on_a_task_opens_its_source_note() {
     let mut app = todo_app(vec![note(2, "Other", "- [ ] other task", 1, 1)]);
     // Tasks sort by date then title: "book flights" is in Upcoming.
-    press(&mut app, Key::Char('j'));
-    press(&mut app, Key::Char('j'));
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Down);
     press(&mut app, Key::Enter);
     assert_eq!(app.section, Section::Notes);
     assert_eq!(app.focus, Focus::Editor);
@@ -135,7 +135,7 @@ fn enter_on_a_task_opens_its_source_note() {
 fn add_task_appends_to_existing_inbox() {
     let inbox = note(9, "Inbox", "- [ ] old thing\n", 3, 1);
     let mut app = todo_app(vec![inbox]);
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     assert_eq!(app.focus, Focus::Input(locus_core::InputKind::TaskText));
     type_str(&mut app, "Renew passport due:2026-11-02");
     let fx = press(&mut app, Key::Enter);
@@ -154,7 +154,7 @@ fn add_task_appends_to_existing_inbox() {
 #[test]
 fn add_task_creates_inbox_when_missing() {
     let mut app = todo_app(vec![]);
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     type_str(&mut app, "Water the fern");
     let fx = press(&mut app, Key::Enter);
     assert_eq!(
@@ -172,7 +172,7 @@ fn add_task_creates_inbox_when_missing() {
 fn add_task_waits_for_an_unloaded_inbox_body() {
     // Inbox is listed but its body was not fetched.
     let mut app = todo_app(vec![note(9, "Inbox", "", 2, 1)]);
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     type_str(&mut app, "Pay rent");
     let fx = press(&mut app, Key::Enter);
     assert_eq!(fx, vec![Effect::LoadNote { nb: nb(), id: 9 }]);
@@ -198,7 +198,7 @@ fn add_task_waits_for_an_unloaded_inbox_body() {
 #[test]
 fn add_task_rejects_empty_text_and_bad_due_dates() {
     let mut app = todo_app(vec![]);
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     assert!(press(&mut app, Key::Enter).is_empty());
     assert_eq!(app.status.level, locus_core::Level::Error);
     type_str(&mut app, "due:2026-13-01");
@@ -211,7 +211,7 @@ fn add_task_rejects_empty_text_and_bad_due_dates() {
 fn entering_todo_fetches_bodies_that_are_missing() {
     // Notes listed without bodies: entering Todo asks for each body.
     let mut app = loaded_notes(vec![note(1, "A", "", 1, 1), note(2, "B", "- [ ] x", 1, 2)]);
-    let fx = ctrl(&mut app, '2');
+    let fx = send(&mut app, Msg::Switch(Section::Todo));
     assert_eq!(fx, vec![Effect::LoadNote { nb: nb(), id: 1 }]);
     let fx = send(
         &mut app,
@@ -225,16 +225,9 @@ fn entering_todo_fetches_bodies_that_are_missing() {
 }
 
 #[test]
-fn todo_sidebar_badge_counts_overdue_and_today() {
-    let app = todo_app(vec![]);
-    let badge = view_model::sidebar(&app)[1].badge;
-    assert_eq!(badge, Some(2));
-}
-
-#[test]
 fn toggle_on_no_task_does_nothing() {
     let mut app = loaded_notes(vec![note(1, "Empty", "just prose", 1, 1)]);
-    ctrl(&mut app, '2');
-    assert!(press(&mut app, Key::Char('x')).is_empty());
+    send(&mut app, Msg::Switch(Section::Todo));
+    assert!(press(&mut app, Key::Char(' ')).is_empty());
     assert_eq!(app.focus, Focus::List);
 }

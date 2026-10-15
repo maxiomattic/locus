@@ -46,13 +46,13 @@ fn root_lists_folders_first_then_files() {
 #[test]
 fn enter_and_l_go_into_folders_and_h_goes_back_to_the_same_row() {
     let mut app = files_app();
-    press(&mut app, Key::Char('j')); // Music
-    press(&mut app, Key::Char('j')); // Photos
+    press(&mut app, Key::Down); // Music
+    press(&mut app, Key::Down); // Photos
     press(&mut app, Key::Enter);
     assert_eq!(app.files.cwd, "/Photos");
     assert_eq!(names(&app), ["2026", "cover.png"]);
 
-    press(&mut app, Key::Char('h'));
+    press(&mut app, Key::Left);
     assert_eq!(app.files.cwd, "/");
     let rows = view_model::file_rows(&app);
     let selected: Vec<_> = rows
@@ -70,9 +70,9 @@ fn enter_and_l_go_into_folders_and_h_goes_back_to_the_same_row() {
 #[test]
 fn ancestors_of_file_directories_appear_as_folders() {
     let mut app = files_app();
-    press(&mut app, Key::Char('j'));
-    press(&mut app, Key::Char('j'));
-    press(&mut app, Key::Char('l'));
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Down);
+    press(&mut app, Key::Right);
     assert_eq!(app.files.cwd, "/Photos");
     press(&mut app, Key::Enter);
     // /Photos/2026 exists only because beach.jpg lives there.
@@ -101,7 +101,7 @@ fn breadcrumb_follows_the_directory() {
 #[test]
 fn h_at_root_does_nothing_and_backspace_goes_up() {
     let mut app = files_app();
-    assert!(press(&mut app, Key::Char('h')).is_empty());
+    assert!(press(&mut app, Key::Left).is_empty());
     assert_eq!(app.files.cwd, "/");
     app.files.cwd = "/Docs".into();
     press(&mut app, Key::Backspace);
@@ -112,7 +112,7 @@ fn h_at_root_does_nothing_and_backspace_goes_up() {
 fn enter_on_a_file_opens_its_blob() {
     let mut app = files_app();
     // Move to readme.txt (last row).
-    press(&mut app, Key::Char('G'));
+    press(&mut app, Key::End);
     let fx = press(&mut app, Key::Enter);
     assert_eq!(
         fx,
@@ -127,8 +127,8 @@ fn enter_on_a_file_opens_its_blob() {
 #[test]
 fn y_copies_the_full_path() {
     let mut app = files_app();
-    press(&mut app, Key::Char('G'));
-    let fx = press(&mut app, Key::Char('y'));
+    press(&mut app, Key::End);
+    let fx = ctrl(&mut app, 'c');
     assert_eq!(fx, vec![Effect::CopyToClipboard("/readme.txt".into())]);
 }
 
@@ -136,7 +136,7 @@ fn y_copies_the_full_path() {
 fn new_folder_creates_under_the_current_directory() {
     let mut app = files_app();
     app.files.cwd = "/Photos".into();
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     type_str(&mut app, "Trips");
     let fx = press(&mut app, Key::Enter);
     assert_eq!(
@@ -157,7 +157,7 @@ fn new_folder_creates_under_the_current_directory() {
 #[test]
 fn new_folder_rejects_slashes() {
     let mut app = files_app();
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     type_str(&mut app, "a/b");
     assert!(press(&mut app, Key::Enter).is_empty());
     assert_eq!(app.status.level, locus_core::Level::Error);
@@ -166,8 +166,8 @@ fn new_folder_rejects_slashes() {
 #[test]
 fn rename_patches_with_the_file_revision() {
     let mut app = files_app();
-    press(&mut app, Key::Char('G'));
-    press(&mut app, Key::Char('r'));
+    press(&mut app, Key::End);
+    press(&mut app, Key::F(2));
     assert_eq!(app.input.text, "readme.txt");
     for _ in 0..app.input.text.len() {
         press(&mut app, Key::Backspace);
@@ -190,8 +190,8 @@ fn rename_patches_with_the_file_revision() {
 #[test]
 fn move_prefills_current_dir_and_patches_dir() {
     let mut app = files_app();
-    press(&mut app, Key::Char('G'));
-    press(&mut app, Key::Char('m'));
+    press(&mut app, Key::End);
+    send(&mut app, Msg::MoveFile);
     assert_eq!(app.focus, Focus::Input(locus_core::InputKind::MoveFile));
     assert_eq!(app.input.text, "/");
     for _ in 0..app.input.text.len() {
@@ -215,8 +215,8 @@ fn move_prefills_current_dir_and_patches_dir() {
 #[test]
 fn move_rejects_relative_and_dotdot_paths() {
     let mut app = files_app();
-    press(&mut app, Key::Char('G'));
-    press(&mut app, Key::Char('m'));
+    press(&mut app, Key::End);
+    send(&mut app, Msg::MoveFile);
     for _ in 0..app.input.text.len() {
         press(&mut app, Key::Backspace);
     }
@@ -228,12 +228,12 @@ fn move_rejects_relative_and_dotdot_paths() {
 #[test]
 fn delete_file_confirms_and_folders_cannot_be_deleted() {
     let mut app = files_app();
-    press(&mut app, Key::Char('d'));
+    press(&mut app, Key::Delete);
     assert_eq!(app.focus, Focus::List, "folder rows are not deletable");
     assert_eq!(app.status.text, "Folders cannot be deleted here");
 
-    press(&mut app, Key::Char('G'));
-    press(&mut app, Key::Char('d'));
+    press(&mut app, Key::End);
+    press(&mut app, Key::Delete);
     let fx = press(&mut app, Key::Char('y'));
     assert_eq!(fx, vec![Effect::DeleteFile { id: 1 }]);
 }
@@ -275,7 +275,7 @@ fn palette_goto_file_enters_its_directory_and_selects_it() {
 fn upload_uses_the_current_directory() {
     let mut app = files_app();
     app.files.cwd = "/Docs".into();
-    let fx = press(&mut app, Key::Char('u'));
+    let fx = ctrl(&mut app, 'o');
     assert_eq!(
         fx,
         vec![Effect::UploadFiles {
@@ -295,7 +295,7 @@ fn upload_uses_the_current_directory() {
 #[test]
 fn files_filter_only_searches_the_current_directory() {
     let mut app = files_app();
-    press(&mut app, Key::Char('/'));
+    ctrl(&mut app, 'f');
     type_str(&mut app, "TAX");
     assert!(
         names(&app).is_empty(),

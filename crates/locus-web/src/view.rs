@@ -4,8 +4,8 @@
 
 use iced::border::Radius;
 use iced::widget::{
-    Column, Row, button, column, container, image, mouse_area, opaque, row, scrollable, space,
-    stack, text, text_editor, text_input,
+    Column, Row, button, checkbox, column, container, image, mouse_area, opaque, row, scrollable,
+    space, stack, text, text_editor, text_input, tooltip,
 };
 use iced::{Border, Center, ContentFit, Element, Fill, Length, Shadow};
 use locus_core::view_model::{self, EditorView, FormView};
@@ -13,22 +13,9 @@ use locus_core::{Focus, InputKind, Level, Msg, Section, TextEdit};
 
 use crate::style::{self, Colors};
 use crate::{
-    FORM_IDS, GAP, HEADER_H, Message, PAD, PALETTE_ROW_H, ROW_H, SIDEBAR_W, Shell,
-    TODO_ROW_H, photo_columns, tile_px,
+    FORM_IDS, GAP, HEADER_H, Message, PAD, PALETTE_ROW_H, ROW_H, Shell, TODO_ROW_H,
+    photo_columns, tile_px,
 };
-
-/// Key hints for the status bar, for what has focus now.
-fn hints(focus: Focus) -> &'static str {
-    match focus {
-        Focus::Editor => "Esc leave editor · Ctrl+S save · : palette (from the list)",
-        Focus::Form => "Tab next field · Ctrl+Enter save · Esc cancel",
-        Focus::Input(_) => "Enter confirm · Esc cancel",
-        Focus::Palette => "Up/Down choose · Enter run · Esc close",
-        Focus::Confirm => "y yes · n no",
-        Focus::Help => "? or Esc closes",
-        Focus::List | Focus::Detail => "j/k move · Enter open · n new · g n/t/c… go · ? help · : palette",
-    }
-}
 
 /// Text edits from any text widget.
 fn set_text(value: String) -> Message {
@@ -48,13 +35,13 @@ pub fn root(s: &Shell) -> Element<'_, Message> {
     if !s.logged_in {
         return login_screen(s);
     }
-    let main = column![main_pane(s), status_bar(s)].width(Fill).height(Fill);
-    // A section page (`/app/notes`) is that section's own app: no sidebar.
-    let body = if view_model::show_sections(&s.app) {
-        row![sidebar(s), main].height(Fill)
-    } else {
-        row![main].height(Fill)
-    };
+    // `/app/` lists the apps; each app is its own page (`/app/notes`).
+    if s.app.locked.is_none() {
+        return launcher(s);
+    }
+    let body = column![toolbar(s), main_pane(s), status_bar(s)]
+        .width(Fill)
+        .height(Fill);
     let mut layers: Vec<Element<'_, Message>> = vec![body.into()];
     if let Some(overlay) = overlay(s) {
         layers.push(overlay);
@@ -77,7 +64,13 @@ fn login_screen(s: &Shell) -> Element<'_, Message> {
                 .on_input(set_text)
                 .padding(10)
                 .size(14),
-            text("Enter to sign in").size(12).color(c.muted),
+            row![
+                space::horizontal(),
+                button(text("Sign in").size(14))
+                    .padding([6, 16])
+                    .on_press(core(Msg::Submit))
+                    .style(style::primary_button(c)),
+            ],
             text(s.app.status.text.clone()).size(12).color(status_color),
         ]
         .spacing(12),
@@ -99,36 +92,166 @@ fn login_screen(s: &Shell) -> Element<'_, Message> {
 
 // ----- chrome -----
 
-fn sidebar(s: &Shell) -> Element<'_, Message> {
+/// `/app/`: one tile per app. Each opens that app's own page.
+fn launcher(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
-    let mut col = Column::new().spacing(4).padding(12);
-    col = col.push(text("Locus").size(16).color(c.text));
-    col = col.push(space::vertical().height(8));
-    for (i, item) in view_model::sidebar(&s.app).into_iter().enumerate() {
-        let section = Section::ALL[i];
-        let badge = match item.badge {
-            Some(n) if n > 0 => text(n.to_string()).size(12).color(c.muted),
-            _ => text(""),
-        };
-        let content = row![
-            text(item.label).size(14).color(c.text),
-            badge,
-            space::horizontal(),
-            text(item.shortcut).size(12).color(c.muted),
+    let mut grid = Row::new().spacing(16);
+    for section in Section::ALL {
+        let tile = column![
+            text(section.label()).size(18).color(c.text),
+            muted_text(c, app_blurb(section)),
         ]
-        .spacing(8)
-        .align_y(Center);
-        col = col.push(
-            button(content)
-                .width(Fill)
-                .padding([6, 8])
-                .on_press(core(Msg::Switch(section)))
-                .style(style::row_button(c, item.active)),
+        .spacing(6);
+        grid = grid.push(
+            button(tile)
+                .width(180)
+                .height(110)
+                .padding(16)
+                .on_press(Message::Launch(section))
+                .style(style::tile_button(c)),
         );
     }
-    container(col)
-        .width(SIDEBAR_W)
+    let page = column![
+        text("Locus").size(24).color(c.text),
+        muted_text(c, "Pick an app. Each one opens in its own tab."),
+        grid.wrap(),
+    ]
+    .spacing(16)
+    .max_width(1200);
+    container(page)
+        .padding(32)
+        .width(Fill)
         .height(Fill)
+        .style(move |_| container::Style {
+            background: Some(iced::Background::Color(c.bg)),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+fn app_blurb(section: Section) -> &'static str {
+    match section {
+        Section::Notes => "Notebooks and notes",
+        Section::Todo => "Tasks from your notes",
+        Section::Calendar => "Events and agenda",
+        Section::Photos => "Photo library",
+        Section::Files => "Your files",
+        Section::Contacts => "People and ships",
+    }
+}
+
+/// A toolbar button with a label and a tooltip naming its shortcut.
+/// `None` for `msg` draws it disabled.
+fn tool<'a>(c: Colors, label: &'a str, tip: &'a str, msg: Option<Msg>) -> Element<'a, Message> {
+    let b = button(text(label).size(13))
+        .padding([5, 10])
+        .on_press_maybe(msg.map(core))
+        .style(style::quiet_button(c));
+    if tip.is_empty() {
+        return b.into();
+    }
+    tooltip(
+        b,
+        container(text(tip).size(12).color(c.text))
+            .padding([4, 8])
+            .style(move |_| style::card(c)),
+        tooltip::Position::Bottom,
+    )
+    .into()
+}
+
+/// The app's toolbar: Back and where you are on the left, the search box,
+/// the app's actions, then Reload and the shortcuts list.
+fn toolbar(s: &Shell) -> Element<'_, Message> {
+    let c = s.colors;
+    let app = &s.app;
+    let item = view_model::has_item_selected(app);
+    let when = |ok: bool, msg: Msg| ok.then_some(msg);
+    let mut bar = Row::new().spacing(6).align_y(Center);
+    if matches!(app.section, Section::Notes | Section::Files) {
+        bar = bar.push(tool(
+            c,
+            "Back",
+            "Up one level (Backspace)",
+            when(view_model::can_go_up(app), Msg::Nav(locus_core::Nav::Left)),
+        ));
+    }
+    let place = match app.section {
+        Section::Notes => view_model::notes_breadcrumb(app),
+        Section::Files => {
+            // The root crumb is "/" itself, so the trail reads `/obsidian/Notes`.
+            let crumbs: Vec<String> = view_model::breadcrumb(app)
+                .into_iter()
+                .skip(1)
+                .map(|crumb| crumb.label)
+                .collect();
+            format!("/{}", crumbs.join("/"))
+        }
+        other => other.label().to_string(),
+    };
+    bar = bar.push(text(place).size(15).color(c.text));
+    bar = bar.push(space::horizontal());
+    bar = bar.push(
+        text_input("Search", &app.filter)
+            .id("filter")
+            .on_input(|value| {
+                Message::Core(Msg::Batch(vec![Msg::FocusFilter, Msg::Text(TextEdit::Set(value))]))
+            })
+            .padding([5, 10])
+            .size(13)
+            .width(220),
+    );
+    let actions: Vec<Element<'_, Message>> = match app.section {
+        Section::Notes if !view_model::can_go_up(app) => vec![
+            tool(c, "New notebook", "", Some(Msg::NewNotebook)),
+            tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
+        ],
+        Section::Notes => vec![
+            tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "New folder", "", Some(Msg::NewFolder)),
+            tool(c, "Rename", "F2", when(item, Msg::Rename)),
+            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Todo => {
+            let done = if app.todo.show_done { "Hide done" } else { "Show done" };
+            vec![
+                tool(c, "Add task", "Ctrl+N or Alt+N", Some(Msg::New)),
+                tool(c, "Open note", "Enter", when(item, Msg::Activate)),
+                tool(c, done, "", Some(Msg::ToggleDoneTasks)),
+            ]
+        }
+        Section::Calendar => vec![
+            tool(c, "New event", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "Edit", "F2", when(item, Msg::Edit)),
+            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Photos => vec![
+            tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool(c, "Open", "Enter", when(item && app.focus != Focus::Detail, Msg::Activate)),
+            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Files => vec![
+            tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool(c, "New folder", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "Rename", "F2", when(item, Msg::Rename)),
+            tool(c, "Move", "", when(item, Msg::MoveFile)),
+            tool(c, "Copy path", "Ctrl+C", when(item, Msg::Yank)),
+            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Contacts => vec![
+            tool(c, "New contact", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "Edit", "F2", when(item, Msg::Edit)),
+            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+        ],
+    };
+    for action in actions {
+        bar = bar.push(action);
+    }
+    bar = bar.push(tool(c, "Reload", "Ctrl+R or F5", Some(Msg::Reload)));
+    bar = bar.push(tool(c, "Shortcuts", "F1", Some(Msg::ToggleHelp)));
+    container(bar)
+        .width(Fill)
+        .padding([8, 12])
         .style(move |_| style::panel(c))
         .into()
 }
@@ -139,8 +262,6 @@ fn status_bar(s: &Shell) -> Element<'_, Message> {
         text(view_model::status_line(&s.app))
             .size(12)
             .color(level_color(c, view_model::status_level(&s.app))),
-        space::horizontal(),
-        text(hints(s.app.focus)).size(12).color(c.muted),
     ]
     .spacing(8)
     .align_y(Center);
@@ -162,16 +283,6 @@ fn level_color(c: Colors, level: Level) -> iced::Color {
 }
 
 fn main_pane(s: &Shell) -> Element<'_, Message> {
-    let mut col = Column::new().spacing(8);
-    if s.app.focus == Focus::Input(InputKind::Filter) {
-        col = col.push(
-            text_input("filter", &s.app.filter)
-                .id("filter")
-                .on_input(set_text)
-                .padding(8)
-                .size(14),
-        );
-    }
     let body = match s.app.section {
         Section::Notes => notes_pane(s),
         Section::Todo => todo_pane(s),
@@ -180,8 +291,7 @@ fn main_pane(s: &Shell) -> Element<'_, Message> {
         Section::Files => files_pane(s),
         Section::Contacts => contacts_pane(s),
     };
-    col = col.push(body);
-    container(col)
+    container(body)
         .padding(PAD)
         .width(Fill)
         .height(Fill)
@@ -190,26 +300,51 @@ fn main_pane(s: &Shell) -> Element<'_, Message> {
 
 // ----- shared pieces -----
 
-/// A two-line list row of fixed height. Clicking a row that is not selected
-/// selects it; clicking the selected row activates it (opens or edits).
+/// A list row: a click sends `select`, a double click also `open`.
+fn click_row<'a>(
+    c: Colors,
+    content: impl Into<Element<'a, Message>>,
+    height: f32,
+    selected: bool,
+    select: Msg,
+    open: Msg,
+) -> Element<'a, Message> {
+    mouse_area(
+        container(content)
+            .width(Fill)
+            .height(height)
+            .padding([4, 8])
+            .center_y(height)
+            .style(move |_| style::row_fill(c, selected)),
+    )
+    .on_press(core(select.clone()))
+    .on_double_click(core(Msg::Batch(vec![select, open])))
+    .interaction(iced::mouse::Interaction::Pointer)
+    .into()
+}
+
+/// A two-line list row of fixed height that sends `msg` when clicked. A
+/// row that leads somewhere (a notebook or folder) ends in a chevron.
 fn list_row<'a>(
     c: Colors,
-    index: usize,
+    msg: Message,
     title: &str,
     subtitle: &str,
     selected: bool,
+    leads_in: bool,
 ) -> Element<'a, Message> {
-    let msg = if selected {
-        core(Msg::Activate)
-    } else {
-        core(Msg::Select(index))
-    };
+    let chevron = if leads_in { "›" } else { "" };
     button(
-        column![
-            text(title.to_string()).size(14).color(c.text),
-            text(subtitle.to_string()).size(12).color(c.muted),
+        row![
+            column![
+                text(title.to_string()).size(14).color(c.text),
+                text(subtitle.to_string()).size(12).color(c.muted),
+            ]
+            .spacing(2)
+            .width(Fill),
+            text(chevron).size(18).color(c.muted),
         ]
-        .spacing(2),
+        .align_y(Center),
     )
     .width(Fill)
     .height(ROW_H)
@@ -240,7 +375,7 @@ fn empty_hint(s: &Shell, empty: &str) -> String {
     if s.app.is_loading(s.app.section) {
         "Loading...".into()
     } else if !s.app.filter.is_empty() {
-        format!("Nothing matches \"{}\". Esc clears the filter.", s.app.filter)
+        format!("Nothing matches \"{}\".", s.app.filter)
     } else {
         empty.into()
     }
@@ -281,7 +416,20 @@ fn form_card<'a>(c: Colors, f: &FormView) -> Element<'a, Message> {
     if let Some(err) = &f.error {
         col = col.push(text(err.clone()).size(12).color(c.error));
     }
-    col = col.push(muted_text(c, "Tab next field · Ctrl+Enter save · Esc cancel"));
+    col = col.push(
+        row![
+            space::horizontal(),
+            button(text("Cancel").size(14))
+                .padding([6, 14])
+                .on_press(core(Msg::Escape))
+                .style(style::quiet_button(c)),
+            button(text("Save").size(14))
+                .padding([6, 14])
+                .on_press(core(Msg::SaveForm))
+                .style(style::primary_button(c)),
+        ]
+        .spacing(8),
+    );
     container(col)
         .padding(16)
         .width(Fill)
@@ -296,36 +444,29 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let rows = view_model::notes_list(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
-        muted_text(c, empty_hint(s, "No notes yet. Press n to create one.")).into()
+        muted_text(c, empty_hint(s, "No notes here yet. Click New note to write one.")).into()
     } else {
         let mut col = Column::new();
         for (i, r) in rows.iter().enumerate() {
-            let title = if r.is_dir {
-                format!("{}/", r.title)
-            } else {
-                r.title.clone()
-            };
-            col = col.push(list_row(c, i, &title, &r.subtitle, r.selected));
+            // One click opens a notebook, folder or note.
+            let open = core(Msg::Batch(vec![Msg::Select(i), Msg::Activate]));
+            col = col.push(list_row(c, open, &r.title, &r.subtitle, r.selected, r.is_dir));
         }
         col.into()
     };
     let left = container(
-        column![
-            muted_text(c, view_model::notes_breadcrumb(&s.app)),
-            scrollable(list)
-                .id("notes")
-                .spacing(4)
-                .on_scroll(scroll_msg("notes"))
-                .height(Fill),
-        ]
-        .spacing(8),
+        scrollable(list)
+            .id("notes")
+            .spacing(4)
+            .on_scroll(scroll_msg("notes"))
+            .height(Fill),
     )
     .width(300)
     .height(Fill);
 
     let right: Element<'_, Message> = match view_model::editor(&s.app) {
         Some(ed) => editor_pane(s, ed),
-        None => empty_card(c, "No note open", "Pick a note and press Enter to open it."),
+        None => empty_card(c, "No note open", "Click a note to open it."),
     };
     row![left, right].spacing(16).height(Fill).into()
 }
@@ -373,14 +514,14 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
             c,
             empty_hint(
                 s,
-                "No tasks. Press n to add one, or write - [ ] lines in a note.",
+                "No tasks. Click Add task, or write - [ ] lines in a note.",
             ),
         )
         .into();
     }
-    for group in groups {
+    for group in groups.into_iter().filter(|g| g.count > 0) {
         let title = if group.collapsed {
-            format!("{} (hidden, z shows it)", group.title)
+            format!("{} (hidden; Show done shows it)", group.title)
         } else {
             group.title.to_string()
         };
@@ -399,11 +540,14 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
             .width(Fill),
         );
         for task in &group.items {
-            let mark = if task.done { "[x]" } else { "[ ]" };
+            let i = index;
+            let mark = checkbox(task.done)
+                .on_toggle(move |_| core(Msg::Batch(vec![Msg::Select(i), Msg::ToggleTask])))
+                .size(16);
             let text_color = if task.done { c.muted } else { c.text };
             let due_color = if task.overdue { c.error } else { c.muted };
             let content = row![
-                text(mark).size(14).color(c.muted),
+                mark,
                 column![
                     text(task.text.clone()).size(14).color(text_color),
                     muted_text(c, task.source_note_title.clone()),
@@ -413,19 +557,7 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
             ]
             .spacing(12)
             .align_y(Center);
-            let msg = if task.selected {
-                core(Msg::Activate)
-            } else {
-                core(Msg::Select(index))
-            };
-            col = col.push(
-                button(content)
-                    .width(Fill)
-                    .height(TODO_ROW_H)
-                    .padding([4, 8])
-                    .on_press(msg)
-                    .style(style::row_button(c, task.selected)),
-            );
+            col = col.push(click_row(c, content, TODO_ROW_H, task.selected, Msg::Select(index), Msg::Activate));
             index += 1;
         }
     }
@@ -446,12 +578,12 @@ fn calendar_pane(s: &Shell) -> Element<'_, Message> {
     let month = view_model::month_grid(&s.app);
     let mode_label = if agenda_mode { "Month view" } else { "Agenda view" };
     let header = row![
-        button(text("<").size(14))
+        button(text("‹ Previous").size(14))
             .padding([4, 10])
             .on_press(core(Msg::ShiftMonth(-1)))
             .style(style::quiet_button(c)),
         text(month.title.clone()).size(16).color(c.text),
-        button(text(">").size(14))
+        button(text("Next ›").size(14))
             .padding([4, 10])
             .on_press(core(Msg::ShiftMonth(1)))
             .style(style::quiet_button(c)),
@@ -488,7 +620,7 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
     let days = view_model::agenda(&s.app);
     let mut col = Column::new();
     if days.is_empty() {
-        col = col.push(muted_text(c, "No events in the next 30 days. Press n to add one."));
+        col = col.push(muted_text(c, "No events in the next 30 days. Click New event to add one."));
     }
     for day in days {
         let label_color = if day.is_today { c.accent } else { c.muted };
@@ -503,30 +635,14 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
                 .padding([0, 8]),
         );
         for (i, ev) in day.events.iter().enumerate() {
-            let msg = if ev.selected {
-                core(Msg::Activate)
-            } else if day.is_selected {
-                core(Msg::Select(i))
-            } else {
-                Message::Core(Msg::Batch(vec![
-                    Msg::SelectDay(day.date),
-                    Msg::Select(i),
-                ]))
-            };
+            let select = Msg::Batch(vec![Msg::SelectDay(day.date), Msg::Select(i)]);
             let content = row![
                 text(ev.time_label.clone()).size(12).color(c.muted).width(110),
                 text(ev.title.clone()).size(14).color(c.text).width(Fill),
             ]
             .spacing(8)
             .align_y(Center);
-            col = col.push(
-                button(content)
-                    .width(Fill)
-                    .height(ROW_H)
-                    .padding([4, 8])
-                    .on_press(msg)
-                    .style(style::row_button(c, ev.selected)),
-            );
+            col = col.push(click_row(c, content, ROW_H, ev.selected, select, Msg::Edit));
         }
     }
     scrollable(col)
@@ -538,8 +654,8 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
         .into()
 }
 
-/// The selected day's events, under the month grid, so `e` and `d` have a
-/// visible target.
+/// The selected day's events, under the month grid, so Edit and Delete have
+/// a visible target.
 fn day_events(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let mut col = Column::new().spacing(2);
@@ -549,28 +665,16 @@ fn day_events(s: &Shell) -> Element<'_, Message> {
         .next()
         .filter(|d| d.is_selected);
     match today {
-        None => col = col.push(muted_text(c, "No events. Press n to add one.")),
+        None => col = col.push(muted_text(c, "No events. Click New event to add one.")),
         Some(day) => {
             for (i, ev) in day.events.iter().enumerate() {
-                let msg = if ev.selected {
-                    core(Msg::Activate)
-                } else {
-                    core(Msg::Select(i))
-                };
-                col = col.push(
-                    button(
-                        row![
-                            text(ev.time_label.clone()).size(12).color(c.muted).width(110),
-                            text(ev.title.clone()).size(14).color(c.text).width(Fill),
-                        ]
-                        .spacing(8)
-                        .align_y(Center),
-                    )
-                    .width(Fill)
-                    .padding([6, 8])
-                    .on_press(msg)
-                    .style(style::row_button(c, ev.selected)),
-                );
+                let content = row![
+                    text(ev.time_label.clone()).size(12).color(c.muted).width(110),
+                    text(ev.title.clone()).size(14).color(c.text).width(Fill),
+                ]
+                .spacing(8)
+                .align_y(Center);
+                col = col.push(click_row(c, content, 36.0, ev.selected, Msg::Select(i), Msg::Edit));
             }
         }
     }
@@ -647,7 +751,7 @@ fn photos_pane(s: &Shell) -> Element<'_, Message> {
     let tile = tile_px(s.pane_w());
     let grid = view_model::photo_grid(&s.app, cols);
     if grid.rows.is_empty() {
-        let hint = empty_hint(s, "Press u to upload photos.");
+        let hint = empty_hint(s, "Click Upload to add photos.");
         return empty_card(c, "No photos", &hint);
     }
     let mut col = Column::new().spacing(GAP);
@@ -669,34 +773,23 @@ fn photos_pane(s: &Shell) -> Element<'_, Message> {
                     .into(),
             };
             let selected = cell.selected;
-            let msg = if selected {
-                core(Msg::Activate)
-            } else {
-                core(Msg::Select(index))
-            };
+            let framed = container(inner)
+                .width(tile)
+                .height(tile)
+                .style(move |_| container::Style {
+                    background: Some(iced::Background::Color(c.panel)),
+                    border: Border {
+                        color: if selected { c.accent } else { iced::Color::TRANSPARENT },
+                        width: 2.0,
+                        radius: Radius::from(6.0),
+                    },
+                    ..container::Style::default()
+                });
             r = r.push(
-                button(inner)
-                    .width(tile)
-                    .height(tile)
-                    .padding(0)
-                    .on_press(msg)
-                    .style(move |_, status| button::Style {
-                        background: Some(iced::Background::Color(c.panel)),
-                        text_color: c.text,
-                        border: Border {
-                            color: if selected {
-                                c.accent
-                            } else if matches!(status, button::Status::Hovered) {
-                                c.border
-                            } else {
-                                iced::Color::TRANSPARENT
-                            },
-                            width: 2.0,
-                            radius: Radius::from(6.0),
-                        },
-                        shadow: Shadow::default(),
-                        snap: false,
-                    }),
+                mouse_area(framed)
+                    .on_press(core(Msg::Select(index)))
+                    .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate])))
+                    .interaction(iced::mouse::Interaction::Pointer),
             );
         }
         col = col.push(r);
@@ -729,10 +822,14 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
         None => muted_text(c, "Loading...").into(),
     };
     let caption = row![
+        tool(c, "‹ All photos", "Esc", Some(Msg::Escape)),
         text(detail.title.clone()).size(16).color(c.text),
         space::horizontal(),
         muted_text(c, detail.position.clone()),
+        tool(c, "Previous", "Left", Some(Msg::Nav(locus_core::Nav::Left))),
+        tool(c, "Next", "Right", Some(Msg::Nav(locus_core::Nav::Right))),
     ]
+    .spacing(8)
     .align_y(Center);
     let mut meta = detail.path.clone();
     if !detail.tags.is_empty() {
@@ -757,13 +854,6 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
 
 fn files_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
-    // The root crumb is "/" itself, so the trail reads `/obsidian/Notes`.
-    let crumbs: Vec<String> = view_model::breadcrumb(&s.app)
-        .into_iter()
-        .skip(1)
-        .map(|crumb| crumb.label)
-        .collect();
-    let trail = format!("/{}", crumbs.join("/"));
     let header = row![
         muted_text(c, "Name").width(Fill),
         muted_text(c, "Size").width(96),
@@ -777,38 +867,25 @@ fn files_pane(s: &Shell) -> Element<'_, Message> {
     if rows.is_empty() {
         col = col.push(muted_text(
             c,
-            empty_hint(s, "Empty folder. Press u to upload here, n for a new folder."),
+            empty_hint(s, "Empty folder. Click Upload to add files here."),
         ));
     }
     for (i, r) in rows.iter().enumerate() {
-        let name = if r.is_dir {
-            format!("{}/", r.name)
+        let (name_color, size) = if r.is_dir {
+            (c.accent, "Folder".to_string())
         } else {
-            r.name.clone()
+            (c.text, r.size_label.clone())
         };
         let content = row![
-            text(name).size(14).color(c.text).width(Fill),
-            muted_text(c, r.size_label.clone()).width(96),
+            text(r.name.clone()).size(14).color(name_color).width(Fill),
+            muted_text(c, size).width(96),
             muted_text(c, r.modified_label.clone()).width(120),
         ]
         .spacing(8)
         .align_y(Center);
-        let msg = if r.selected {
-            core(Msg::Activate)
-        } else {
-            core(Msg::Select(i))
-        };
-        col = col.push(
-            button(content)
-                .width(Fill)
-                .height(ROW_H)
-                .padding([4, 8])
-                .on_press(msg)
-                .style(style::row_button(c, r.selected)),
-        );
+        col = col.push(click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Activate));
     }
     column![
-        muted_text(c, trail),
         header,
         scrollable(col)
             .id("files")
@@ -828,11 +905,16 @@ fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let rows = view_model::contact_rows(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
-        muted_text(c, empty_hint(s, "No contacts yet. Press n to add one.")).into()
+        muted_text(c, empty_hint(s, "No contacts yet. Click New contact to add one.")).into()
     } else {
         let mut col = Column::new();
         for (i, r) in rows.iter().enumerate() {
-            col = col.push(list_row(c, i, &r.name, &r.subtitle, r.selected));
+            let content = column![
+                text(r.name.clone()).size(14).color(c.text),
+                text(r.subtitle.clone()).size(12).color(c.muted),
+            ]
+            .spacing(2);
+            col = col.push(click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Edit));
         }
         col.into()
     };
@@ -971,9 +1053,15 @@ fn help_card(s: &Shell) -> Element<'_, Message> {
     };
     container(
         column![
-            text(format!("Keys · {}", s.app.section.label())).size(16).color(c.text),
+            text(format!("Keyboard shortcuts · {}", s.app.section.label())).size(16).color(c.text),
             row![column_of(left), column_of(right)].spacing(32),
-            muted_text(c, "? or Esc closes"),
+            row![
+                space::horizontal(),
+                button(text("Close").size(14))
+                    .padding([6, 14])
+                    .on_press(core(Msg::ToggleHelp))
+                    .style(style::quiet_button(c)),
+            ],
         ]
         .spacing(12),
     )
@@ -992,11 +1080,11 @@ fn confirm_card(s: &Shell) -> Option<Element<'_, Message>> {
             column![
                 text(prompt).size(14).color(c.text),
                 row![
-                    button(text("Yes (y)").size(14))
+                    button(text("Delete").size(14))
                         .padding([6, 14])
                         .on_press(core(Msg::ConfirmAnswer(true)))
                         .style(style::primary_button(c)),
-                    button(text("No (n)").size(14))
+                    button(text("Cancel").size(14))
                         .padding([6, 14])
                         .on_press(core(Msg::ConfirmAnswer(false)))
                         .style(style::quiet_button(c)),
@@ -1024,7 +1112,18 @@ fn prompt_card(s: &Shell) -> Option<Element<'_, Message>> {
                     .on_input(set_text)
                     .padding(10)
                     .size(14),
-                muted_text(c, "Enter to confirm · Esc to cancel"),
+                row![
+                    space::horizontal(),
+                    button(text("Cancel").size(14))
+                        .padding([6, 14])
+                        .on_press(core(Msg::Escape))
+                        .style(style::quiet_button(c)),
+                    button(text("OK").size(14))
+                        .padding([6, 14])
+                        .on_press(core(Msg::Submit))
+                        .style(style::primary_button(c)),
+                ]
+                .spacing(8),
             ]
             .spacing(8),
         )

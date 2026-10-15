@@ -29,40 +29,6 @@ const MONTHS: [&str; 12] = [
 
 // ----- sidebar and status -----
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SidebarItem {
-    pub label: &'static str,
-    /// e.g. `g n`.
-    pub shortcut: String,
-    pub active: bool,
-    /// A count worth showing (notes total, tasks due, events today).
-    pub badge: Option<usize>,
-}
-
-pub fn sidebar(app: &App) -> Vec<SidebarItem> {
-    let today = app.now.today;
-    Section::ALL
-        .into_iter()
-        .map(|s| SidebarItem {
-            label: s.label(),
-            shortcut: format!("g {}", keymap::go_key(s)),
-            active: s == app.section,
-            badge: match s {
-                Section::Notes => Some(app.notes.note_count()),
-                Section::Todo => Some(
-                    todo::groups(app, today)
-                        .iter()
-                        .filter(|(k, _)| matches!(k, GroupKind::Overdue | GroupKind::Today))
-                        .map(|(_, t)| t.len())
-                        .sum(),
-                ),
-                Section::Calendar => Some(events_on(app, today).len()),
-                _ => None,
-            },
-        })
-        .collect()
-}
-
 /// The window or page title: `Locus`, or `Locus Notes` for a window locked
 /// to one section.
 pub fn window_title(app: &App) -> String {
@@ -72,10 +38,31 @@ pub fn window_title(app: &App) -> String {
     }
 }
 
-/// Whether to draw the section sidebar / nav bar. A locked window is one
-/// section's own app, so it has none.
-pub fn show_sections(app: &App) -> bool {
-    app.locked.is_none()
+/// Whether there is a level to go back up to: a folder or notebook in
+/// Notes, a subdirectory in Files. Drives the toolbar's Back button.
+pub fn can_go_up(app: &App) -> bool {
+    match app.section {
+        Section::Notes => !matches!(app.notes.loc, crate::state::NotesLoc::Books),
+        Section::Files => app.files.cwd.trim_matches('/') != "",
+        _ => false,
+    }
+}
+
+/// Whether the selection is an item that Delete, Rename or Edit apply to,
+/// so shells can disable those buttons otherwise.
+pub fn has_item_selected(app: &App) -> bool {
+    match app.section {
+        Section::Notes => notes_list(app).iter().any(|r| r.selected && !r.is_dir),
+        Section::Todo => todo_groups(app).iter().any(|g| g.items.iter().any(|t| t.selected)),
+        Section::Calendar => events_on(app, app.calendar.day).len() > app.calendar.sel,
+        Section::Photos => photo_grid(app, app.photos.columns.max(1))
+            .rows
+            .iter()
+            .any(|r| r.iter().any(|c| c.selected)),
+        // Folders cannot be renamed, moved or deleted here.
+        Section::Files => file_rows(app).iter().any(|r| r.selected && !r.is_dir),
+        Section::Contacts => contact_detail(app).is_some(),
+    }
 }
 
 /// One line for the bottom bar: section, status, loading and filter state.
@@ -578,7 +565,8 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
             "task text (optional due: YYYY-MM-DD)",
             app.input.text.clone(),
         ),
-        InputKind::NewDir => ("folder name", app.input.text.clone()),
+        InputKind::NewDir | InputKind::NewNoteFolder => ("folder name", app.input.text.clone()),
+        InputKind::NewNotebook => ("notebook title", app.input.text.clone()),
         InputKind::RenameNote => ("note title", app.input.text.clone()),
         InputKind::RenameFile => ("file name", app.input.text.clone()),
         InputKind::MoveFile => ("move to directory", app.input.text.clone()),
@@ -596,7 +584,7 @@ pub fn confirm_prompt(app: &App) -> Option<String> {
     if app.focus != Focus::Confirm {
         return None;
     }
-    app.confirm.as_ref().map(|c| format!("{} (y/n)", c.prompt))
+    app.confirm.as_ref().map(|c| c.prompt.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -627,22 +615,11 @@ pub fn palette_query(app: &App) -> &str {
     &app.palette.query
 }
 
-/// `(keys, description)` pairs for the current section. A locked window
-/// opens other sections in their own windows, and says so.
+/// `(keys, description)` pairs for the current section.
 pub fn help(app: &App) -> Vec<(String, String)> {
-    let locked = app.locked.is_some();
     keymap::bindings(app.section)
         .into_iter()
-        .map(|(k, d)| {
-            let d = match d {
-                "go to Notes/Todo/Calendar/Photos/Files/Contacts" if locked => {
-                    "open the Notes/Todo/Calendar/Photos/Files/Contacts app"
-                }
-                "switch section" if locked => "open another section's app",
-                d => d,
-            };
-            (k.to_string(), d.to_string())
-        })
+        .map(|(k, d)| (k.to_string(), d.to_string()))
         .collect()
 }
 

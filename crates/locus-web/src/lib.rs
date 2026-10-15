@@ -24,8 +24,6 @@ use locus_core::{
 
 use style::Colors;
 
-/// Left sidebar width.
-pub const SIDEBAR_W: f32 = 200.0;
 /// Inner padding of the main pane.
 pub const PAD: f32 = 16.0;
 /// Gap between photo tiles and between rows.
@@ -86,6 +84,8 @@ pub enum Message {
     Thumb(String, Result<Vec<u8>, String>),
     /// The URL hash changed: another page sent a cross-link.
     Hash(String),
+    /// A launcher tile: open that app's page.
+    Launch(Section),
 }
 
 /// Photo grid columns for a main pane of `width` pixels.
@@ -184,9 +184,17 @@ impl Shell {
                 Some(msg) => self.apply(msg),
                 None => Task::none(),
             },
+            Message::Launch(section) => {
+                platform::open_section(section, None);
+                Task::none()
+            }
             Message::Session(ok) => {
                 if ok {
                     self.logged_in = true;
+                    if self.app.locked.is_none() {
+                        // The launcher page loads nothing.
+                        return Task::none();
+                    }
                     // The page's section (or Notes); a pending `#target`
                     // survives this switch and opens once it has loaded.
                     let section = self.app.section;
@@ -398,7 +406,8 @@ impl Shell {
             }
             Section::Todo => {
                 let mut y = 0.0;
-                for group in view_model::todo_groups(app) {
+                // Empty groups are not drawn.
+                for group in view_model::todo_groups(app).into_iter().filter(|g| g.count > 0) {
                     y += HEADER_H;
                     for task in &group.items {
                         if task.selected {
@@ -489,14 +498,9 @@ impl Shell {
         tasks
     }
 
-    /// Width of the main pane: the window, less the sidebar when it shows.
+    /// Width of the main pane: the whole window.
     pub fn pane_w(&self) -> f32 {
-        let sidebar = if view_model::show_sections(&self.app) {
-            SIDEBAR_W
-        } else {
-            0.0
-        };
-        self.window.width - sidebar
+        self.window.width
     }
 
     /// Thumbnail for a hash at a size, if it has arrived.
@@ -570,6 +574,9 @@ fn map_key(key: &keyboard::Key) -> Option<Key> {
             Named::PageUp => Key::PageUp,
             Named::PageDown => Key::PageDown,
             Named::Space => Key::Char(' '),
+            Named::F1 => Key::F(1),
+            Named::F2 => Key::F(2),
+            Named::F5 => Key::F(5),
             _ => return None,
         },
         _ => return None,

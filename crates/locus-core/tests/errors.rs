@@ -114,16 +114,6 @@ fn status_line_shows_section_status_loading_and_filter() {
 }
 
 #[test]
-fn sidebar_marks_only_the_active_section() {
-    let app = loaded_notes(vec![]);
-    let items = view_model::sidebar(&app);
-    assert_eq!(items.len(), 6);
-    assert_eq!(items.iter().filter(|i| i.active).count(), 1);
-    assert!(items[0].active);
-    assert_eq!(items[5].shortcut, "g o");
-}
-
-#[test]
 fn a_flood_of_unknown_messages_leaves_state_valid() {
     let mut app = loaded_notes(vec![note(1, "a", "- [ ] t", 1, 1)]);
     send(&mut app, Msg::Nav(locus_core::Nav::Bottom));

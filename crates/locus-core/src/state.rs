@@ -54,8 +54,8 @@ impl Section {
         Section::ALL.get(usize::from(n).checked_sub(1)?).copied()
     }
 
-    /// The lowercase name used on the command line (`locus notes`) and in
-    /// web routes (`/app/notes`).
+    /// The lowercase name used for programs (`locus-notes`), the command
+    /// line (`locus notes ls`) and web routes (`/app/notes`).
     pub fn slug(self) -> &'static str {
         match self {
             Section::Notes => "notes",
@@ -194,6 +194,8 @@ pub enum InputKind {
     Filter,
     TaskText,
     NewDir,
+    NewNoteFolder,
+    NewNotebook,
     RenameNote,
     RenameFile,
     MoveFile,
@@ -452,7 +454,7 @@ pub struct ContactsState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct App {
     pub section: Section,
-    /// Set when this window is one section's own app (`locus notes`,
+    /// Set when this window is one section's own app (`locus-notes`,
     /// `/app/notes`). Switching to another section then asks the shell to
     /// open that section's window instead of switching in place.
     pub locked: Option<Section>,
@@ -469,7 +471,6 @@ pub struct App {
     pub form: Option<Form>,
     pub confirm: Option<Confirm>,
     pub palette: PaletteState,
-    pub pending_g: bool,
     pub editor: Option<Editor>,
     pub notes: NotesState,
     pub todo: TodoState,
@@ -509,7 +510,6 @@ impl App {
             form: None,
             confirm: None,
             palette: PaletteState::default(),
-            pending_g: false,
             editor: None,
             notes: NotesState::default(),
             todo: TodoState::default(),

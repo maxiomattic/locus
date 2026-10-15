@@ -34,8 +34,6 @@ pub fn form_id(i: usize) -> String {
 
 // ----- sizes -----
 
-/// Widest the libcosmic nav bar gets; used until the grid reports its width.
-pub const NAV_W: f32 = 280.0;
 /// Horizontal room the page padding and scrollbar take from the grid.
 pub const PAGE_PAD_X: f32 = 56.0;
 /// Width of the list pane in Notes and Contacts.
@@ -84,17 +82,6 @@ pub fn photo_pitch(width: f32, cols: usize) -> f32 {
     tile_edge(width, cols) + GAP
 }
 
-pub fn section_icon(section: Section) -> &'static str {
-    match section {
-        Section::Notes => "accessories-text-editor-symbolic",
-        Section::Todo => "object-select-symbolic",
-        Section::Calendar => "x-office-calendar-symbolic",
-        Section::Photos => "image-x-generic-symbolic",
-        Section::Files => "folder-symbolic",
-        Section::Contacts => "system-users-symbolic",
-    }
-}
-
 // ----- colors -----
 
 fn danger() -> Color {
@@ -131,18 +118,53 @@ fn level_text<'a>(text: String, level: Level) -> Element<'a, Message> {
 
 // ----- shared pieces -----
 
-fn toolbar<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
-    let mut row = widget::row::with_capacity(items.len())
-        .spacing(theme::spacing().space_xxs)
-        .align_y(Alignment::Center);
-    for item in items {
-        row = row.push(item);
-    }
-    row.into()
-}
-
 fn text_button(label: &'static str, msg: Msg) -> Element<'static, Message> {
     widget::button::text(label).on_press(core(msg)).into()
+}
+
+/// A labelled toolbar button with a tooltip naming its shortcut; `None`
+/// draws it disabled.
+fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'static, Message> {
+    let b = widget::button::standard(label).on_press_maybe(msg.map(core));
+    if tip.is_empty() {
+        return b.into();
+    }
+    widget::tooltip(b, widget::text::caption(tip), widget::tooltip::Position::Bottom).into()
+}
+
+/// A list row: a click sends `select`, a double click also `open`.
+fn row_area<'a>(
+    content: impl Into<Element<'a, Message>>,
+    height: f32,
+    selected: bool,
+    select: Msg,
+    open: Msg,
+) -> Element<'a, Message> {
+    let radius = theme::active().cosmic().radius_s();
+    let fill = widget::container(content)
+        .height(Length::Fixed(height))
+        .width(Length::Fill)
+        .align_y(Alignment::Center)
+        .padding([0, theme::spacing().space_xxs])
+        .class(theme::Container::custom(move |t| {
+            let cosmic = t.cosmic();
+            widget::container::Style {
+                background: selected.then(|| {
+                    let mut c: Color = cosmic.accent_color().into();
+                    c.a = 0.2;
+                    c.into()
+                }),
+                border: Border {
+                    radius: radius.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }));
+    widget::mouse_area(fill)
+        .on_press(core(select.clone()))
+        .on_double_click(core(Msg::Batch(vec![select, open])))
+        .into()
 }
 
 fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> Element<'static, Message> {
@@ -180,7 +202,7 @@ fn empty_hint(app: &App, empty: &str) -> String {
     if app.ui.is_loading(app.ui.section) {
         "Loading...".into()
     } else if !app.ui.filter.is_empty() {
-        format!("Nothing matches \"{}\". Esc clears the filter.", app.ui.filter)
+        format!("Nothing matches \"{}\".", app.ui.filter)
     } else {
         empty.into()
     }
@@ -225,44 +247,126 @@ fn scroll<'a>(id: &'static str, content: impl Into<Element<'a, Message>>) -> Ele
 
 pub fn header_end() -> Vec<Element<'static, Message>> {
     vec![
-        icon_button("list-add-symbolic", "New (n)", Msg::New),
-        icon_button("view-refresh-symbolic", "Reload (Ctrl+R)", Msg::Reload),
-        icon_button("system-search-symbolic", "Command palette (: or Ctrl+K)", Msg::OpenPalette),
-        icon_button("help-browser-symbolic", "Keyboard shortcuts (?)", Msg::ToggleHelp),
+        icon_button("view-refresh-symbolic", "Reload (Ctrl+R or F5)", Msg::Reload),
+        icon_button("system-search-symbolic", "Command palette (Ctrl+K)", Msg::OpenPalette),
+        icon_button("help-browser-symbolic", "Keyboard shortcuts (F1)", Msg::ToggleHelp),
     ]
 }
 
 pub fn footer(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let ui = &app.ui;
-    widget::container(
-        widget::row::with_capacity(2)
-            .spacing(s.space_m)
-            .align_y(Alignment::Center)
-            .push(
-                widget::container(level_text(
-                    view_model::status_line(ui),
-                    view_model::status_level(ui),
-                ))
-                .width(Length::Fill),
-            )
-            .push(widget::text::caption(hints(ui.focus))),
-    )
+    widget::container(level_text(
+        view_model::status_line(ui),
+        view_model::status_level(ui),
+    ))
     .padding([s.space_xxs, s.space_s])
     .width(Length::Fill)
     .into()
 }
 
-fn hints(focus: Focus) -> &'static str {
-    match focus {
-        Focus::Editor => "Esc leave editor · Ctrl+S save · Ctrl+K palette",
-        Focus::Input(_) | Focus::Palette => "Enter confirm · Esc cancel",
-        Focus::Form => "Tab next field · Ctrl+Enter save · Esc cancel",
-        Focus::Confirm => "y yes · n no",
-        Focus::Help => "Esc close",
-        Focus::Detail => "h/l previous/next · Esc back",
-        Focus::List => "j/k move · Enter open · n new · / filter · : palette · ? help",
+/// The app's toolbar: Back and where you are, the search box, then the
+/// app's actions.
+fn app_toolbar(app: &App) -> Element<'_, Message> {
+    let s = theme::spacing();
+    let ui = &app.ui;
+    let item = view_model::has_item_selected(ui);
+    let when = |ok: bool, msg: Msg| ok.then_some(msg);
+    let mut bar = widget::row::with_capacity(12)
+        .spacing(s.space_xxs)
+        .align_y(Alignment::Center);
+    if matches!(ui.section, Section::Notes | Section::Files) {
+        bar = bar.push(
+            widget::tooltip(
+                widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
+                    .on_press_maybe(view_model::can_go_up(ui).then(|| core(Msg::Nav(Nav::Left)))),
+                widget::text::caption("Up one level (Backspace)"),
+                widget::tooltip::Position::Bottom,
+            ),
+        );
     }
+    match ui.section {
+        Section::Notes => {
+            bar = bar.push(widget::text::title4(view_model::notes_breadcrumb(ui)).width(Length::Fill));
+        }
+        Section::Files => bar = bar.push(files_path(app)),
+        other => bar = bar.push(widget::text::title4(other.label()).width(Length::Fill)),
+    }
+    bar = bar.push(
+        widget::search_input("Search", ui.filter.as_str())
+            .id(Id::new(FILTER_ID))
+            .on_input(|value| core(Msg::Batch(vec![Msg::FocusFilter, Msg::Text(TextEdit::Set(value))])))
+            .on_clear(core(Msg::Batch(vec![
+                Msg::FocusFilter,
+                Msg::Text(TextEdit::Set(String::new())),
+            ])))
+            .width(Length::Fixed(220.0)),
+    );
+    let actions: Vec<Element<'_, Message>> = match ui.section {
+        Section::Notes if !view_model::can_go_up(ui) => vec![
+            tool("New notebook", "", Some(Msg::NewNotebook)),
+            tool("New note", "Ctrl+N", Some(Msg::New)),
+        ],
+        Section::Notes => vec![
+            tool("New note", "Ctrl+N", Some(Msg::New)),
+            tool("New folder", "", Some(Msg::NewFolder)),
+        ],
+        Section::Todo => vec![
+            tool("Add task", "Ctrl+N", Some(Msg::New)),
+            tool("Open note", "Enter", when(item, Msg::Activate)),
+            tool(
+                if ui.todo.show_done { "Hide done" } else { "Show done" },
+                "",
+                Some(Msg::ToggleDoneTasks),
+            ),
+        ],
+        Section::Calendar => vec![
+            tool("New event", "Ctrl+N", Some(Msg::New)),
+            tool("Edit", "F2", when(item, Msg::Edit)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Photos => vec![
+            tool("Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool("Open", "Enter", when(item && ui.focus != Focus::Detail, Msg::Activate)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Files => vec![
+            tool("Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool("New folder", "Ctrl+N", Some(Msg::New)),
+            tool("Rename", "F2", when(item, Msg::Rename)),
+            tool("Move", "", when(item, Msg::MoveFile)),
+            tool("Copy path", "Ctrl+C", when(item, Msg::Yank)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Contacts => vec![
+            tool("New contact", "Ctrl+N", Some(Msg::New)),
+            tool("Edit", "F2", when(item, Msg::Edit)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+    };
+    for action in actions {
+        bar = bar.push(action);
+    }
+    bar.into()
+}
+
+/// The Files path as clickable crumbs: each one goes that many levels up.
+fn files_path(app: &App) -> Element<'_, Message> {
+    let s = theme::spacing();
+    let crumbs = view_model::breadcrumb(&app.ui);
+    let depth = crumbs.len().saturating_sub(1);
+    let mut path = widget::row::with_capacity(crumbs.len() * 2)
+        .spacing(s.space_xxxs)
+        .align_y(Alignment::Center)
+        .width(Length::Fill);
+    for (j, crumb) in crumbs.into_iter().enumerate() {
+        if j > 1 {
+            path = path.push(widget::text::caption("/"));
+        }
+        let up = (j < depth).then(|| core(Msg::Batch(vec![Msg::Nav(Nav::Left); depth - j])));
+        path = path.push(widget::button::text(crumb.label).on_press_maybe(up));
+    }
+    path.into()
 }
 
 pub fn content(app: &App) -> Element<'_, Message> {
@@ -277,20 +381,9 @@ pub fn content(app: &App) -> Element<'_, Message> {
         Screen::Login => login(app),
         Screen::Main => {
             let mut col = widget::column::with_capacity(2)
-                .spacing(s.space_xs)
-                .height(Length::Fill);
-            if app.ui.focus == Focus::Input(InputKind::Filter) || !app.ui.filter.is_empty() {
-                col = col.push(
-                    widget::search_input("Filter", app.ui.filter.as_str())
-                        .id(Id::new(FILTER_ID))
-                        .on_input(set_text)
-                        .on_clear(core(Msg::Batch(vec![
-                            Msg::FocusFilter,
-                            Msg::Text(TextEdit::Set(String::new())),
-                        ])))
-                        .width(Length::Fill),
-                );
-            }
+                .spacing(s.space_s)
+                .height(Length::Fill)
+                .push(app_toolbar(app));
             col = col.push(match app.ui.section {
                 Section::Notes => notes(app),
                 Section::Todo => todo(app),
@@ -362,33 +455,34 @@ fn notes(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::notes_list(&app.ui);
     let list: Element<'_, Message> = if rows.is_empty() {
-        empty("No notes", empty_hint(app, "Press n to create one."))
+        empty("No notes", empty_hint(app, "Click New note to write one."))
     } else {
         let mut list = widget::list_column();
         for (i, row) in rows.into_iter().enumerate() {
-            let title = if row.is_dir {
-                format!("{}/", row.title)
+            let content = widget::row::with_capacity(2)
+                .align_y(Alignment::Center)
+                .push(widget::container(two_lines(row.title, row.subtitle)).width(Length::Fill));
+            let content = if row.is_dir {
+                content.push(widget::icon::from_name("go-next-symbolic").size(16).icon())
             } else {
-                row.title
+                content
             };
+            // One click opens a notebook, folder or note.
             list = list.add(list_item(
-                two_lines(title, row.subtitle),
+                content,
                 ROW2_H,
                 row.selected,
-                Msg::Select(i),
+                Msg::Batch(vec![Msg::Select(i), Msg::Activate]),
             ));
         }
         scroll(NOTES_SCROLL, list)
     };
-    let left = widget::column::with_capacity(2)
-        .spacing(s.space_xxs)
+    let left = widget::container(list)
         .width(Length::Fixed(LIST_W))
-        .height(Length::Fill)
-        .push(widget::text::caption(view_model::notes_breadcrumb(&app.ui)))
-        .push(list);
+        .height(Length::Fill);
     let right: Element<'_, Message> = match view_model::editor(&app.ui) {
         Some(editor) => editor_pane(app, editor),
-        None => empty("No note open", "Select a note and press Enter.".into()),
+        None => empty("No note open", "Click a note to open it.".into()),
     };
     widget::row::with_capacity(2)
         .spacing(s.space_s)
@@ -413,8 +507,8 @@ fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
         .align_y(Alignment::Center)
         .push(widget::text::title4(editor.title).width(Length::Fill))
         .push(status)
-        .push(icon_button("edit-symbolic", "Rename (r)", Msg::Rename))
-        .push(icon_button("user-trash-symbolic", "Delete (d)", Msg::Delete));
+        .push(tool("Rename", "F2", Some(Msg::Rename)))
+        .push(tool("Delete", "Delete", Some(Msg::Delete)));
     let text = widget::text_editor::text_editor(&app.content)
         .id(Id::new(EDITOR_ID))
         .on_action(Message::Editor)
@@ -445,7 +539,7 @@ fn todo(app: &App) -> Element<'_, Message> {
     if groups.is_empty() {
         return empty(
             "No tasks",
-            empty_hint(app, "Press n to add one, or write - [ ] lines in a note."),
+            empty_hint(app, "Click Add task, or write - [ ] lines in a note."),
         );
     }
     let mut col = widget::column::with_capacity(groups.len() * 2).spacing(s.space_xs);
@@ -469,7 +563,7 @@ fn todo(app: &App) -> Element<'_, Message> {
         );
         if group.collapsed {
             col = col.push(
-                widget::container(widget::text::caption("Hidden. Press z to show."))
+                widget::container(widget::text::caption("Hidden. Click Show done to see them."))
                     .height(Length::Fixed(NOTE_H)),
             );
             continue;
@@ -503,7 +597,7 @@ fn todo(app: &App) -> Element<'_, Message> {
                         .push(widget::text::caption(task.source_note_title)),
                 )
                 .push(due);
-            list = list.add(list_item(content, ROW2_H, task.selected, Msg::Select(i)));
+            list = list.add(row_area(content, ROW2_H, task.selected, Msg::Select(i), Msg::Activate));
         }
         col = col.push(list);
     }
@@ -534,13 +628,13 @@ fn calendar(app: &App) -> Element<'_, Message> {
     let header = widget::row::with_capacity(8)
         .spacing(s.space_xxs)
         .align_y(Alignment::Center)
-        .push(icon_button("go-previous-symbolic", "Previous month ([)", Msg::ShiftMonth(-1)))
+        .push(icon_button("go-previous-symbolic", "Previous month (Page Up)", Msg::ShiftMonth(-1)))
         .push(
             widget::container(widget::text::title4(month.title.clone()))
                 .width(Length::Fixed(180.0))
                 .align_x(Alignment::Center),
         )
-        .push(icon_button("go-next-symbolic", "Next month (])", Msg::ShiftMonth(1)))
+        .push(icon_button("go-next-symbolic", "Next month (Page Down)", Msg::ShiftMonth(1)))
         .push(text_button("Today", Msg::Today))
         .push(widget::space::horizontal())
         .push(mode_button("Agenda", CalMode::Agenda))
@@ -585,7 +679,7 @@ fn agenda(app: &App) -> Element<'_, Message> {
     if days.is_empty() {
         return empty(
             "No events",
-            empty_hint(app, "Nothing in the next 30 days. Press n to add one."),
+            empty_hint(app, "Nothing in the next 30 days. Click New event to add one."),
         );
     }
     let mut col = widget::column::with_capacity(days.len() * 2).spacing(s.space_xs);
@@ -613,11 +707,12 @@ fn agenda(app: &App) -> Element<'_, Message> {
             } else {
                 Msg::Batch(vec![Msg::SelectDay(day.date), Msg::Select(j)])
             };
-            list = list.add(list_item(
+            list = list.add(row_area(
                 event_row(ev.time_label, ev.title),
                 ROW1_H,
                 ev.selected,
                 select,
+                Msg::Edit,
             ));
         }
         col = col.push(list);
@@ -625,8 +720,8 @@ fn agenda(app: &App) -> Element<'_, Message> {
     scroll(AGENDA_SCROLL, col)
 }
 
-/// The selected day's events under the month grid, so `e` and `d` have a
-/// visible target.
+/// The selected day's events under the month grid, so Edit and Delete have
+/// a visible target.
 fn day_events(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let mut col = widget::column::with_capacity(2)
@@ -637,15 +732,16 @@ fn day_events(app: &App) -> Element<'_, Message> {
         .next()
         .filter(|d| d.is_selected);
     match day {
-        None => col = col.push(widget::text::caption("No events. Press n to add one.")),
+        None => col = col.push(widget::text::caption("No events. Click New event to add one.")),
         Some(day) => {
             let mut list = widget::list_column();
             for (j, ev) in day.events.into_iter().enumerate() {
-                list = list.add(list_item(
+                list = list.add(row_area(
                     event_row(ev.time_label, ev.title),
                     ROW1_H,
                     ev.selected,
                     Msg::Select(j),
+                    Msg::Edit,
                 ));
             }
             col = col.push(scroll(AGENDA_SCROLL, list));
@@ -739,7 +835,7 @@ fn form_card<'a>(form: FormView) -> Element<'a, Message> {
         widget::row::with_capacity(3)
             .spacing(s.space_xs)
             .align_y(Alignment::Center)
-            .push(widget::text::caption("Tab next field · Ctrl+Enter save · Esc cancel").width(Length::Fill))
+            .push(widget::space::horizontal())
             .push(widget::button::standard("Cancel").on_press(core(Msg::Escape)))
             .push(widget::button::suggested("Save").on_press(core(Msg::SaveForm))),
     );
@@ -755,7 +851,7 @@ fn photos(app: &App) -> Element<'_, Message> {
     let cols = app.ui.photos.columns.max(1);
     let grid = view_model::photo_grid(&app.ui, cols);
     if grid.rows.is_empty() {
-        return empty("No photos", empty_hint(app, "Press u to upload photos."));
+        return empty("No photos", empty_hint(app, "Click Upload to add photos."));
     }
     let tile = tile_edge(app.photo_width(), cols);
     let radius = theme::active().cosmic().radius_s();
@@ -800,12 +896,11 @@ fn photos(app: &App) -> Element<'_, Message> {
                         ..Default::default()
                     }
                 }));
-            let msg = if selected {
-                Msg::Activate
-            } else {
-                Msg::Select(index)
-            };
-            row = row.push(widget::mouse_area(framed).on_press(core(msg)));
+            row = row.push(
+                widget::mouse_area(framed)
+                    .on_press(core(Msg::Select(index)))
+                    .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate]))),
+            );
         }
         col = col.push(row);
     }
@@ -815,7 +910,7 @@ fn photos(app: &App) -> Element<'_, Message> {
 fn viewer(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let Some(detail) = view_model::photo_detail(&app.ui) else {
-        return empty("No photo", "Press Escape to go back.".into());
+        return empty("No photo", "Nothing to show.".into());
     };
     // The grid thumbnail stands in until the large one arrives.
     let handle = detail.hash.as_deref().and_then(|sha| {
@@ -837,11 +932,11 @@ fn viewer(app: &App) -> Element<'_, Message> {
     let top = widget::row::with_capacity(5)
         .spacing(s.space_xs)
         .align_y(Alignment::Center)
-        .push(icon_button("go-previous-symbolic", "Back to grid (Esc)", Msg::Escape))
+        .push(tool("All photos", "Esc", Some(Msg::Escape)))
         .push(widget::text::title4(detail.title).width(Length::Fill))
         .push(widget::text::caption(detail.position))
-        .push(icon_button("go-up-symbolic", "Previous (h)", Msg::Nav(Nav::Left)))
-        .push(icon_button("go-down-symbolic", "Next (l)", Msg::Nav(Nav::Right)));
+        .push(tool("Previous", "Left", Some(Msg::Nav(Nav::Left))))
+        .push(tool("Next", "Right", Some(Msg::Nav(Nav::Right))));
     let mut meta = detail.path;
     if !detail.tags.is_empty() {
         meta.push_str("  ·  ");
@@ -860,33 +955,11 @@ fn viewer(app: &App) -> Element<'_, Message> {
 
 fn files(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
-    let crumbs = view_model::breadcrumb(&app.ui);
-    let depth = crumbs.len().saturating_sub(1);
-    let mut path = widget::row::with_capacity(crumbs.len() * 2)
-        .spacing(s.space_xxxs)
-        .align_y(Alignment::Center);
-    for (j, crumb) in crumbs.into_iter().enumerate() {
-        if j > 1 {
-            path = path.push(widget::text::caption("/"));
-        }
-        // Each crumb is that many levels up from the current folder.
-        let up = (j < depth).then(|| core(Msg::Batch(vec![Msg::Nav(Nav::Left); depth - j])));
-        path = path.push(widget::button::text(crumb.label).on_press_maybe(up));
-    }
-    let tools = toolbar(vec![
-        path.width(Length::Fill).into(),
-        icon_button("document-send-symbolic", "Upload here (u)", Msg::Upload),
-        icon_button("folder-new-symbolic", "New folder (n)", Msg::New),
-        icon_button("edit-symbolic", "Rename (r)", Msg::Rename),
-        icon_button("go-jump-symbolic", "Move (m)", Msg::MoveFile),
-        icon_button("edit-copy-symbolic", "Copy path (y)", Msg::Yank),
-        icon_button("user-trash-symbolic", "Delete (d)", Msg::Delete),
-    ]);
     let rows = view_model::file_rows(&app.ui);
     let body: Element<'_, Message> = if rows.is_empty() {
         empty(
             "Empty folder",
-            empty_hint(app, "Press u to upload here, n for a new folder."),
+            empty_hint(app, "Click Upload to add files here."),
         )
     } else {
         let mut list = widget::list_column();
@@ -901,9 +974,12 @@ fn files(app: &App) -> Element<'_, Message> {
                 .align_y(Alignment::Center)
                 .push(widget::icon::from_name(icon).size(16).icon())
                 .push(widget::text::body(row.name).width(Length::Fill))
-                .push(widget::text::caption(row.size_label).width(Length::Fixed(90.0)))
+                .push(
+                    widget::text::caption(if row.is_dir { "Folder".into() } else { row.size_label })
+                        .width(Length::Fixed(90.0)),
+                )
                 .push(widget::text::caption(row.modified_label).width(Length::Fixed(100.0)));
-            list = list.add(list_item(content, ROW1_H, row.selected, Msg::Select(i)));
+            list = list.add(row_area(content, ROW1_H, row.selected, Msg::Select(i), Msg::Activate));
         }
         let header = widget::row::with_capacity(3)
             .spacing(s.space_s)
@@ -917,12 +993,7 @@ fn files(app: &App) -> Element<'_, Message> {
             .push(scroll(FILES_SCROLL, list))
             .into()
     };
-    widget::column::with_capacity(2)
-        .spacing(s.space_xs)
-        .height(Length::Fill)
-        .push(tools)
-        .push(body)
-        .into()
+    body
 }
 
 // ----- contacts -----
@@ -931,15 +1002,16 @@ fn contacts(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::contact_rows(&app.ui);
     let list: Element<'_, Message> = if rows.is_empty() {
-        empty("No contacts", empty_hint(app, "Press n to add one."))
+        empty("No contacts", empty_hint(app, "Click New contact to add one."))
     } else {
         let mut list = widget::list_column();
         for (i, row) in rows.into_iter().enumerate() {
-            list = list.add(list_item(
+            list = list.add(row_area(
                 two_lines(row.name, row.subtitle),
                 ROW2_H,
                 row.selected,
                 Msg::Select(i),
+                Msg::Edit,
             ));
         }
         scroll(CONTACTS_SCROLL, list)
@@ -961,8 +1033,8 @@ fn contacts(app: &App) -> Element<'_, Message> {
                         .spacing(s.space_xs)
                         .align_y(Alignment::Center)
                         .push(widget::text::title3(detail.name).width(Length::Fill))
-                        .push(icon_button("edit-symbolic", "Edit (e)", Msg::Edit))
-                        .push(icon_button("user-trash-symbolic", "Delete (d)", Msg::Delete)),
+                        .push(tool("Edit", "F2", Some(Msg::Edit)))
+                        .push(tool("Delete", "Delete", Some(Msg::Delete))),
                 )
                 .push(
                     widget::list_column()
@@ -995,13 +1067,13 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
             let prompt = view_model::confirm_prompt(ui)?;
             Some(
                 widget::dialog()
-                    .title("Confirm")
-                    .body(prompt)
+                    .title(prompt)
+                    .body("This cannot be undone.")
                     .primary_action(
-                        widget::button::destructive("Yes").on_press(core(Msg::ConfirmAnswer(true))),
+                        widget::button::destructive("Delete").on_press(core(Msg::ConfirmAnswer(true))),
                     )
                     .secondary_action(
-                        widget::button::standard("No").on_press(core(Msg::ConfirmAnswer(false))),
+                        widget::button::standard("Cancel").on_press(core(Msg::ConfirmAnswer(false))),
                     )
                     .into(),
             )

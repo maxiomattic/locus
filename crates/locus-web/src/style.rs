@@ -178,7 +178,8 @@ pub fn primary_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::S
     }
 }
 
-/// An outlined button (secondary actions in dialogs).
+/// An outlined button (toolbar actions, secondary actions in dialogs).
+/// Disabled, its text is dimmed.
 pub fn quiet_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
     move |_, status| {
         let bg = if matches!(status, button::Status::Hovered | button::Status::Pressed) {
@@ -186,9 +187,14 @@ pub fn quiet_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Sty
         } else {
             Color::TRANSPARENT
         };
+        let text_color = if matches!(status, button::Status::Disabled) {
+            with_alpha(c.text, 0.35)
+        } else {
+            c.text
+        };
         button::Style {
             background: Some(Background::Color(bg)),
-            text_color: c.text,
+            text_color,
             border: Border {
                 color: c.border,
                 width: 1.0,
@@ -197,5 +203,39 @@ pub fn quiet_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Sty
             shadow: Shadow::default(),
             snap: false,
         }
+    }
+}
+
+/// A large card-like button: the app tiles on the launcher page.
+pub fn tile_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
+    move |_, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(Background::Color(if hovered { c.selected_fill() } else { c.card })),
+            text_color: c.text,
+            border: Border {
+                color: if hovered { with_alpha(c.accent, 0.5) } else { c.border },
+                width: 1.0,
+                radius: Radius::from(10.0),
+            },
+            shadow: Shadow::default(),
+            snap: false,
+        }
+    }
+}
+
+/// Background of a list row drawn without a button (rows that tell a
+/// single click from a double click).
+pub fn row_fill(c: Colors, selected: bool) -> container::Style {
+    container::Style {
+        text_color: Some(c.text),
+        background: selected.then(|| Background::Color(c.selected_fill())),
+        border: Border {
+            color: if selected { with_alpha(c.accent, 0.5) } else { Color::TRANSPARENT },
+            width: 1.0,
+            radius: Radius::from(6.0),
+        },
+        shadow: Shadow::default(),
+        snap: false,
     }
 }

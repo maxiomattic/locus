@@ -7,7 +7,7 @@
 mod common;
 
 use common::*;
-use locus_core::{Effect, Focus, Key, Msg, Section, Target, view_model};
+use locus_core::{Effect, Focus, InputKind, Key, Msg, Section, Target, view_model};
 
 fn two_books() -> App {
     let mut app = App::new();
@@ -77,8 +77,24 @@ fn selected_title(app: &App) -> String {
         .unwrap_or_default()
 }
 
+/// Press the key for one shorthand letter: `j`/`k` down/up, `l` into the
+/// row, `h` back out, `G` to the bottom, `n` new, `d` delete, `r` rename.
 fn key(app: &mut App, c: char) {
-    press(app, Key::Char(c));
+    let key = match c {
+        'j' => Key::Down,
+        'k' => Key::Up,
+        'l' => Key::Right,
+        'h' => Key::Left,
+        'G' => Key::End,
+        'd' => Key::Delete,
+        'r' => Key::F(2),
+        'n' => {
+            ctrl(app, 'n');
+            return;
+        }
+        other => Key::Char(other),
+    };
+    press(app, key);
 }
 
 #[test]
@@ -107,7 +123,6 @@ fn several_notebooks_start_at_the_notebook_list() {
         .collect();
     assert_eq!(subs, ["2 notes", "4 notes"]);
     assert_eq!(view_model::notes_breadcrumb(&app), "Notebooks");
-    assert_eq!(view_model::sidebar(&app)[0].badge, Some(6));
 }
 
 #[test]
@@ -193,8 +208,8 @@ fn the_location_is_remembered_when_leaving_notes() {
     let mut app = two_books();
     key(&mut app, 'j');
     press(&mut app, Key::Enter);
-    ctrl(&mut app, '3');
-    ctrl(&mut app, '1');
+    send(&mut app, Msg::Switch(Section::Calendar));
+    send(&mut app, Msg::Switch(Section::Notes));
     assert_eq!(view_model::notes_breadcrumb(&app), "Locus");
 }
 
@@ -203,13 +218,13 @@ fn filter_applies_inside_the_current_folder_only() {
     let mut app = two_books();
     key(&mut app, 'j');
     press(&mut app, Key::Enter);
-    key(&mut app, '/');
+    ctrl(&mut app, 'f');
     type_str(&mut app, "deep");
     press(&mut app, Key::Enter);
     assert!(titles(&app).is_empty(), "the match is in a subfolder");
     press(&mut app, Key::Escape);
     press(&mut app, Key::Escape);
-    key(&mut app, '/');
+    ctrl(&mut app, 'f');
     type_str(&mut app, "alp");
     press(&mut app, Key::Enter);
     assert_eq!(titles(&app), ["Alpha"]);
@@ -222,7 +237,7 @@ fn n_creates_in_the_current_folder() {
     press(&mut app, Key::Enter);
     key(&mut app, 'j');
     press(&mut app, Key::Enter);
-    let fx = press(&mut app, Key::Char('n'));
+    let fx = ctrl(&mut app, 'n');
     assert!(matches!(
         fx.as_slice(),
         [Effect::CreateNote { nb: n, folder: 11, .. }] if *n == nb()
@@ -232,7 +247,7 @@ fn n_creates_in_the_current_folder() {
 #[test]
 fn n_from_the_list_uses_the_last_opened_notebook_else_the_first() {
     let mut app = two_books();
-    let fx = press(&mut app, Key::Char('n'));
+    let fx = ctrl(&mut app, 'n');
     assert!(matches!(
         fx.as_slice(),
         [Effect::CreateNote { nb: n, folder: 10, .. }] if *n == nb()
@@ -241,7 +256,7 @@ fn n_from_the_list_uses_the_last_opened_notebook_else_the_first() {
     let mut app = two_books();
     press(&mut app, Key::Enter); // Journal
     key(&mut app, 'h');
-    let fx = press(&mut app, Key::Char('n'));
+    let fx = ctrl(&mut app, 'n');
     assert!(matches!(
         fx.as_slice(),
         [Effect::CreateNote { nb: n, folder: 20, .. }] if *n == nb_journal()
@@ -252,7 +267,7 @@ fn n_from_the_list_uses_the_last_opened_notebook_else_the_first() {
 fn a_created_note_shows_where_it_was_made_and_opens() {
     let mut app = two_books();
     press(&mut app, Key::Enter);
-    press(&mut app, Key::Char('n'));
+    ctrl(&mut app, 'n');
     send(
         &mut app,
         Msg::NoteCreated {
@@ -409,7 +424,7 @@ fn delete_and_rename_ignore_folder_rows() {
     assert_eq!(app.focus, Focus::List);
     key(&mut app, 'r');
     assert_eq!(app.focus, Focus::List);
-    key(&mut app, 'i');
+    send(&mut app, Msg::Edit);
     assert_eq!(app.focus, Focus::List);
 }
 
@@ -442,7 +457,7 @@ fn todo_collects_tasks_from_every_notebook() {
             note: note_in(1, 10, "Top note", "- [ ] locus task\n", 5),
         },
     );
-    ctrl(&mut app, '2');
+    send(&mut app, Msg::Switch(Section::Todo));
     let groups = view_model::todo_groups(&app);
     let tasks: Vec<_> = groups[3]
         .items
@@ -458,7 +473,7 @@ fn todo_collects_tasks_from_every_notebook() {
     );
 
     // Toggling writes to the task's own notebook.
-    let fx = press(&mut app, Key::Char('x'));
+    let fx = press(&mut app, Key::Char(' '));
     assert_eq!(
         fx,
         vec![Effect::SaveNote {
@@ -469,7 +484,7 @@ fn todo_collects_tasks_from_every_notebook() {
         }]
     );
     // Enter jumps to the source in the right notebook.
-    press(&mut app, Key::Char('j'));
+    press(&mut app, Key::Down);
     press(&mut app, Key::Enter);
     assert_eq!(app.section, Section::Notes);
     assert_eq!(app.editor.as_ref().unwrap().title, "Top note");
@@ -479,7 +494,7 @@ fn todo_collects_tasks_from_every_notebook() {
 #[test]
 fn todo_fetches_missing_bodies_once_per_note() {
     let mut app = two_books();
-    let fx = ctrl(&mut app, '2');
+    let fx = send(&mut app, Msg::Switch(Section::Todo));
     let loads: Vec<_> = fx
         .iter()
         .filter(|e| matches!(e, Effect::LoadNote { .. }))
@@ -499,7 +514,7 @@ fn todo_fetches_missing_bodies_once_per_note() {
 fn new_tasks_go_to_the_inbox_of_the_default_notebook() {
     let mut app = two_books();
     press(&mut app, Key::Enter); // browse Journal
-    ctrl(&mut app, '2');
+    send(&mut app, Msg::Switch(Section::Todo));
     key(&mut app, 'n');
     type_str(&mut app, "buy milk");
     let fx = press(&mut app, Key::Enter);
@@ -532,4 +547,46 @@ fn reloading_notebooks_keeps_the_location_and_loaded_notes() {
         },
     );
     assert_eq!(view_model::notes_breadcrumb(&app), "Notebooks");
+}
+
+#[test]
+fn new_folder_is_created_in_the_folder_being_browsed() {
+    let mut app = two_books();
+    press(&mut app, Key::Enter);
+    assert_eq!(send(&mut app, Msg::NewFolder), vec![]);
+    assert_eq!(app.focus, Focus::Input(InputKind::NewNoteFolder));
+    type_str(&mut app, "Trips");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::CreateNoteFolder {
+            nb: nb_journal(),
+            parent: 20,
+            name: "Trips".into()
+        }]
+    );
+    assert_eq!(app.focus, Focus::List);
+}
+
+#[test]
+fn new_folder_needs_an_open_notebook() {
+    let mut app = two_books();
+    send(&mut app, Msg::NewFolder);
+    assert_eq!(app.focus, Focus::List);
+    assert_eq!(app.status.text, "Open a notebook first");
+}
+
+#[test]
+fn new_notebook_asks_for_a_title_and_creates_it() {
+    let mut app = two_books();
+    send(&mut app, Msg::NewNotebook);
+    assert_eq!(app.focus, Focus::Input(InputKind::NewNotebook));
+    assert!(press(&mut app, Key::Enter).is_empty(), "an empty title is refused");
+    type_str(&mut app, "Recipes");
+    assert_eq!(
+        press(&mut app, Key::Enter),
+        vec![Effect::CreateNotebook {
+            title: "Recipes".into()
+        }]
+    );
 }

@@ -38,7 +38,7 @@ fn fill_form(app: &mut locus_core::App, clock: locus_core::Now, vals: [&str; 5])
 fn new_event_form_defaults_to_selected_day() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
-    press_at(&mut app, Key::Char('n'), clock);
+    press_with(&mut app, Key::Char('n'), Mods::CTRL, clock);
     let form = view_model::form(&app).unwrap();
     assert_eq!(form.title, "New event");
     let values: Vec<_> = form.fields.iter().map(|f| f.value.clone()).collect();
@@ -52,7 +52,7 @@ fn saving_a_new_event_sends_unix_seconds_for_the_local_zone() {
     let tz = 2 * 3600;
     let clock = now_at(date(2026, 10, 11), tz);
     let mut app = cal_app(tz, vec![]);
-    press_at(&mut app, Key::Char('n'), clock);
+    press_with(&mut app, Key::Char('n'), Mods::CTRL, clock);
     fill_form(
         &mut app,
         clock,
@@ -87,7 +87,7 @@ fn saving_a_new_event_sends_unix_seconds_for_the_local_zone() {
 fn form_validation_names_the_bad_field() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
-    press_at(&mut app, Key::Char('n'), clock);
+    press_with(&mut app, Key::Char('n'), Mods::CTRL, clock);
 
     // Empty title.
     let fx = locus_core::update(&mut app, Msg::SaveForm, clock);
@@ -124,7 +124,7 @@ fn form_validation_names_the_bad_field() {
 fn enter_moves_between_fields_until_the_last_one_saves() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
-    press_at(&mut app, Key::Char('n'), clock);
+    press_with(&mut app, Key::Char('n'), Mods::CTRL, clock);
     type_str_at(&mut app, clock, "Lunch");
     let fx = press_at(&mut app, Key::Enter, clock);
     assert!(fx.is_empty());
@@ -144,17 +144,17 @@ fn type_str_at(app: &mut locus_core::App, clock: locus_core::Now, s: &str) {
 fn h_and_l_move_days_and_brackets_move_months() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
-    press_at(&mut app, Key::Char('l'), clock);
+    press_at(&mut app, Key::Right, clock);
     assert_eq!(app.calendar.day, date(2026, 10, 12));
-    press_at(&mut app, Key::Char('h'), clock);
-    press_at(&mut app, Key::Char('h'), clock);
+    press_at(&mut app, Key::Left, clock);
+    press_at(&mut app, Key::Left, clock);
     assert_eq!(app.calendar.day, date(2026, 10, 10));
-    press_at(&mut app, Key::Char(']'), clock);
+    press_at(&mut app, Key::PageDown, clock);
     assert_eq!(app.calendar.day, date(2026, 11, 10));
-    press_at(&mut app, Key::Char('['), clock);
-    press_at(&mut app, Key::Char('['), clock);
+    press_at(&mut app, Key::PageUp, clock);
+    press_at(&mut app, Key::PageUp, clock);
     assert_eq!(app.calendar.day, date(2026, 9, 10));
-    press_at(&mut app, Key::Char('t'), clock);
+    press_at(&mut app, Key::Home, clock);
     assert_eq!(app.calendar.day, date(2026, 10, 11));
 }
 
@@ -164,7 +164,7 @@ fn month_clamps_the_day_when_moving_between_months() {
     let mut app = cal_app(0, vec![]);
     locus_core::update(&mut app, Msg::Today, clock);
     assert_eq!(app.calendar.day, date(2026, 1, 31));
-    press_at(&mut app, Key::Char(']'), clock);
+    press_at(&mut app, Key::PageDown, clock);
     assert_eq!(app.calendar.day, date(2026, 2, 28));
 }
 
@@ -235,9 +235,9 @@ fn j_and_k_move_between_events_of_the_day() {
             event(2, "Lunch", b, b + 3600, 1),
         ],
     );
-    press_at(&mut app, Key::Char('j'), clock);
+    press_at(&mut app, Key::Down, clock);
     assert_eq!(app.calendar.sel, 1);
-    press_at(&mut app, Key::Char('j'), clock);
+    press_at(&mut app, Key::Down, clock);
     assert_eq!(app.calendar.sel, 1, "stops at the last event");
     let agenda = view_model::agenda(&app);
     assert!(agenda[0].events[1].selected);
@@ -248,7 +248,7 @@ fn agenda_mode_toggles_with_m() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
     assert_eq!(app.calendar.mode, CalMode::Agenda);
-    press_at(&mut app, Key::Char('m'), clock);
+    send_at(&mut app, Msg::CalendarMode, clock);
     assert_eq!(app.calendar.mode, CalMode::Month);
 }
 
@@ -258,7 +258,7 @@ fn edit_prefills_the_form_and_patches_with_revision() {
     let start = local_to_unix(date(2026, 10, 11), 9, 0, tz) as u64;
     let clock = now_at(date(2026, 10, 11), tz);
     let mut app = cal_app(tz, vec![event(4, "Standup", start, start + 900, 6)]);
-    press_at(&mut app, Key::Char('e'), clock);
+    press_at(&mut app, Key::F(2), clock);
     let form = view_model::form(&app).unwrap();
     assert_eq!(form.title, "Edit event");
     assert_eq!(form.fields[2].value, "09:00");
@@ -285,7 +285,7 @@ fn delete_event_confirms_first() {
     let start = local_to_unix(date(2026, 10, 11), 9, 0, tz) as u64;
     let clock = now_at(date(2026, 10, 11), tz);
     let mut app = cal_app(tz, vec![event(4, "Standup", start, start + 900, 6)]);
-    press_at(&mut app, Key::Char('d'), clock);
+    press_at(&mut app, Key::Delete, clock);
     assert_eq!(app.focus, Focus::Confirm);
     let fx = press_at(&mut app, Key::Char('y'), clock);
     assert_eq!(fx, vec![Effect::DeleteEvent { id: 4 }]);
@@ -312,6 +312,6 @@ fn event_filter_matches_titles() {
 fn bad_form_does_not_emit_anything_on_edit_of_missing_event() {
     let clock = now_at(date(2026, 10, 11), 0);
     let mut app = cal_app(0, vec![]);
-    assert!(press_at(&mut app, Key::Char('e'), clock).is_empty());
+    assert!(press_at(&mut app, Key::F(2), clock).is_empty());
     assert!(app.form.is_none());
 }

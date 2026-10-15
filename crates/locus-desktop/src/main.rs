@@ -20,7 +20,7 @@ use cosmic::app::{Core, Settings, Task};
 use cosmic::iced::widget::scrollable::Viewport;
 use cosmic::iced::{Event, Size, Subscription, clipboard, event, keyboard, window};
 use cosmic::prelude::*;
-use cosmic::widget::{nav_bar, text_editor};
+use cosmic::widget::text_editor;
 use cosmic::{Element, executor, widget};
 use locus_client::Client;
 use locus_core::state::{App as Ui, Focus, InputKind};
@@ -39,13 +39,22 @@ const TICK: Duration = Duration::from_secs(30);
 const THUMB_GRID: u32 = 256;
 const THUMB_VIEW: u32 = 1024;
 
-const USAGE: &str = "usage: locus [notes|todo|calendar|photos|files|contacts] [--open <target>]
-  locus              all sections in one window
-  locus <section>    that section as its own app (own window, own app id)
-  --open <target>    show note:<id>, file:<id>, contact:<id>, new or upload";
+const USAGE: &str = "usage: locus-<app> [--open <target>]
+  apps: locus-notes, locus-todo, locus-calendar, locus-photos, locus-files, locus-contacts
+        (or locus-app <app>)
+  --open <target>    show note:<id>, file:<id>, contact:<id>, new or upload
+Each app is its own window. For the command line, see `locus --help`.";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let flags = match Flags::parse(std::env::args().skip(1)) {
+    // `locus-notes` is Notes; `locus-app notes` works too.
+    let mut args = std::env::args();
+    let program = args.next().unwrap_or_default();
+    let named = std::path::Path::new(&program)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("locus-"))
+        .and_then(Section::from_slug);
+    let flags = match Flags::parse(named, args) {
         Ok(flags) => flags,
         Err(msg) => {
             eprintln!("locus: {msg}\n{USAGE}");
@@ -63,12 +72,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .size(Size::new(1200.0, 780.0))
         .size_limits(cosmic::iced::Limits::NONE.min_width(640.0).min_height(420.0));
     // One `cosmic::Application` type per app id: libcosmic takes the id from
-    // a const. Section windows are single-instance per id, so a second
-    // `locus notes` focuses the running one and hands it the target.
+    // a const. Each app is single-instance per id, so a second
+    // `locus-notes` focuses the running one and hands it the target.
     macro_rules! launch {
         ($($n:literal),*) => {
-            match flags.section.map_or(0, |s| s.index() + 1) {
-                0 => cosmic::app::run::<Window<0>>(settings, flags)?,
+            match flags.section.index() + 1 {
                 $($n => cosmic::app::run_single_instance::<Window<$n>>(settings, flags)?,)*
                 _ => unreachable!("Section::index is below 6"),
             }
@@ -78,26 +86,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// The app id COSMIC files a window under: one for the all-sections window
-/// and one per section, so each section is its own app (taskbar entry,
-/// tiling, `.desktop` file). Index 0 is all sections, 1..=6 follow
-/// [`Section::ALL`].
+/// The app id COSMIC files a window under, one per app, so each is its own
+/// app (taskbar entry, tiling, `.desktop` file). 1..=6 follow [`Section::ALL`].
 pub(crate) const fn app_id(n: u8) -> &'static str {
     match n {
-        1 => "org.locus.Notes",
         2 => "org.locus.Todo",
         3 => "org.locus.Calendar",
         4 => "org.locus.Photos",
         5 => "org.locus.Files",
         6 => "org.locus.Contacts",
-        _ => "org.locus.Desktop",
+        _ => "org.locus.Notes",
     }
 }
 
-/// Command-line launch: which section to lock to, and what to open in it.
-#[derive(Debug, Clone, Default)]
+/// Command-line launch: which app this is, and what to open in it.
+#[derive(Debug, Clone)]
 pub(crate) struct Flags {
-    section: Option<Section>,
+    section: Section,
     target: Option<Target>,
     /// The single-instance hand-off: `open` plus the target, sent over D-Bus
     /// to an already running window with the same app id.
@@ -106,10 +111,13 @@ pub(crate) struct Flags {
 }
 
 impl Flags {
-    fn parse(mut args: impl Iterator<Item = String>) -> Result<Flags, String> {
+    fn parse(named: Option<Section>, mut args: impl Iterator<Item = String>) -> Result<Flags, String> {
+        let mut section = named;
         let mut flags = Flags {
+            section: Section::Notes,
+            target: None,
             action: "open".into(),
-            ..Flags::default()
+            args: Vec::new(),
         };
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -124,15 +132,15 @@ impl Flags {
                     flags.args = vec![target.to_string()];
                     flags.target = Some(target);
                 }
-                other if flags.section.is_none() && !other.starts_with('-') => {
-                    flags.section = Some(
-                        Section::from_slug(other)
-                            .ok_or_else(|| format!("unknown section {other:?}"))?,
+                other if section.is_none() && !other.starts_with('-') => {
+                    section = Some(
+                        Section::from_slug(other).ok_or_else(|| format!("unknown app {other:?}"))?,
                     );
                 }
                 other => return Err(format!("unexpected argument {other:?}")),
             }
         }
+        flags.section = section.ok_or("which app?")?;
         Ok(flags)
     }
 }
@@ -179,7 +187,6 @@ pub(crate) enum Message {
 
 pub(crate) struct App {
     core: Core,
-    nav: nav_bar::Model,
     /// All app state. Only `locus_core::update` changes it.
     ui: Ui,
     screen: Screen,
@@ -271,7 +278,7 @@ impl App {
     }
 
     /// Open or focus `section`'s own window and show `target` there: run
-    /// `locus <section> [--open <target>]`. A running window with that app
+    /// `locus-<app> [--open <target>]`. A running window with that app
     /// id takes the hand-off over D-Bus and the new process exits. On
     /// Wayland an activation token goes along, so the compositor lets the
     /// other window take focus.
@@ -350,25 +357,10 @@ impl App {
         run_effect(client, Effect::Login { code })
     }
 
-    /// Bring the header, nav bar, editor widget, keyboard focus, scroll
-    /// position and thumbnails in line with the core. Runs after every dispatch.
+    /// Bring the header, editor widget, keyboard focus, scroll position and
+    /// thumbnails in line with the core. Runs after every dispatch.
     fn sync(&mut self) -> Task<Message> {
-        let section = self.ui.section;
-        let title = if self.screen == Screen::Main {
-            section.label().to_string()
-        } else {
-            view_model::window_title(&self.ui)
-        };
-        self.core.set_header_title(title);
-        let target = self
-            .nav
-            .iter()
-            .find(|e| self.nav.data::<Section>(*e) == Some(&section));
-        if let Some(entity) = target
-            && !self.nav.is_active(entity)
-        {
-            self.nav.activate(entity);
-        }
+        self.core.set_header_title(view_model::window_title(&self.ui));
 
         self.sync_editor();
 
@@ -469,15 +461,7 @@ impl App {
         {
             return *w;
         }
-        let nav = if self.core.is_condensed()
-            || !self.core.nav_bar_active()
-            || !view_model::show_sections(&self.ui)
-        {
-            0.0
-        } else {
-            view::NAV_W
-        };
-        self.window.width - nav - view::PAGE_PAD_X
+        self.window.width - view::PAGE_PAD_X
     }
 
     fn report_layout(&mut self) -> Task<Message> {
@@ -632,12 +616,17 @@ fn run_effect(client: Client, effect: Effect) -> Task<Message> {
     })
 }
 
-/// Start `locus <section> [--open <target>]` detached from this window.
+/// Start `locus-<app> [--open <target>]` detached from this window: the
+/// launcher installed next to this binary, else the one on `PATH`.
 fn spawn_section(section: Section, target: Option<Target>, token: Option<String>) {
     use std::os::unix::process::CommandExt;
-    let exe = std::env::current_exe().unwrap_or_else(|_| "locus".into());
+    let name = format!("locus-{}", section.slug());
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join(&name)))
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| name.clone().into());
     let mut cmd = std::process::Command::new(exe);
-    cmd.arg(section.slug());
     if let Some(target) = target {
         cmd.arg("--open").arg(target.to_string());
     }
@@ -653,7 +642,7 @@ fn spawn_section(section: Section, target: Option<Target>, token: Option<String>
         Ok(mut child) => {
             std::thread::spawn(move || child.wait());
         }
-        Err(e) => eprintln!("locus: could not start locus {}: {e}", section.slug()),
+        Err(e) => eprintln!("locus: could not start {name}: {e}"),
     }
 }
 
@@ -682,7 +671,6 @@ impl App {
         };
         let mut app = App {
             core,
-            nav: section_nav(),
             ui: Ui::new(),
             screen: Screen::Login,
             server,
@@ -702,17 +690,8 @@ impl App {
             viewports: HashMap::new(),
             last_rect: None,
         };
-        app.ui.focus_section(flags.section);
-        if let Some(target) = flags.target {
-            // `locus --open note:3` opens Notes; a locked window keeps its own.
-            if flags.section.is_none()
-                && let Some(section) = target.section()
-            {
-                app.ui.section = section;
-            }
-            app.ui.pending_target = Some(target);
-        }
-        app.core.nav_bar_set_toggled(true);
+        app.ui.focus_section(Some(flags.section));
+        app.ui.pending_target = flags.target;
         let mut tasks = Vec::new();
 
         let client = Url::parse(&app.server).ok().and_then(|u| Client::new(u).ok());
@@ -732,17 +711,6 @@ impl App {
         }
         tasks.push(app.report_layout());
         (app, Task::batch(tasks))
-    }
-
-    fn nav_model(&self) -> Option<&nav_bar::Model> {
-        (self.screen == Screen::Main && view_model::show_sections(&self.ui)).then_some(&self.nav)
-    }
-
-    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Message> {
-        match self.nav.data::<Section>(id).copied() {
-            Some(section) => self.dispatch(Msg::Switch(section)),
-            None => Task::none(),
-        }
     }
 
     fn header_end(&self) -> Vec<Element<'_, Message>> {
@@ -850,14 +818,6 @@ impl<const N: u8> cosmic::Application for Window<N> {
         (window, Task::batch([title_task, task]))
     }
 
-    fn nav_model(&self) -> Option<&nav_bar::Model> {
-        self.0.nav_model()
-    }
-
-    fn on_nav_select(&mut self, id: nav_bar::Id) -> Task<Message> {
-        self.0.on_nav_select(id)
-    }
-
     fn header_end(&self) -> Vec<Element<'_, Message>> {
         self.0.header_end()
     }
@@ -889,16 +849,4 @@ impl<const N: u8> cosmic::Application for Window<N> {
     fn dbus_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<Message> {
         self.0.on_activation(msg)
     }
-}
-
-/// The nav bar: one entry per section, in the core's order.
-fn section_nav() -> nav_bar::Model {
-    let mut nav = nav_bar::Model::default();
-    for section in Section::ALL {
-        nav.insert()
-            .text(section.label())
-            .icon(widget::icon::from_name(view::section_icon(section)))
-            .data(section);
-    }
-    nav
 }

@@ -260,6 +260,19 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             Ok(contact) => vec![Msg::ContactSaved { contact }],
             Err(e) => vec![write_failed(Section::Contacts, &e)],
         },
+        Effect::DeletePhoto { id } => match client.delete_photo(id, None).await {
+            Ok(()) => vec![Msg::PhotoDeleted { id }],
+            Err(e) => vec![write_failed(Section::Photos, &e)],
+        },
+        Effect::CreateNoteFolder { nb, parent, name } => {
+            match client.create_folder(&nb.host, &nb.flag_name, parent, &name).await {
+                Ok(_) => match client.list_folders(&nb.host, &nb.flag_name).await {
+                    Ok(folders) => vec![Msg::FoldersLoaded { nb, folders }],
+                    Err(e) => vec![load_failed(Section::Notes, &e)],
+                },
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
         Effect::DeleteContact { id } => match client.delete_contact(id, None).await {
             Ok(()) => vec![Msg::ContactDeleted { id }],
             Err(e) => vec![write_failed(Section::Contacts, &e)],

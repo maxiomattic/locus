@@ -25,11 +25,6 @@ fn locked(section: Section, notes: Vec<Note>) -> App {
     app
 }
 
-const ALT: Mods = Mods {
-    alt: true,
-    ..Mods::NONE
-};
-
 #[test]
 fn focus_section_locks_and_starts_on_the_section() {
     let mut app = App::new();
@@ -39,45 +34,6 @@ fn focus_section_locks_and_starts_on_the_section() {
     assert_eq!(app.section, Section::Calendar);
     app.focus_section(None);
     assert_eq!(app.locked, None);
-}
-
-#[test]
-fn section_keys_in_a_locked_window_open_the_other_app() {
-    let mut app = locked(Section::Todo, vec![note(1, "Plan", PLAN, 1, 1)]);
-
-    press(&mut app, Key::Char('g'));
-    let fx = press(&mut app, Key::Char('n'));
-    assert_eq!(fx, vec![Effect::OpenSection(Section::Notes, None)]);
-    assert_eq!(
-        app.section,
-        Section::Todo,
-        "the window stays on its section"
-    );
-    assert!(!app.pending_g);
-
-    let fx = press_with(&mut app, Key::Char('3'), ALT, now());
-    assert_eq!(fx, vec![Effect::OpenSection(Section::Calendar, None)]);
-    let fx = ctrl(&mut app, '6');
-    assert_eq!(fx, vec![Effect::OpenSection(Section::Contacts, None)]);
-    assert_eq!(app.section, Section::Todo);
-
-    // Its own section still switches in place (no new window).
-    press(&mut app, Key::Char('g'));
-    let fx = press(&mut app, Key::Char('t'));
-    assert!(!has_effect(&fx, |e| matches!(e, Effect::OpenSection(..))));
-    assert_eq!(app.section, Section::Todo);
-}
-
-#[test]
-fn section_keys_in_the_unlocked_window_switch_in_place() {
-    let mut app = loaded_notes(vec![]);
-    press(&mut app, Key::Char('g'));
-    let fx = press(&mut app, Key::Char('c'));
-    assert_eq!(app.section, Section::Calendar);
-    assert_eq!(fx, vec![Effect::LoadEvents]);
-    let fx = press_with(&mut app, Key::Char('6'), ALT, now());
-    assert_eq!(app.section, Section::Contacts);
-    assert!(!has_effect(&fx, |e| matches!(e, Effect::OpenSection(..))));
 }
 
 #[test]
@@ -95,7 +51,7 @@ fn enter_on_a_task_in_locked_todo_opens_the_note_in_the_notes_app() {
 #[test]
 fn enter_on_a_task_unlocked_still_opens_the_note_in_place() {
     let mut app = loaded_notes(vec![note(1, "Plan", PLAN, 1, 1)]);
-    ctrl(&mut app, '2');
+    send(&mut app, Msg::Switch(Section::Todo));
     let fx = press(&mut app, Key::Enter);
     assert!(!has_effect(&fx, |e| matches!(e, Effect::OpenSection(..))));
     assert_eq!(app.section, Section::Notes);
@@ -318,19 +274,12 @@ fn palette_marks_entries_that_open_another_app() {
 }
 
 #[test]
-fn view_model_titles_and_hides_sections_when_locked() {
+fn a_locked_window_is_titled_after_its_app() {
     let app = loaded_notes(vec![]);
     assert_eq!(view_model::window_title(&app), "Locus");
-    assert!(view_model::show_sections(&app));
 
     let app = locked(Section::Notes, vec![]);
     assert_eq!(view_model::window_title(&app), "Locus Notes");
-    assert!(!view_model::show_sections(&app));
-    assert!(
-        view_model::help(&app)
-            .iter()
-            .any(|(_, d)| d.contains("app"))
-    );
 }
 
 #[test]

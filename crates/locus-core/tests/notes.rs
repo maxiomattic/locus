@@ -24,13 +24,13 @@ fn enter_opens_editor_and_fetches_body_when_not_loaded() {
 fn j_while_editing_is_text_not_list_navigation() {
     let mut app = loaded_notes(vec![note(1, "a", "x", 1, 2), note(2, "b", "y", 1, 1)]);
     open_first_note(&mut app);
-    let fx = press(&mut app, Key::Char('j'));
+    let fx = press(&mut app, Key::Down);
     assert!(
         fx.is_empty(),
         "the shell types the j into its editor widget"
     );
     assert_eq!(app.notes.sel, 0, "the list did not move");
-    press(&mut app, Key::Char('d'));
+    press(&mut app, Key::Delete);
     assert_eq!(app.focus, Focus::Editor, "d is text, not delete");
     assert!(app.confirm.is_none());
 }
@@ -258,7 +258,7 @@ fn save_failure_reports_error_and_keeps_text() {
 #[test]
 fn n_creates_untitled_and_opens_it_in_the_editor() {
     let mut app = loaded_notes(vec![note(1, "Old", "", 1, 1)]);
-    let fx = press(&mut app, Key::Char('n'));
+    let fx = ctrl(&mut app, 'n');
     assert_eq!(
         fx,
         vec![Effect::CreateNote {
@@ -284,7 +284,7 @@ fn n_creates_untitled_and_opens_it_in_the_editor() {
 #[test]
 fn rename_prefills_and_submits_trimmed_title() {
     let mut app = loaded_notes(vec![note(3, "Old name", "", 1, 1)]);
-    press(&mut app, Key::Char('r'));
+    press(&mut app, Key::F(2));
     assert_eq!(app.input.text, "Old name");
     // Clear with backspaces, then type.
     for _ in 0.."Old name".len() {
@@ -306,7 +306,7 @@ fn rename_prefills_and_submits_trimmed_title() {
 #[test]
 fn rename_to_blank_is_rejected_and_stays_open() {
     let mut app = loaded_notes(vec![note(3, "x", "", 1, 1)]);
-    press(&mut app, Key::Char('r'));
+    press(&mut app, Key::F(2));
     press(&mut app, Key::Backspace);
     let fx = press(&mut app, Key::Enter);
     assert!(fx.is_empty());

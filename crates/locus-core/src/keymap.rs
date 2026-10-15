@@ -1,10 +1,10 @@
 //! Framework-agnostic key handling. Shells translate their native key events
-//! into [`Key`] and [`Mods`] and call [`keymap`]. Plain characters only become
-//! commands when no text field has focus; Escape, Ctrl-combos and Alt+digit
-//! always are.
+//! into [`Key`] and [`Mods`] and call [`keymap`].
 //!
-//! Section switching and the palette have platform-neutral bindings (`g n`,
-//! `:`, Alt+1..6) because browsers reserve Ctrl+1..6 for tab switching.
+//! The apps are ordinary point-and-click GUIs; these are the usual desktop
+//! shortcuts on top (arrows, Enter, Delete, F2, Ctrl+N, Ctrl+F, ...). Plain
+//! letters never run commands: typing in a list starts filtering it. Browsers
+//! keep Ctrl+N for themselves, so Alt+N is a synonym there.
 
 use crate::msg::{Msg, Nav, TextEdit};
 use crate::state::{App, Focus, Section};
@@ -55,26 +55,19 @@ impl Mods {
 /// `None` means the shell should handle the key itself (for example, typing
 /// into the editor widget).
 pub fn keymap(app: &App, key: Key, mods: Mods) -> Option<Msg> {
-    if mods.alt && !mods.ctrl && !mods.logo {
-        // Alt+1..6 switch sections everywhere, like Ctrl+1..6.
-        return match key {
-            Key::Char(c @ '1'..='6') => Some(Msg::Switch(Section::from_digit(c as u8 - b'0')?)),
-            _ => None,
-        };
-    }
-    if mods.alt || mods.logo {
+    if mods.logo {
         return None;
     }
-    if mods.ctrl {
-        if let Some(msg) = ctrl_command(key) {
-            return Some(msg);
-        }
-        // Ctrl+D / Ctrl+U only scroll lists; everything else with Ctrl is inert.
-        return match (key, app.focus) {
-            (Key::Char('d'), Focus::List | Focus::Detail) => Some(Msg::Nav(Nav::HalfDown)),
-            (Key::Char('u'), Focus::List | Focus::Detail) => Some(Msg::Nav(Nav::HalfUp)),
-            _ => None,
-        };
+    // A confirm dialog is modal: only its own answers apply.
+    if app.focus != Focus::Confirm
+        && let Some(msg) = command(app, key, mods)
+    {
+        return Some(msg);
+    }
+    if mods.ctrl || mods.alt {
+        // Ctrl+C on a file row copies its path; in text it stays a copy.
+        let copy_path = mods.ctrl && key == Key::Char('c') && app.section == Section::Files;
+        return (copy_path && app.focus == Focus::List).then_some(Msg::Yank);
     }
     match app.focus {
         Focus::Editor => match key {
@@ -83,31 +76,35 @@ pub fn keymap(app: &App, key: Key, mods: Mods) -> Option<Msg> {
         },
         Focus::Input(_) | Focus::Form | Focus::Palette => text_focus_key(app, key, mods),
         Focus::Confirm => match key {
-            Key::Char('y') => Some(Msg::ConfirmAnswer(true)),
-            Key::Char('n') | Key::Escape => Some(Msg::ConfirmAnswer(false)),
+            Key::Enter | Key::Char('y') => Some(Msg::ConfirmAnswer(true)),
+            Key::Escape | Key::Char('n') => Some(Msg::ConfirmAnswer(false)),
             _ => None,
         },
         Focus::Help => match key {
-            Key::Escape | Key::Char('?') => Some(Msg::ToggleHelp),
+            Key::Escape => Some(Msg::ToggleHelp),
             _ => None,
         },
-        Focus::List | Focus::Detail => match list_key(app, key) {
-            // An unbound key after `g` cancels the prefix, so a later `n`
-            // does not still switch sections.
-            None if app.pending_g => Some(Msg::ClearPrefix),
-            other => other,
-        },
+        Focus::List | Focus::Detail => list_key(app, key),
     }
 }
 
-/// Ctrl-combos that work everywhere, including inside text fields.
-fn ctrl_command(key: Key) -> Option<Msg> {
-    Some(match key {
-        Key::Char(c @ '1'..='6') => Msg::Switch(Section::from_digit(c as u8 - b'0')?),
-        Key::Char('k') => Msg::OpenPalette,
-        Key::Char('r') => Msg::Reload,
-        Key::Char('s') => Msg::SaveNow,
-        Key::Enter => Msg::SaveForm,
+/// Shortcuts that work in every focus, including text fields.
+fn command(app: &App, key: Key, mods: Mods) -> Option<Msg> {
+    let section = app.section;
+    let upload = matches!(section, Section::Photos | Section::Files);
+    Some(match (key, mods.ctrl, mods.alt, mods.shift) {
+        (Key::F(1), false, false, _) => Msg::ToggleHelp,
+        (Key::F(5), false, false, _) => Msg::Reload,
+        (Key::Char('n' | 'N'), true, false, _) | (Key::Char('n' | 'N'), false, true, _) => Msg::New,
+        (Key::Char('f' | 'F'), true, false, _) => Msg::FocusFilter,
+        (Key::Char('k' | 'K'), true, false, _) | (Key::Char('p' | 'P'), true, false, true) => Msg::OpenPalette,
+        (Key::Char('r' | 'R'), true, false, _) => Msg::Reload,
+        (Key::Char('s' | 'S'), true, false, _) => Msg::SaveNow,
+        (Key::Char('o' | 'O'), true, false, _) if upload => Msg::Upload,
+        (Key::Enter, true, false, _) => Msg::SaveForm,
+        (Key::Left, false, true, _) if matches!(section, Section::Notes | Section::Files) => {
+            Msg::Nav(Nav::Left)
+        }
         _ => return None,
     })
 }
@@ -131,32 +128,9 @@ fn text_focus_key(app: &App, key: Key, mods: Mods) -> Option<Msg> {
     }
 }
 
-/// The letter after `g` that switches to each section, in sidebar order.
-pub const GO_KEYS: [(char, Section); 6] = [
-    ('n', Section::Notes),
-    ('t', Section::Todo),
-    ('c', Section::Calendar),
-    ('p', Section::Photos),
-    ('f', Section::Files),
-    ('o', Section::Contacts),
-];
-
-/// The letter that follows `g` to switch to `section`.
-pub fn go_key(section: Section) -> char {
-    GO_KEYS
-        .iter()
-        .find(|(_, s)| *s == section)
-        .map_or('?', |(c, _)| *c)
-}
-
 fn list_key(app: &App, key: Key) -> Option<Msg> {
     let section = app.section;
-    if app.pending_g
-        && let Key::Char(c) = key
-        && let Some((_, s)) = GO_KEYS.iter().find(|(k, _)| *k == c)
-    {
-        return Some(Msg::Switch(*s));
-    }
+    let calendar = section == Section::Calendar;
     Some(match key {
         Key::Escape => Msg::Escape,
         Key::Enter => Msg::Activate,
@@ -165,103 +139,73 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
         Key::Left => Msg::Nav(Nav::Left),
         Key::Right => Msg::Nav(Nav::Right),
         Key::Backspace if matches!(section, Section::Files | Section::Notes) => Msg::Nav(Nav::Left),
+        Key::Home if calendar => Msg::Today,
+        Key::PageUp if calendar => Msg::ShiftMonth(-1),
+        Key::PageDown if calendar => Msg::ShiftMonth(1),
         Key::Home => Msg::Nav(Nav::Top),
         Key::End => Msg::Nav(Nav::Bottom),
         Key::PageUp => Msg::Nav(Nav::HalfUp),
         Key::PageDown => Msg::Nav(Nav::HalfDown),
-        Key::Char(c) => match c {
-            'j' => Msg::Nav(Nav::Down),
-            'k' => Msg::Nav(Nav::Up),
-            'h' => Msg::Nav(Nav::Left),
-            'l' => Msg::Nav(Nav::Right),
-            'g' if app.pending_g => Msg::Nav(Nav::Top),
-            'g' => Msg::GPrefix,
-            'G' => Msg::Nav(Nav::Bottom),
-            '/' => Msg::FocusFilter,
-            ':' => Msg::OpenPalette,
-            '?' => Msg::ToggleHelp,
-            'i' | 'e' => Msg::Edit,
-            'n' => Msg::New,
-            'd' => Msg::Delete,
-            'r' => Msg::Rename,
-            'y' => Msg::Yank,
-            'u' => Msg::Upload,
-            'm' if section == Section::Calendar => Msg::CalendarMode,
-            'm' if section == Section::Files => Msg::MoveFile,
-            ' ' | 'x' if section == Section::Todo => Msg::ToggleTask,
-            'z' if section == Section::Todo => Msg::ToggleDoneTasks,
-            '[' if section == Section::Calendar => Msg::ShiftMonth(-1),
-            ']' if section == Section::Calendar => Msg::ShiftMonth(1),
-            't' if section == Section::Calendar => Msg::Today,
-            _ => return None,
-        },
+        Key::Delete => Msg::Delete,
+        Key::F(2) if matches!(section, Section::Calendar | Section::Contacts) => Msg::Edit,
+        Key::F(2) => Msg::Rename,
+        Key::Char(' ') if section == Section::Todo => Msg::ToggleTask,
+        // Type-to-filter: the first letter opens the filter with that letter.
+        Key::Char(c) if !c.is_whitespace() => Msg::Batch(vec![
+            Msg::FocusFilter,
+            Msg::Text(TextEdit::Insert(c.to_string())),
+        ]),
         _ => return None,
     })
 }
 
-/// The bindings shown in the help overlay for `section`, as `(keys, what)`.
+/// The bindings shown in the shortcuts dialog for `section`, as `(keys, what)`.
 pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
     let mut out = vec![
-        (
-            "g n/t/c/p/f/o",
-            "go to Notes/Todo/Calendar/Photos/Files/Contacts",
-        ),
-        ("Alt+1..6, Ctrl+1..6", "switch section"),
-        (": or Ctrl+K", "command palette"),
-        ("/", "filter this list"),
-        ("Esc", "close / leave / clear filter"),
-        ("Ctrl+R", "reload section"),
-        ("?", "toggle this help"),
-        ("j/k, Up/Down", "move"),
-        ("gg / G", "top / bottom"),
-        ("Ctrl+D / Ctrl+U, PgDn / PgUp", "half page down / up"),
-        ("Home / End", "top / bottom"),
-        ("n", "new"),
-        ("d", "delete (asks first)"),
+        ("Up / Down, Home / End", "move in the list"),
+        ("Page Up / Page Down", "move a page"),
+        ("Enter", "open"),
+        ("Ctrl+N or Alt+N", "new"),
+        ("Delete", "delete (asks first)"),
+        ("Ctrl+F, or start typing", "filter the list"),
+        ("Esc", "close, go back or clear the filter"),
+        ("Ctrl+R or F5", "reload"),
+        ("Ctrl+K", "command palette"),
+        ("F1", "this list of shortcuts"),
     ];
     match section {
         Section::Notes => out.extend([
-            ("Enter / l", "open notebook, folder or note"),
-            ("h / Backspace", "up to parent folder / notebooks"),
-            ("i", "edit the selected note"),
-            ("r", "rename note"),
-            ("Ctrl+S", "save now"),
+            ("Backspace or Alt+Left", "up to the parent folder"),
+            ("F2", "rename the note"),
+            ("Ctrl+S", "save now (notes also save as you type)"),
         ]),
         Section::Todo => out.extend([
-            ("Space / x", "toggle task"),
-            ("n", "add task to Inbox"),
-            ("Enter", "open source note"),
-            ("z", "show / hide Done"),
+            ("Space", "tick or untick the task"),
+            ("Enter", "open the note the task is in"),
         ]),
         Section::Calendar => out.extend([
-            ("h / l", "previous / next day"),
-            ("j / k", "previous / next event of the day"),
-            ("[ / ]", "previous / next month"),
-            ("t", "today"),
-            ("m", "agenda / month"),
-            ("e", "edit event"),
-            ("Tab / Shift+Tab", "next / previous field (form)"),
-            ("Ctrl+Enter", "save event (form)"),
+            ("Left / Right", "previous / next day"),
+            ("Up / Down", "previous / next event of the day"),
+            ("Page Up / Page Down", "previous / next month"),
+            ("Home", "today"),
+            ("F2", "edit the event"),
+            ("Tab / Shift+Tab", "next / previous field"),
+            ("Ctrl+Enter", "save the event"),
         ]),
         Section::Photos => out.extend([
-            ("h/j/k/l", "move in grid"),
-            ("Enter", "open viewer"),
-            ("h / l", "previous / next (viewer)"),
-            ("u", "upload photos"),
+            ("Arrows", "move in the grid; previous / next in the viewer"),
+            ("Ctrl+O", "upload photos"),
         ]),
         Section::Files => out.extend([
-            ("Enter / l", "open folder or file"),
-            ("h / Backspace", "parent folder"),
-            ("u", "upload here"),
-            ("r", "rename"),
-            ("m", "move to directory"),
-            ("y", "copy path"),
+            ("Backspace or Alt+Left", "parent folder"),
+            ("F2", "rename"),
+            ("Ctrl+O", "upload here"),
+            ("Ctrl+C", "copy the file's path"),
         ]),
         Section::Contacts => out.extend([
-            ("Enter", "open detail"),
-            ("e", "edit contact"),
-            ("Tab / Shift+Tab", "next / previous field (form)"),
-            ("Ctrl+Enter", "save contact (form)"),
+            ("F2", "edit the contact"),
+            ("Tab / Shift+Tab", "next / previous field"),
+            ("Ctrl+Enter", "save the contact"),
         ]),
     }
     out

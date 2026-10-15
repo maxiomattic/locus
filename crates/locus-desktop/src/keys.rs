@@ -28,6 +28,8 @@ pub fn key(key: &keyboard::Key) -> Option<Key> {
             Named::PageUp => Key::PageUp,
             Named::PageDown => Key::PageDown,
             Named::F1 => Key::F(1),
+            Named::F2 => Key::F(2),
+            Named::F5 => Key::F(5),
             _ => return None,
         },
         _ => return None,

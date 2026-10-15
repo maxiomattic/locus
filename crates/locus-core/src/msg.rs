@@ -75,16 +75,15 @@ pub enum Msg {
     Switch(Section),
     Reload,
     Nav(Nav),
-    /// First `g` of `gg` or `g n`, `g t`, .... Sets the pending flag; the next
-    /// key completes the sequence.
-    GPrefix,
-    /// A key after `g` that completes no sequence. Only clears the flag.
-    ClearPrefix,
     /// Enter on the focused list row: open a note, enter a folder, open viewer.
     Activate,
     /// `i` in Notes, `e` in Calendar/Contacts.
     Edit,
     New,
+    /// A folder inside the notebook folder being browsed (Notes).
+    NewFolder,
+    /// A new notebook (Notes).
+    NewNotebook,
     Delete,
     Rename,
     /// `y`: copy the selected file's path.
@@ -225,6 +224,9 @@ pub enum Msg {
     ContactSaved {
         contact: Contact,
     },
+    PhotoDeleted {
+        id: u64,
+    },
     ContactDeleted {
         id: u64,
     },
@@ -334,6 +336,14 @@ pub enum Effect {
         id: u64,
         expected_revision: u64,
         patch: ContactPatch,
+    },
+    DeletePhoto {
+        id: u64,
+    },
+    CreateNoteFolder {
+        nb: NotebookSummary,
+        parent: u64,
+        name: String,
     },
     DeleteContact {
         id: u64,

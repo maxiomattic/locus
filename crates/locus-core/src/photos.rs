@@ -2,7 +2,7 @@
 
 use locus_client::photos::Photo;
 
-use crate::msg::Nav;
+use crate::msg::{Effect, Msg, Nav};
 use crate::state::{App, Focus, Section, clamp_sel, matches_filter};
 
 /// The content hash when `path` is `sha256:<hex>`; `None` for other paths.
@@ -59,4 +59,34 @@ pub fn loaded(app: &mut App, photos: Vec<Photo>) {
     app.loading[Section::Photos.index()] = false;
     app.loaded[Section::Photos.index()] = true;
     app.photos.sel = clamp_sel(app.photos.sel, visible(app).len());
+}
+
+pub fn ask_delete(app: &mut App) {
+    let sel = clamp_sel(app.photos.sel, visible(app).len());
+    let Some((id, title)) = visible(app).get(sel).map(|p| (p.id, p.title.clone())) else {
+        app.info("No photo selected");
+        return;
+    };
+    app.ask(
+        format!("Delete photo \"{title}\"?"),
+        Msg::ExecuteDelete {
+            section: Section::Photos,
+            id,
+        },
+    );
+}
+
+pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, id: u64) {
+    fx.push(Effect::DeletePhoto { id });
+    app.info("Deleting photo");
+}
+
+pub fn deleted(app: &mut App, id: u64) {
+    app.photos.items.retain(|p| p.id != id);
+    let len = visible(app).len();
+    app.photos.sel = clamp_sel(app.photos.sel, len);
+    if len == 0 && app.focus == Focus::Detail {
+        app.focus = Focus::List;
+    }
+    app.info("Photo deleted");
 }
