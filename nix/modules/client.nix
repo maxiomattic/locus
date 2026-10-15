@@ -15,6 +15,14 @@ in
   options.locus.client = {
     enable = lib.mkEnableOption "Locus COSMIC desktop client (cosmic-comp, tiling, declared browser)";
 
+    apps = lib.mkOption {
+      type = lib.types.package;
+      description = ''
+        The Locus apps (locus-notes, locus-todo, ...), their launchers, and
+        the `locus` command line (set by the flake module).
+      '';
+    };
+
     browser = lib.mkOption {
       type = lib.types.package;
       default = pkgs.firefox;
@@ -50,6 +58,7 @@ in
     programs.firefox.enable = true;
 
     environment.systemPackages = [
+      cfg.apps
       cfg.browser
       defaults
     ];

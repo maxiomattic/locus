@@ -52,9 +52,13 @@
         };
       nixosModules.default = self.nixosModules.server;
 
-      nixosModules.client = {
-        imports = [ ./nix/modules/client.nix ];
-      };
+      nixosModules.client =
+        { pkgs, lib, ... }:
+        {
+          imports = [ ./nix/modules/client.nix ];
+          locus.client.apps =
+            lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-desktop;
+        };
 
       diskoConfigurations.server = {
         disko.devices = import ./nix/disko.nix {
