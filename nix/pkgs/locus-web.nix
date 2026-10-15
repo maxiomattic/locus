@@ -54,7 +54,7 @@ stdenv.mkDerivation {
         (web + "/Cargo.lock")
       ];
     };
-    hash = "sha256-ZjDuqBg/0C/lWD4KXTjmwmHTT+0AKRq/R41rhOc415o=";
+    hash = "sha256-hwc50jAdzSakGUPPZKabnEV4HxU7SH1FHFizDGGnA/o=";
   };
 
   nativeBuildInputs = [
