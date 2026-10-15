@@ -43,7 +43,7 @@ pub fn window_title(app: &App) -> String {
 pub fn can_go_up(app: &App) -> bool {
     match app.section {
         Section::Notes => !matches!(app.notes.loc, crate::state::NotesLoc::Books),
-        Section::Files => app.files.cwd.trim_matches('/') != "",
+        Section::Files => !app.files.cwd.trim_matches('/').is_empty(),
         _ => false,
     }
 }
