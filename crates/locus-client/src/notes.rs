@@ -81,7 +81,11 @@ pub struct SearchPage {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 enum Reply {
-    Ok {},
+    Ok {
+        /// The update the write made (`response.update`).
+        #[serde(default)]
+        response: Option<Value>,
+    },
     NoChange {},
     Notebook {
         notebook: NotebookSummary,
@@ -203,8 +207,8 @@ impl Client {
         self.list_folders(host, name)
             .await?
             .into_iter()
-            .rev()
-            .find(|f| f.parent_folder_id == Some(parent) && f.name == folder_name)
+            .filter(|f| f.parent_folder_id == Some(parent) && f.name == folder_name)
+            .max_by_key(|f| f.id)
             .ok_or_else(|| Error::Api {
                 error: "not-found".into(),
                 message: "created folder missing from list".into(),
@@ -247,17 +251,23 @@ impl Client {
         title: &str,
         body: &str,
     ) -> Result<Note> {
-        self.write(
+        let reply = self.write(
             Method::POST,
             &format!("{}/notes", nb_path(host, name)),
             Some(json!({ "folder": folder, "title": title, "body": body })),
         )
         .await?;
+        if let Some(note) = created_note(&reply) {
+            return Ok(note);
+        }
+        // Older servers do not echo the note. Ids only grow, so the newest
+        // note with this title is the one just made; another note may have
+        // the same title.
         self.list_notes(host, name)
             .await?
             .into_iter()
-            .rev()
-            .find(|n| n.title == title)
+            .filter(|n| n.title == title && n.folder_id == folder)
+            .max_by_key(|n| n.id)
             .ok_or_else(|| Error::Api {
                 error: "not-found".into(),
                 message: "created note missing from list".into(),
@@ -360,6 +370,21 @@ impl Client {
     }
 }
 
+/// The note a create reply carries in `response.update.noteUpdate`.
+fn created_note(reply: &Reply) -> Option<Note> {
+    let Reply::Ok {
+        response: Some(response),
+    } = reply
+    else {
+        return None;
+    };
+    let upd = response.get("update")?.get("noteUpdate")?;
+    if upd.get("type")?.as_str()? != "note-created" {
+        return None;
+    }
+    serde_json::from_value(upd.get("note")?.clone()).ok()
+}
+
 fn unexpected(what: &str, reply: Reply) -> Error {
     Error::Api {
         error: "unexpected-reply".into(),
@@ -373,6 +398,16 @@ mod tests {
 
     fn env(raw: &str) -> Envelope {
         serde_json::from_str(raw).expect("envelope decodes")
+    }
+
+    #[test]
+    fn a_create_reply_carries_the_new_note() {
+        let raw = r#"{"requestId":"0v1","body":{"type":"ok","response":{"type":"update","host":"~zod","flagName":"n-1","time":1,"update":{"type":"note-update","host":"~zod","flagName":"n-1","noteUpdate":{"type":"note-created","id":308,"note":{"id":308,"notebookId":112,"folderId":113,"title":"Untitled","revision":0,"bodyMd":"","slug":null,"createdBy":"~zod","createdAt":1,"updatedAt":1,"updatedBy":"~zod"}}}}}}"#;
+        let reply = check_reply("/p", env(raw)).unwrap();
+        let note = created_note(&reply).expect("note in reply");
+        assert_eq!((note.id, note.folder_id, note.title.as_str()), (308, 113, "Untitled"));
+        let bare = check_reply("/p", env(r#"{"body":{"type":"ok"}}"#)).unwrap();
+        assert!(created_note(&bare).is_none());
     }
 
     #[test]
@@ -427,7 +462,7 @@ mod tests {
     #[test]
     fn ok_and_no_change_replies() {
         let ok = env(r#"{"requestId":"0v1","body":{"type":"ok","response":{"type":"update"}}}"#);
-        assert!(matches!(check_reply("/p", ok), Ok(Reply::Ok {})));
+        assert!(matches!(check_reply("/p", ok), Ok(Reply::Ok { .. })));
         let nc = env(r#"{"requestId":"0v1","body":{"type":"no-change"}}"#);
         assert!(matches!(check_reply("/p", nc), Ok(Reply::NoChange {})));
     }
