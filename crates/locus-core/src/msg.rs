@@ -10,7 +10,7 @@ use locus_client::{
 use serde::{Deserialize, Serialize};
 
 use crate::date::Date;
-use crate::state::{NoteRef, Section, Target};
+use crate::state::{NbKey, NoteRef, Section, Target};
 
 /// The clock, passed into every [`crate::update`] call so the core never reads
 /// time itself. `tz_offset_secs` follows the convention `local = utc + offset`.
@@ -89,8 +89,8 @@ pub enum Msg {
     /// `y`: copy the selected file's path.
     Yank,
     Upload,
-    /// `m` in Files: move the selected file to another directory.
-    MoveFile,
+    /// Move the selected file (Files) or note (Notes) to another folder.
+    Move,
     /// Space or `x` in Todo.
     ToggleTask,
     /// `z` in Todo: show or hide the Done group.
@@ -153,6 +153,13 @@ pub enum Msg {
     },
     /// Internal target of a note delete confirmation.
     ExecuteDeleteNote(NoteRef),
+    /// Internal target of a folder delete confirmation (Notes).
+    ExecuteDeleteFolder {
+        nb: NbKey,
+        id: u64,
+    },
+    /// Internal target of a notebook delete confirmation.
+    ExecuteDeleteNotebook(NbKey),
     BeginLogin,
 
     // ----- IO results -----
@@ -192,6 +199,19 @@ pub enum Msg {
     NoteDeleted {
         nb: NotebookSummary,
         id: u64,
+    },
+    NoteMoved {
+        nb: NotebookSummary,
+        id: u64,
+        folder: u64,
+    },
+    /// A folder and everything in it is gone.
+    NoteFolderDeleted {
+        nb: NotebookSummary,
+        id: u64,
+    },
+    NotebookDeleted {
+        nb: NotebookSummary,
     },
     /// Stale `expected_revision`. `body` is what we tried to write; `current`
     /// is the server revision when the shell could re-read it.
@@ -302,6 +322,19 @@ pub enum Effect {
     DeleteNote {
         nb: NotebookSummary,
         id: u64,
+    },
+    MoveNote {
+        nb: NotebookSummary,
+        id: u64,
+        folder: u64,
+    },
+    /// Delete a folder with everything in it.
+    DeleteNoteFolder {
+        nb: NotebookSummary,
+        id: u64,
+    },
+    DeleteNotebook {
+        nb: NotebookSummary,
     },
 
     LoadEvents,

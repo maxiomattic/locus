@@ -58,7 +58,11 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::Rename => rename(app),
         Msg::Yank => files::yank(app, fx),
         Msg::Upload => upload(app, fx),
-        Msg::MoveFile => files::begin_move(app),
+        Msg::Move => match app.section {
+            Section::Files => files::begin_move(app),
+            Section::Notes => notes::begin_move(app),
+            _ => app.info("Nothing to move here"),
+        },
         Msg::ToggleTask => todo::toggle_selected(app, fx),
         Msg::ToggleDoneTasks => todo::toggle_done_visibility(app),
         Msg::CalendarMode => calendar::toggle_mode(app),
@@ -109,6 +113,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         }
         Msg::ExecuteDelete { section, id } => execute_delete(app, fx, section, id),
         Msg::ExecuteDeleteNote(note) => notes::execute_delete(app, fx, note),
+        Msg::ExecuteDeleteFolder { nb, id } => notes::execute_delete_folder(app, fx, &nb, id),
+        Msg::ExecuteDeleteNotebook(nb) => notes::execute_delete_notebook(app, fx, &nb),
         Msg::BeginLogin => {
             app.input = Input::default();
             app.focus = Focus::Input(InputKind::Login);
@@ -124,6 +130,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NoteSaved { nb, note } => notes::note_saved(app, fx, nb, note),
         Msg::NoteRenamed { nb, id, title } => notes::note_renamed(app, nb, id, title),
         Msg::NoteDeleted { nb, id } => notes::note_deleted(app, nb, id),
+        Msg::NoteMoved { nb, id, folder } => notes::note_moved(app, nb, id, folder),
+        Msg::NoteFolderDeleted { nb, id } => notes::folder_deleted(app, fx, nb, id),
+        Msg::NotebookDeleted { nb } => notes::notebook_deleted(app, nb),
         Msg::SaveConflict {
             nb,
             id,
@@ -434,6 +443,7 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::RenameNote => notes::submit_rename(app, fx),
         InputKind::RenameFile => files::submit_rename(app, fx),
         InputKind::MoveFile => files::submit_move(app, fx),
+        InputKind::MoveNote => notes::submit_move(app, fx),
         InputKind::Login => {
             let code = std::mem::take(&mut app.input.text);
             app.input = Input::default();

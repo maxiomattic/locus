@@ -17,15 +17,21 @@ pub const HELP: &str = "locus notes <command>
 
   notebooks [--json]                       list notebooks
   notebook-new <title>                     create a notebook
+  notebook-rm <notebook> [--force]         delete a notebook; --force if it is not empty
   ls [<notebook>[/<folder path>]] [--json] list notes (all notebooks by default)
+  folders [<notebook>[/<folder path>]] [--json]
+                                           list folders, empty ones too, below a place
   show <ref> [--json]                      print a note's markdown body
   new <notebook> [--folder <path>] <title> create a note; body from stdin if piped
   edit <ref>                               replace the body from stdin, or in $EDITOR
   rename <ref> <title>                     change a note's title
+  mv <ref> <folder path>                   move a note to a folder of its notebook (/ is the top)
   rm <ref>                                 delete a note
   history <ref> [--json]                   list a note's saved revisions
   search <query> [--json]                  search note text in all notebooks
   mkdir <notebook> <folder path>           create folders (like mkdir -p)
+  rmdir <notebook> <folder path> [--recursive]
+                                           delete a folder; --recursive if it is not empty
 
 A <ref> is <notebook>:<id>, as printed by ls and search.
 ";
@@ -35,15 +41,19 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
     match cmd {
         "notebooks" => notebooks(ctx, args).await,
         "notebook-new" => notebook_new(ctx, args).await,
+        "notebook-rm" => notebook_rm(ctx, args).await,
         "ls" => ls(ctx, args).await,
+        "folders" => folders(ctx, args).await,
         "show" => show(ctx, args).await,
         "new" => new(ctx, args).await,
         "edit" => edit(ctx, args).await,
         "rename" => rename(ctx, args).await,
+        "mv" => mv(ctx, args).await,
         "rm" => rm(ctx, args).await,
         "history" => history(ctx, args).await,
         "search" => search(ctx, args).await,
         "mkdir" => mkdir(ctx, args).await,
+        "rmdir" => rmdir(ctx, args).await,
         other => Err(format!(
             "unknown notes command {other}. try: locus notes --help"
         )),
@@ -203,6 +213,51 @@ async fn notebook_new(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+async fn notebook_rm(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &["--force"])?;
+    let spec = &p.positionals(1, 1, "locus notes notebook-rm <notebook> [--force]")?[0];
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let nb = find_notebook(&books, spec)?;
+    if !p.has("--force") {
+        let notes = client
+            .list_notes(&nb.host, &nb.flag_name)
+            .await
+            .map_err(client_error)?;
+        let folders = client
+            .list_folders(&nb.host, &nb.flag_name)
+            .await
+            .map_err(client_error)?;
+        let folders = folders
+            .iter()
+            .filter(|f| f.id != nb.notebook.root_folder_id)
+            .count();
+        if !notes.is_empty() || folders > 0 {
+            return Err(format!(
+                "notebook {} holds {}; add --force to delete it anyway",
+                nb.flag_name,
+                contents(notes.len(), folders)
+            ));
+        }
+    }
+    client
+        .delete_notebook(&nb.host, &nb.flag_name)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("deleted notebook {}\n", nb.flag_name));
+    Ok(())
+}
+
+/// `3 notes and 1 folder`, for refusals to delete something non-empty.
+pub fn contents(notes: usize, folders: usize) -> String {
+    let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
+    format!(
+        "{} and {}",
+        plural(notes, "note"),
+        plural(folders, "folder")
+    )
+}
+
 async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &["--json"])?;
     let pos = p.positionals(0, 1, "locus notes ls [<notebook>[/<folder path>]] [--json]")?;
@@ -265,6 +320,75 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         emit(&table(&["REF", "UPDATED", "FOLDER", "TITLE"], &rows));
     }
     Ok(())
+}
+
+async fn folders(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &["--json"])?;
+    let usage = "locus notes folders [<notebook>[/<folder path>]] [--json]";
+    let pos = p.positionals(0, 1, usage)?;
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let targets: Vec<(&NotebookSummary, Vec<String>)> = match pos.first() {
+        Some(spec) => vec![locate(&books, spec)?],
+        None => books.iter().map(|b| (b, Vec::new())).collect(),
+    };
+    let mut items = Vec::new();
+    for (nb, names) in targets {
+        let folders = client
+            .list_folders(&nb.host, &nb.flag_name)
+            .await
+            .map_err(client_error)?;
+        let root = nb.notebook.root_folder_id;
+        let top = resolve_folder(&folders, root, &names)?;
+        let notes = client
+            .list_notes(&nb.host, &nb.flag_name)
+            .await
+            .map_err(client_error)?;
+        let mut paths: Vec<(String, usize)> = folders
+            .iter()
+            .filter(|f| f.id != root && f.id != top && is_below(&folders, f.id, top))
+            .map(|f| {
+                let count = notes.iter().filter(|n| n.folder_id == f.id).count();
+                (folder_path(&folders, root, f.id), count)
+            })
+            .collect();
+        paths.sort();
+        items.extend(paths.into_iter().map(|(path, count)| (nb, path, count)));
+    }
+    if p.has("--json") {
+        let out: Vec<_> = items
+            .iter()
+            .map(
+                |(nb, path, count)| json!({"notebook": nb.flag_name, "path": path, "notes": count}),
+            )
+            .collect();
+        fmt::json(&out);
+    } else {
+        let rows: Vec<Vec<String>> = items
+            .iter()
+            .map(|(nb, path, count)| vec![nb.flag_name.clone(), count.to_string(), path.clone()])
+            .collect();
+        emit(&table(&["NOTEBOOK", "NOTES", "FOLDER"], &rows));
+    }
+    Ok(())
+}
+
+/// Whether folder `id` sits somewhere below folder `top`.
+pub fn is_below(folders: &[Folder], id: u64, top: u64) -> bool {
+    let mut cur = id;
+    // The bound guards against a malformed parent cycle.
+    for _ in 0..=folders.len() {
+        match folders
+            .iter()
+            .find(|f| f.id == cur)
+            .and_then(|f| f.parent_folder_id)
+        {
+            Some(p) if p == top => return true,
+            Some(p) if p != cur => cur = p,
+            _ => return false,
+        }
+    }
+    false
 }
 
 async fn show(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
@@ -341,6 +465,30 @@ async fn rename(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .await
         .map_err(client_error)?;
     emit(&format!("renamed {}\n", note_ref(&nb, id)));
+    Ok(())
+}
+
+async fn mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(2, 2, "locus notes mv <ref> <folder path>")?;
+    let client = ctx.client().await?;
+    let (nb, id) = note_target(&client, &pos[0]).await?;
+    let folders = client
+        .list_folders(&nb.host, &nb.flag_name)
+        .await
+        .map_err(client_error)?;
+    let root = nb.notebook.root_folder_id;
+    let folder = resolve_folder(&folders, root, &folder_names(&pos[1]))?;
+    client
+        .move_note(&nb.host, &nb.flag_name, id, folder)
+        .await
+        .map_err(client_error)?;
+    emit(&format!(
+        "moved {} to {}/{}\n",
+        note_ref(&nb, id),
+        nb.flag_name,
+        folder_path(&folders, root, folder)
+    ));
     Ok(())
 }
 
@@ -473,6 +621,49 @@ async fn mkdir(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+async fn rmdir(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &["--recursive", "-r"])?;
+    let usage = "locus notes rmdir <notebook> <folder path> [--recursive]";
+    let pos = p.positionals(2, 2, usage)?;
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let nb = find_notebook(&books, &pos[0])?;
+    let names = folder_names(&pos[1]);
+    if names.is_empty() {
+        return Err("the top folder cannot be deleted; use notebook-rm".into());
+    }
+    let folders = client
+        .list_folders(&nb.host, &nb.flag_name)
+        .await
+        .map_err(client_error)?;
+    let id = resolve_folder(&folders, nb.notebook.root_folder_id, &names)?;
+    let recursive = p.has("--recursive") || p.has("-r");
+    if !recursive {
+        let notes = client
+            .list_notes(&nb.host, &nb.flag_name)
+            .await
+            .map_err(client_error)?;
+        let notes = notes.iter().filter(|n| n.folder_id == id).count();
+        let subs = folders
+            .iter()
+            .filter(|f| f.parent_folder_id == Some(id))
+            .count();
+        if notes > 0 || subs > 0 {
+            return Err(format!(
+                "folder {} holds {}; add --recursive to delete it with its contents",
+                names.join("/"),
+                contents(notes, subs)
+            ));
+        }
+    }
+    client
+        .delete_folder(&nb.host, &nb.flag_name, id, recursive)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("deleted {}/{}\n", nb.flag_name, names.join("/")));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,6 +724,19 @@ mod tests {
         assert!(parse_note_ref("notes").is_err());
         assert!(parse_note_ref(":3").is_err());
         assert!(parse_note_ref("notes:x").is_err());
+    }
+
+    #[test]
+    fn below_and_contents() {
+        let fs = [
+            folder(11, 10, "a"),
+            folder(12, 11, "b"),
+            folder(13, 10, "c"),
+        ];
+        assert!(is_below(&fs, 12, 10) && is_below(&fs, 12, 11));
+        assert!(!is_below(&fs, 13, 11) && !is_below(&fs, 11, 11));
+        assert_eq!(contents(1, 0), "1 note and 0 folders");
+        assert_eq!(contents(2, 1), "2 notes and 1 folder");
     }
 
     #[test]

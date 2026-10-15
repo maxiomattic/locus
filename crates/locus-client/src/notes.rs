@@ -157,6 +157,28 @@ impl Client {
         }
     }
 
+    /// Delete a notebook with every folder and note in it. The server
+    /// leaves this reply pending (the notebook it would answer for is gone),
+    /// so a pending reply counts as done once the notebook is off the list.
+    pub async fn delete_notebook(&self, host: &str, name: &str) -> Result<()> {
+        match self.write(Method::DELETE, &nb_path(host, name), None).await {
+            Ok(_) => Ok(()),
+            Err(Error::Pending(id)) => {
+                let gone = self
+                    .list_notebooks()
+                    .await?
+                    .iter()
+                    .all(|b| b.host != host || b.flag_name != name);
+                if gone {
+                    Ok(())
+                } else {
+                    Err(Error::Pending(id))
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     pub async fn list_folders(&self, host: &str, name: &str) -> Result<Vec<Folder>> {
         self.get_json(&format!("{}/folders", nb_path(host, name)))
             .await
@@ -187,6 +209,22 @@ impl Client {
                 error: "not-found".into(),
                 message: "created folder missing from list".into(),
             })
+    }
+
+    /// Delete a folder. Without `recursive` the server refuses a folder that
+    /// still holds folders or notes.
+    pub async fn delete_folder(
+        &self,
+        host: &str,
+        name: &str,
+        id: u64,
+        recursive: bool,
+    ) -> Result<()> {
+        let mut path = format!("{}/folders/{id}", nb_path(host, name));
+        if recursive {
+            path.push_str("?recursive=true");
+        }
+        self.write(Method::DELETE, &path, None).await.map(|_| ())
     }
 
     pub async fn list_notes(&self, host: &str, name: &str) -> Result<Vec<Note>> {
@@ -265,6 +303,17 @@ impl Client {
             Method::PUT,
             &note_path(host, name, id),
             Some(json!({ "title": title })),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Move a note to another folder of the same notebook.
+    pub async fn move_note(&self, host: &str, name: &str, id: u64, folder: u64) -> Result<()> {
+        self.write(
+            Method::PUT,
+            &note_path(host, name, id),
+            Some(json!({ "folder": folder })),
         )
         .await
         .map(|_| ())

@@ -1784,6 +1784,34 @@
   ?:  (~(has by folders.notebook-state.u.entry) 4)
     |+['leaf folder still present after recursive DELETE']~
   &+[~ s2]
+::  +test-rest-delete-notebook
+::
+::  DELETE /notebooks/{host}/{name} removes the whole notebook.
+::
+++  test-rest-delete-notebook
+  %-  eval-mare
+  =/  m  (mare ,~)
+  =*  b  bind:m
+  ^-  form:m
+  ;<  ~  b  init-zod
+  ;<  =bowl:gall  b  get-bowl
+  ;<  *  b  (poke-a [%create-notebook 'DelNB'])
+  =/  f=flag:n  (nb-flag our.bowl 'DelNB' 1)
+  ;<  *  b  (poke-a [%notebook f [%create-note 2 'x' 'b']])
+  ;<  sv0=vase  b  get-save
+  =/  s0=state-15:n  !<(state-15:n sv0)
+  =/  key=@t  ?~(api-key.s0 '' u.api-key.s0)
+  =/  hdr=(list [@t @t])  ~[['x-api-key' key]]
+  =/  base=@t  (crip "/notes/~/v1/notebooks/{<`@p`our.bowl>}/{(trip name.f)}")
+  ;<  *  b  (http-req-v1 %'DELETE' hdr base '')
+  ;<  svd=vase  b  get-save
+  =/  sd=state-15:n  !<(state-15:n svd)
+  |=  s2=state
+  ?~  api-key.s0  |+['no api-key']~
+  ?.  (~(has by books.s0) f)  |+['notebook not created']~
+  ?:  (~(has by books.sd) f)
+    |+['notebook still present after DELETE']~
+  &+[~ s2]
 ::  +test-v1-regenerate-returns-key
 ::
 ::  %regenerate-api-key must finalize with the new key in an %api-key body.

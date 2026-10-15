@@ -191,7 +191,7 @@ fn rename_patches_with_the_file_revision() {
 fn move_prefills_current_dir_and_patches_dir() {
     let mut app = files_app();
     press(&mut app, Key::End);
-    send(&mut app, Msg::MoveFile);
+    send(&mut app, Msg::Move);
     assert_eq!(app.focus, Focus::Input(locus_core::InputKind::MoveFile));
     assert_eq!(app.input.text, "/");
     for _ in 0..app.input.text.len() {
@@ -216,7 +216,7 @@ fn move_prefills_current_dir_and_patches_dir() {
 fn move_rejects_relative_and_dotdot_paths() {
     let mut app = files_app();
     press(&mut app, Key::End);
-    send(&mut app, Msg::MoveFile);
+    send(&mut app, Msg::Move);
     for _ in 0..app.input.text.len() {
         press(&mut app, Key::Backspace);
     }

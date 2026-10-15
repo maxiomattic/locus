@@ -199,6 +199,7 @@ pub enum InputKind {
     RenameNote,
     RenameFile,
     MoveFile,
+    MoveNote,
     Login,
 }
 
@@ -375,7 +376,7 @@ pub struct NotesState {
     pub sel: usize,
     /// Set by `n` so the created note opens in the editor.
     pub open_on_create: bool,
-    /// The note a rename prompt is for.
+    /// The note a rename or move prompt is for.
     pub rename: Option<NoteRef>,
     /// Source of debounce tokens. Global so a timer for one editor can never
     /// match another editor's current token.

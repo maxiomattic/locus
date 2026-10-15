@@ -208,6 +208,27 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }
         }
+        Effect::MoveNote { nb, id, folder } => {
+            match client.move_note(&nb.host, &nb.flag_name, id, folder).await {
+                Ok(()) => vec![Msg::NoteMoved { nb, id, folder }],
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
+        Effect::DeleteNoteFolder { nb, id } => {
+            match client
+                .delete_folder(&nb.host, &nb.flag_name, id, true)
+                .await
+            {
+                Ok(()) => vec![Msg::NoteFolderDeleted { nb, id }],
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
+        Effect::DeleteNotebook { nb } => {
+            match client.delete_notebook(&nb.host, &nb.flag_name).await {
+                Ok(()) => vec![Msg::NotebookDeleted { nb }],
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
 
         Effect::LoadEvents => match client.list_events().await {
             Ok(events) => vec![Msg::EventsLoaded { events }],
@@ -265,7 +286,10 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             Err(e) => vec![write_failed(Section::Photos, &e)],
         },
         Effect::CreateNoteFolder { nb, parent, name } => {
-            match client.create_folder(&nb.host, &nb.flag_name, parent, &name).await {
+            match client
+                .create_folder(&nb.host, &nb.flag_name, parent, &name)
+                .await
+            {
                 Ok(_) => match client.list_folders(&nb.host, &nb.flag_name).await {
                     Ok(folders) => vec![Msg::FoldersLoaded { nb, folders }],
                     Err(e) => vec![load_failed(Section::Notes, &e)],

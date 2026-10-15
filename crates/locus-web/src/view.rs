@@ -166,6 +166,7 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let app = &s.app;
     let item = view_model::has_item_selected(app);
+    let deletable = view_model::can_delete(app);
     let when = |ok: bool, msg: Msg| ok.then_some(msg);
     let mut bar = Row::new().spacing(6).align_y(Center);
     if matches!(app.section, Section::Notes | Section::Files) {
@@ -205,12 +206,14 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(app) => vec![
             tool(c, "New notebook", "", Some(Msg::NewNotebook)),
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "New folder", "", Some(Msg::NewFolder)),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
-            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+            tool(c, "Move", "", when(item, Msg::Move)),
+            tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Todo => {
             let done = if app.todo.show_done { "Hide done" } else { "Show done" };
@@ -234,7 +237,7 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
             tool(c, "New folder", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
-            tool(c, "Move", "", when(item, Msg::MoveFile)),
+            tool(c, "Move", "", when(item, Msg::Move)),
             tool(c, "Copy path", "Ctrl+C", when(item, Msg::Yank)),
             tool(c, "Delete", "Delete", when(item, Msg::Delete)),
         ],

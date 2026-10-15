@@ -685,15 +685,94 @@ pub fn save_failed(app: &mut App, nb: NotebookSummary, id: u64, error: String) {
     app.error(format!("Save failed: {error}. Your text is kept."));
 }
 
+/// `3 notes and 1 folder` for a delete prompt.
+fn contents(notes: usize, folders: usize) -> String {
+    let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
+    format!(
+        "{} and {}",
+        plural(notes, "note"),
+        plural(folders, "folder")
+    )
+}
+
+/// `folder` and every folder below it.
+fn subtree(book: &Book, folder: u64) -> Vec<u64> {
+    let mut ids = vec![folder];
+    let mut i = 0;
+    // Bounded by the folder count, which also guards against parent cycles.
+    while i < ids.len() && ids.len() <= book.folders.len() + 1 {
+        let parent = ids[i];
+        ids.extend(
+            book.folders
+                .iter()
+                .filter(|f| f.parent_folder_id == Some(parent) && f.id != parent)
+                .map(|f| f.id),
+        );
+        i += 1;
+    }
+    ids
+}
+
+/// Notes and folders below `folder`, not counting `folder` itself.
+fn subtree_counts(book: &Book, folder: u64) -> (usize, usize) {
+    let ids = subtree(book, folder);
+    let notes = book
+        .notes
+        .iter()
+        .filter(|n| ids.contains(&n.folder_id))
+        .count();
+    (notes, ids.len() - 1)
+}
+
+/// Delete asks first. Folders and notebooks go with everything in them, so
+/// the prompt says how much that is.
 pub fn ask_delete(app: &mut App) {
-    let Some((note, title)) = selected_note(app) else {
-        app.info("Select a note to delete");
-        return;
+    let (prompt, msg) = match selected(app) {
+        Some(Row::Note(b, n)) => (
+            format!("Delete note \"{}\"?", n.title),
+            Msg::ExecuteDeleteNote(NoteRef {
+                nb: b.key(),
+                id: n.id,
+            }),
+        ),
+        Some(Row::Folder(b, f)) => {
+            let (notes, folders) = subtree_counts(b, f.id);
+            let prompt = if notes + folders == 0 {
+                format!("Delete empty folder \"{}\"?", f.name)
+            } else {
+                format!(
+                    "Delete folder \"{}\" and the {} in it?",
+                    f.name,
+                    contents(notes, folders)
+                )
+            };
+            (
+                prompt,
+                Msg::ExecuteDeleteFolder {
+                    nb: b.key(),
+                    id: f.id,
+                },
+            )
+        }
+        Some(Row::Notebook(b)) => {
+            let (notes, folders) = subtree_counts(b, b.nb.notebook.root_folder_id);
+            let prompt = if notes + folders == 0 {
+                format!("Delete empty notebook \"{}\"?", b.nb.notebook.title)
+            } else {
+                format!(
+                    "Delete notebook \"{}\" and the {} in it?",
+                    b.nb.notebook.title,
+                    contents(notes, folders)
+                )
+            };
+            (prompt, Msg::ExecuteDeleteNotebook(b.key()))
+        }
+        None => {
+            app.info("Nothing selected");
+            return;
+        }
     };
-    app.ask(
-        format!("Delete note \"{title}\"?"),
-        Msg::ExecuteDeleteNote(note),
-    );
+    app.ask(prompt, msg);
 }
 
 pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, note: NoteRef) {
@@ -702,6 +781,172 @@ pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, note: NoteRef) {
     };
     fx.push(Effect::DeleteNote { nb, id: note.id });
     app.info("Deleting note");
+}
+
+pub fn execute_delete_folder(app: &mut App, fx: &mut Vec<Effect>, nb: &NbKey, id: u64) {
+    let Some(nb) = app.notes.book(nb).map(|b| b.nb.clone()) else {
+        return;
+    };
+    fx.push(Effect::DeleteNoteFolder { nb, id });
+    app.info("Deleting folder");
+}
+
+pub fn execute_delete_notebook(app: &mut App, fx: &mut Vec<Effect>, nb: &NbKey) {
+    let Some(nb) = app.notes.book(nb).map(|b| b.nb.clone()) else {
+        return;
+    };
+    fx.push(Effect::DeleteNotebook { nb });
+    app.info("Deleting notebook");
+}
+
+/// The open editor's note is gone: close it without saving.
+fn drop_editor_if(app: &mut App, gone: impl Fn(&Editor) -> bool) {
+    if app.editor.as_ref().is_some_and(gone) {
+        app.editor = None;
+        if app.focus == Focus::Editor {
+            app.focus = Focus::List;
+        }
+    }
+}
+
+/// The server removed the folder's whole subtree. Reload the notebook to
+/// learn what went, and leave the folder if the list was inside it.
+pub fn folder_deleted(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, id: u64) {
+    let key = NbKey::of(&nb);
+    if let Some(book) = app.notes.book(&key) {
+        let gone_folders = subtree(book, id);
+        let gone_notes: Vec<u64> = book
+            .notes
+            .iter()
+            .filter(|n| gone_folders.contains(&n.folder_id))
+            .map(|n| n.id)
+            .collect();
+        // Leave a deleted folder for its nearest surviving ancestor.
+        if let NotesLoc::Folder { nb: k, folder } = &app.notes.loc
+            && *k == key
+            && gone_folders.contains(folder)
+        {
+            let parent = book
+                .folder(id)
+                .and_then(|f| f.parent_folder_id)
+                .unwrap_or(book.nb.notebook.root_folder_id);
+            app.notes.loc = NotesLoc::Folder {
+                nb: key.clone(),
+                folder: parent,
+            };
+            app.notes.sel = 0;
+        }
+        drop_editor_if(app, |e| key.is(&e.nb) && gone_notes.contains(&e.note_id));
+        keeping_selection(app, |app| {
+            if let Some(book) = app.notes.book_mut(&key) {
+                book.folders.retain(|f| !gone_folders.contains(&f.id));
+                book.notes.retain(|n| !gone_notes.contains(&n.id));
+            }
+        });
+    }
+    request_notebook(fx, nb);
+    crate::todo::after_notes_changed(app, fx);
+    app.info("Folder deleted");
+}
+
+pub fn notebook_deleted(app: &mut App, nb: NotebookSummary) {
+    let key = NbKey::of(&nb);
+    drop_editor_if(app, |e| key.is(&e.nb));
+    if matches!(&app.notes.loc, NotesLoc::Folder { nb: k, .. } if *k == key) {
+        app.notes.loc = NotesLoc::Books;
+        app.notes.sel = 0;
+    }
+    if app.notes.last_nb.as_ref() == Some(&key) {
+        app.notes.last_nb = None;
+    }
+    keeping_selection(app, |app| app.notes.books.retain(|b| b.key() != key));
+    app.info("Notebook deleted");
+}
+
+/// Move: ask for the folder, as a path inside the note's notebook.
+pub fn begin_move(app: &mut App) {
+    let Some((note, _)) = selected_note(app) else {
+        app.info("Select a note to move");
+        return;
+    };
+    let path = app
+        .notes
+        .book(&note.nb)
+        .and_then(|b| Some(folder_path(b, b.note(note.id)?.folder_id)))
+        .unwrap_or_else(|| "/".into());
+    app.input = Input {
+        text: path,
+        target: Some(note.id),
+    };
+    app.notes.rename = Some(note);
+    app.focus = Focus::Input(InputKind::MoveNote);
+}
+
+/// `/Projects/2026` for a folder, `/` for the notebook's top.
+pub fn folder_path(book: &Book, folder: u64) -> String {
+    format!("/{}", folder_names(book, folder).join("/"))
+}
+
+/// The folder at `path` (as [`folder_path`] prints it) in `book`.
+fn resolve_folder(book: &Book, path: &str) -> Option<u64> {
+    let mut cur = book.nb.notebook.root_folder_id;
+    for name in path.split('/').map(str::trim).filter(|s| !s.is_empty()) {
+        cur = book
+            .folders
+            .iter()
+            .find(|f| f.parent_folder_id == Some(cur) && f.id != cur && f.name == name)?
+            .id;
+    }
+    Some(cur)
+}
+
+pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
+    let Some(note) = app.notes.rename.clone() else {
+        app.focus = Focus::List;
+        return;
+    };
+    let Some(book) = app.notes.book(&note.nb) else {
+        app.focus = Focus::List;
+        return;
+    };
+    let path = app.input.text.trim().to_string();
+    let Some(folder) = resolve_folder(book, &path) else {
+        app.error(format!("No folder {path} in {}", book.nb.notebook.title));
+        return;
+    };
+    let nb = book.nb.clone();
+    let from = book.note(note.id).map(|n| n.folder_id);
+    app.notes.rename = None;
+    app.input = Input::default();
+    app.focus = Focus::List;
+    if from == Some(folder) {
+        app.info("The note is already there");
+        return;
+    }
+    fx.push(Effect::MoveNote {
+        nb,
+        id: note.id,
+        folder,
+    });
+    app.info("Moving note");
+}
+
+pub fn note_moved(app: &mut App, nb: NotebookSummary, id: u64, folder: u64) {
+    let key = NbKey::of(&nb);
+    keeping_selection(app, |app| {
+        if let Some(n) = app
+            .notes
+            .book_mut(&key)
+            .and_then(|b| b.notes.iter_mut().find(|n| n.id == id))
+        {
+            n.folder_id = folder;
+        }
+    });
+    let label = app
+        .notes
+        .book(&key)
+        .map_or_else(String::new, |b| path_label(b, folder));
+    app.info(format!("Moved to {label}"));
 }
 
 pub fn begin_new_folder(app: &mut App) {

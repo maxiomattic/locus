@@ -271,6 +271,7 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let ui = &app.ui;
     let item = view_model::has_item_selected(ui);
+    let deletable = view_model::can_delete(ui);
     let when = |ok: bool, msg: Msg| ok.then_some(msg);
     let mut bar = widget::row::with_capacity(12)
         .spacing(s.space_xxs)
@@ -306,10 +307,14 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(ui) => vec![
             tool("New notebook", "", Some(Msg::NewNotebook)),
             tool("New note", "Ctrl+N", Some(Msg::New)),
+            tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool("New note", "Ctrl+N", Some(Msg::New)),
             tool("New folder", "", Some(Msg::NewFolder)),
+            tool("Rename", "F2", when(item, Msg::Rename)),
+            tool("Move", "", when(item, Msg::Move)),
+            tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Todo => vec![
             tool("Add task", "Ctrl+N", Some(Msg::New)),
@@ -334,7 +339,7 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("Upload", "Ctrl+O", Some(Msg::Upload)),
             tool("New folder", "Ctrl+N", Some(Msg::New)),
             tool("Rename", "F2", when(item, Msg::Rename)),
-            tool("Move", "", when(item, Msg::MoveFile)),
+            tool("Move", "", when(item, Msg::Move)),
             tool("Copy path", "Ctrl+C", when(item, Msg::Yank)),
             tool("Delete", "Delete", when(item, Msg::Delete)),
         ],

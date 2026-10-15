@@ -53,7 +53,9 @@ pub fn can_go_up(app: &App) -> bool {
 pub fn has_item_selected(app: &App) -> bool {
     match app.section {
         Section::Notes => notes_list(app).iter().any(|r| r.selected && !r.is_dir),
-        Section::Todo => todo_groups(app).iter().any(|g| g.items.iter().any(|t| t.selected)),
+        Section::Todo => todo_groups(app)
+            .iter()
+            .any(|g| g.items.iter().any(|t| t.selected)),
         Section::Calendar => events_on(app, app.calendar.day).len() > app.calendar.sel,
         Section::Photos => photo_grid(app, app.photos.columns.max(1))
             .rows
@@ -62,6 +64,15 @@ pub fn has_item_selected(app: &App) -> bool {
         // Folders cannot be renamed, moved or deleted here.
         Section::Files => file_rows(app).iter().any(|r| r.selected && !r.is_dir),
         Section::Contacts => contact_detail(app).is_some(),
+    }
+}
+
+/// Whether Delete has something to act on. In Notes that includes folders
+/// and notebooks, which go with everything in them.
+pub fn can_delete(app: &App) -> bool {
+    match app.section {
+        Section::Notes => notes_list(app).iter().any(|r| r.selected),
+        _ => has_item_selected(app),
     }
 }
 
@@ -570,6 +581,7 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::RenameNote => ("note title", app.input.text.clone()),
         InputKind::RenameFile => ("file name", app.input.text.clone()),
         InputKind::MoveFile => ("move to directory", app.input.text.clone()),
+        InputKind::MoveNote => ("move to folder", app.input.text.clone()),
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
     Some(InputView {

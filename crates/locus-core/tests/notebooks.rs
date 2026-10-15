@@ -416,15 +416,151 @@ fn rename_and_delete_use_the_selected_notes_notebook() {
 }
 
 #[test]
-fn delete_and_rename_ignore_folder_rows() {
+fn rename_and_edit_ignore_folder_rows() {
     let mut app = two_books();
     press(&mut app, Key::Enter);
     assert_eq!(selected_title(&app), "Daily");
-    key(&mut app, 'd');
-    assert_eq!(app.focus, Focus::List);
+    assert!(!view_model::has_item_selected(&app));
+    assert!(view_model::can_delete(&app));
     key(&mut app, 'r');
     assert_eq!(app.focus, Focus::List);
+    send(&mut app, Msg::Move);
+    assert_eq!(app.focus, Focus::List);
     send(&mut app, Msg::Edit);
+    assert_eq!(app.focus, Focus::List);
+}
+
+fn confirm_prompt(app: &App) -> String {
+    app.confirm
+        .as_ref()
+        .map(|c| c.prompt.clone())
+        .unwrap_or_default()
+}
+
+/// Into Locus, then select its folder `beta`.
+fn at_beta(app: &mut App) {
+    key(app, 'j');
+    press(app, Key::Enter);
+    assert_eq!(selected_title(app), "Alpha");
+    key(app, 'j');
+    assert_eq!(selected_title(app), "beta");
+}
+
+#[test]
+fn deleting_a_folder_asks_with_its_contents_and_deletes_it_all() {
+    let mut app = two_books();
+    at_beta(&mut app);
+    key(&mut app, 'd');
+    assert_eq!(app.focus, Focus::Confirm);
+    assert_eq!(
+        confirm_prompt(&app),
+        "Delete folder \"beta\" and the 2 notes and 1 folder in it?"
+    );
+    let fx = press(&mut app, Key::Char('y'));
+    assert_eq!(fx, vec![Effect::DeleteNoteFolder { nb: nb(), id: 11 }]);
+
+    let fx = send(&mut app, Msg::NoteFolderDeleted { nb: nb(), id: 11 });
+    assert!(fx.contains(&Effect::LoadNotes { nb: nb() }));
+    assert!(fx.contains(&Effect::LoadFolders { nb: nb() }));
+    assert_eq!(titles(&app), ["Alpha", "Newer top", "Top note"]);
+}
+
+#[test]
+fn an_empty_folder_says_so() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    press(&mut app, Key::Enter);
+    key(&mut app, 'd');
+    assert_eq!(confirm_prompt(&app), "Delete empty folder \"Alpha\"?");
+    let fx = press(&mut app, Key::Char('n'));
+    assert!(fx.is_empty());
+    assert_eq!(app.focus, Focus::List);
+}
+
+#[test]
+fn deleting_the_folder_being_browsed_goes_up_and_closes_its_note() {
+    let mut app = two_books();
+    at_beta(&mut app);
+    press(&mut app, Key::Enter); // into beta
+    press(&mut app, Key::Enter); // into deep
+    assert_eq!(selected_title(&app), "In deep");
+    press(&mut app, Key::Enter);
+    assert!(app.editor.is_some());
+    send(&mut app, Msg::NoteFolderDeleted { nb: nb(), id: 11 });
+    assert!(app.editor.is_none());
+    assert_eq!(view_model::notes_breadcrumb(&app), "Locus");
+}
+
+#[test]
+fn deleting_a_notebook_from_the_list() {
+    let mut app = two_books();
+    assert_eq!(selected_title(&app), "Journal");
+    key(&mut app, 'd');
+    assert_eq!(
+        confirm_prompt(&app),
+        "Delete notebook \"Journal\" and the 2 notes and 1 folder in it?"
+    );
+    let fx = press(&mut app, Key::Char('y'));
+    assert_eq!(fx, vec![Effect::DeleteNotebook { nb: nb_journal() }]);
+    send(&mut app, Msg::NotebookDeleted { nb: nb_journal() });
+    assert_eq!(titles(&app), ["Locus"]);
+    assert_eq!(selected_title(&app), "Locus");
+}
+
+#[test]
+fn moving_a_note_takes_a_folder_path() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    press(&mut app, Key::Enter);
+    key(&mut app, 'G');
+    assert_eq!(selected_title(&app), "Top note");
+    send(&mut app, Msg::Move);
+    assert_eq!(app.focus, Focus::Input(InputKind::MoveNote));
+    assert_eq!(app.input.text, "/");
+
+    send(
+        &mut app,
+        Msg::Text(locus_core::TextEdit::Set("/beta/nope".into())),
+    );
+    let fx = press(&mut app, Key::Enter);
+    assert!(fx.is_empty());
+    assert_eq!(app.focus, Focus::Input(InputKind::MoveNote));
+
+    send(
+        &mut app,
+        Msg::Text(locus_core::TextEdit::Set("beta/deep".into())),
+    );
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::MoveNote {
+            nb: nb(),
+            id: 1,
+            folder: 13
+        }]
+    );
+    send(
+        &mut app,
+        Msg::NoteMoved {
+            nb: nb(),
+            id: 1,
+            folder: 13,
+        },
+    );
+    assert_eq!(titles(&app), ["Alpha", "beta", "Newer top"]);
+}
+
+#[test]
+fn moving_a_note_starts_from_its_folder() {
+    let mut app = two_books();
+    at_beta(&mut app);
+    press(&mut app, Key::Enter);
+    key(&mut app, 'G');
+    assert_eq!(selected_title(&app), "In beta");
+    send(&mut app, Msg::Move);
+    assert_eq!(app.input.text, "/beta");
+    let fx = press(&mut app, Key::Enter);
+    assert!(fx.is_empty());
     assert_eq!(app.focus, Focus::List);
 }
 
@@ -581,7 +717,10 @@ fn new_notebook_asks_for_a_title_and_creates_it() {
     let mut app = two_books();
     send(&mut app, Msg::NewNotebook);
     assert_eq!(app.focus, Focus::Input(InputKind::NewNotebook));
-    assert!(press(&mut app, Key::Enter).is_empty(), "an empty title is refused");
+    assert!(
+        press(&mut app, Key::Enter).is_empty(),
+        "an empty title is refused"
+    );
     type_str(&mut app, "Recipes");
     assert_eq!(
         press(&mut app, Key::Enter),

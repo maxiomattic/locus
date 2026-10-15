@@ -248,6 +248,49 @@
             "description": "Notebook not found / caller not a member"
           }
         }
+      },
+      "delete": {
+        "summary": "Delete a notebook",
+        "description": "Deletes the notebook with every folder, note and revision in it. Owner only.",
+        "operationId": "deleteNotebook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Host ship (~-prefixed @p)"
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Notebook slug (@tas)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted — response carries the notebook-deleted update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Notebook not found"
+          }
+        }
       }
     },
     "/notes/~/v1/notebooks/{host}/{name}/folders": {

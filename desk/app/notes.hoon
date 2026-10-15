@@ -508,6 +508,9 @@
   =/  sub=path  t.t.t.pax
   ?+    [method sub]  ~
   ::
+      [%'DELETE' ~]
+    `[%notebook flag [%delete ~]]
+  ::
       [%'POST' [%notes ~]]
     ?~  folder=(field-ud obj 'folder')  ~
     ?~  title=(field-cord obj 'title')  ~
