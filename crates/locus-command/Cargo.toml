@@ -9,11 +9,14 @@ description = "Named-function plane for Locus: clan identity, OS approval, audit
 dirs = "6"
 hex = "0.4.3"
 locus-client = { path = "../locus-client" }
+locus-core = { path = "../locus-core" }
 locus-protocol = { path = "../locus-protocol" }
+mime_guess = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
 thiserror = "2"
+time = { version = "0.3", features = ["local-offset"] }
 tokio = { version = "1", features = ["rt"] }
 url = "2"
 

@@ -13,6 +13,8 @@
 
 pub mod blobs;
 pub mod calendar;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod config;
 pub mod contacts;
 pub mod files;
 pub mod locus;

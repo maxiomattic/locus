@@ -8,6 +8,7 @@ use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
+/// The saved gateway address and ship code.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -16,7 +17,8 @@ pub struct Settings {
     pub code: String,
 }
 
-fn path() -> Option<PathBuf> {
+/// Where the settings file lives, when the platform has a config directory.
+pub fn path() -> Option<PathBuf> {
     dirs::config_dir().map(|dir| dir.join("locus").join("desktop.json"))
 }
 
@@ -39,6 +41,7 @@ pub fn load() -> Settings {
     settings
 }
 
+/// Write the settings with mode 0600.
 pub fn save(settings: &Settings) -> Result<(), String> {
     let path = path().ok_or("no config directory")?;
     if let Some(dir) = path.parent() {

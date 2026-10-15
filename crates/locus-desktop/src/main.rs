@@ -7,7 +7,6 @@
 //! glue that keeps widget state (editor text, keyboard focus, scroll position,
 //! thumbnails) in line with the core. Drawing is in `view.rs`.
 
-mod config;
 mod keys;
 mod platform;
 mod view;
@@ -22,7 +21,7 @@ use cosmic::iced::{Event, Size, Subscription, clipboard, event, keyboard, window
 use cosmic::prelude::*;
 use cosmic::widget::{nav_bar, text_editor};
 use cosmic::{Element, executor, widget};
-use locus_client::Client;
+use locus_client::{Client, config};
 use locus_core::state::{App as Ui, Focus, InputKind};
 use locus_core::{Effect, Key, Mods, Msg, Section, Target, TextEdit, view_model};
 use url::Url;
