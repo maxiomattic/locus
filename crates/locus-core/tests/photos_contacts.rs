@@ -312,4 +312,9 @@ fn rename_and_move_patch_the_selected_photo() {
     send(&mut app, Msg::PhotoPatched { photo: moved });
     assert_eq!(app.photos.items[1].album, "Holidays/2026");
     assert_eq!(app.status.text, "Updated photo");
+
+    // The viewer names the album; a catalog path that is not a hash shows too.
+    send(&mut app, Msg::Activate);
+    let detail = view_model::photo_detail(&app).unwrap();
+    assert_eq!(detail.meta, "Album: /Holidays/2026  ·  holidays/dunes.jpg  ·  sun");
 }

@@ -488,6 +488,9 @@ pub struct PhotoDetail {
     pub path: String,
     pub hash: Option<String>,
     pub tags: Vec<String>,
+    pub album: String,
+    /// The line under the photo: `Album: /Trips · beach · 2026`.
+    pub meta: String,
     /// `3 / 12`.
     pub position: String,
 }
@@ -496,11 +499,25 @@ pub struct PhotoDetail {
 pub fn photo_detail(app: &App) -> Option<PhotoDetail> {
     let list = photos::visible(app);
     let p = list.get(app.photos.sel)?;
+    let hash = photos::hash_of(&p.path).map(str::to_string);
+    let album = p.album.trim_matches('/');
+    let mut meta = vec![if album.is_empty() {
+        "No album".to_string()
+    } else {
+        format!("Album: /{album}")
+    }];
+    // A stored photo's path is only its content hash; other paths say where it is.
+    if hash.is_none() && !p.path.is_empty() {
+        meta.push(p.path.clone());
+    }
+    meta.extend(p.tags.iter().cloned());
     Some(PhotoDetail {
         title: p.title.clone(),
         path: p.path.clone(),
-        hash: photos::hash_of(&p.path).map(str::to_string),
+        hash,
         tags: p.tags.clone(),
+        album: p.album.clone(),
+        meta: meta.join("  ·  "),
         position: format!("{} / {}", app.photos.sel + 1, list.len()),
     })
 }

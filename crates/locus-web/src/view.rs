@@ -880,6 +880,9 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
             .content_fit(ContentFit::Contain)
             .into(),
         None if detail.hash.is_none() => muted_text(c, "No preview for this photo").into(),
+        None if detail.hash.as_deref().is_some_and(|h| s.thumb_failed(h, 1024)) => {
+            muted_text(c, "Could not load this photo.").into()
+        }
         None => muted_text(c, "Loading...").into(),
     };
     let caption = row![
@@ -892,11 +895,7 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
     ]
     .spacing(8)
     .align_y(Center);
-    let mut meta = detail.path.clone();
-    if !detail.tags.is_empty() {
-        meta.push_str("  ·  ");
-        meta.push_str(&detail.tags.join(" · "));
-    }
+    let meta = detail.meta.clone();
     column![
         caption,
         container(picture)

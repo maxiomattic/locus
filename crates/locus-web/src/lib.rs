@@ -55,6 +55,8 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     /// Keys already requested, so each thumbnail is fetched once.
     requested: HashSet<String>,
+    /// Keys whose fetch failed.
+    thumb_failed: HashSet<String>,
     editor: text_editor::Content,
     /// The note the editor widget shows, and the body it was last synced to.
     editor_note: Option<String>,
@@ -123,6 +125,7 @@ impl Shell {
             window: Size::new(1280.0, 800.0),
             thumbs: HashMap::new(),
             requested: HashSet::new(),
+            thumb_failed: HashSet::new(),
             editor: text_editor::Content::new(),
             editor_note: None,
             editor_synced: String::new(),
@@ -236,8 +239,13 @@ impl Shell {
                 self.sync()
             }
             Message::Thumb(key, result) => {
-                if let Ok(bytes) = result {
-                    self.thumbs.insert(key, image::Handle::from_bytes(bytes));
+                match result {
+                    Ok(bytes) => {
+                        self.thumbs.insert(key, image::Handle::from_bytes(bytes));
+                    }
+                    Err(_) => {
+                        self.thumb_failed.insert(key);
+                    }
                 }
                 Task::none()
             }
@@ -506,6 +514,11 @@ impl Shell {
     /// Thumbnail for a hash at a size, if it has arrived.
     pub fn thumb(&self, hash: &str, size: u32) -> Option<&image::Handle> {
         self.thumbs.get(&format!("{hash}@{size}"))
+    }
+
+    /// Whether fetching this thumbnail failed.
+    pub fn thumb_failed(&self, hash: &str, size: u32) -> bool {
+        self.thumb_failed.contains(&format!("{hash}@{size}"))
     }
 }
 

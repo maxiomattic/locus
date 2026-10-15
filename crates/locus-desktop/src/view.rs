@@ -124,10 +124,31 @@ fn text_button(label: &'static str, msg: Msg) -> Element<'static, Message> {
     widget::button::text(label).on_press(core(msg)).into()
 }
 
+/// The standard button look, with dimmed text when disabled. The stock
+/// style only dims the background, so a disabled button read as enabled.
+fn tool_class() -> theme::Button {
+    use widget::button::Catalog;
+    let std = || theme::Button::Standard;
+    theme::Button::Custom {
+        active: Box::new(move |focused, t| t.active(focused, false, &std())),
+        disabled: Box::new(move |t| {
+            let mut style = t.disabled(&std());
+            let mut dim: Color = t.cosmic().button.on.into();
+            dim.a = 0.4;
+            style.text_color = Some(dim);
+            style
+        }),
+        hovered: Box::new(move |focused, t| t.hovered(focused, false, &std())),
+        pressed: Box::new(move |focused, t| t.pressed(focused, false, &std())),
+    }
+}
+
 /// A labelled toolbar button with a tooltip naming its shortcut; `None`
 /// draws it disabled.
 fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'static, Message> {
-    let b = widget::button::standard(label).on_press_maybe(msg.map(core));
+    let b = widget::button::standard(label)
+        .class(tool_class())
+        .on_press_maybe(msg.map(core));
     if tip.is_empty() {
         return b.into();
     }
@@ -972,6 +993,14 @@ fn viewer(app: &App) -> Element<'_, Message> {
             .height(Length::Fill)
             .into(),
         None if detail.hash.is_none() => empty("No preview", "This photo has no stored image.".into()),
+        // A failed fetch is stored as `None`.
+        None if detail
+            .hash
+            .as_deref()
+            .is_some_and(|sha| matches!(app.thumbs.get(&thumb_key(sha, THUMB_VIEW)), Some(None))) =>
+        {
+            empty("Could not load the photo", "The server did not send it.".into())
+        }
         None => empty("Loading", "Fetching the photo.".into()),
     };
     let top = widget::row::with_capacity(5)
@@ -982,11 +1011,7 @@ fn viewer(app: &App) -> Element<'_, Message> {
         .push(widget::text::caption(detail.position))
         .push(tool("Previous", "Left", Some(Msg::Nav(Nav::Left))))
         .push(tool("Next", "Right", Some(Msg::Nav(Nav::Right))));
-    let mut meta = detail.path;
-    if !detail.tags.is_empty() {
-        meta.push_str("  ·  ");
-        meta.push_str(&detail.tags.join(" · "));
-    }
+    let meta = detail.meta;
     widget::column::with_capacity(3)
         .spacing(s.space_xs)
         .height(Length::Fill)
