@@ -251,11 +251,11 @@ async fn notebook_rm(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
 /// `3 notes and 1 folder`, for refusals to delete something non-empty.
 pub fn contents(notes: usize, folders: usize) -> String {
     let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
-    format!(
-        "{} and {}",
-        plural(notes, "note"),
-        plural(folders, "folder")
-    )
+    match (notes, folders) {
+        (_, 0) => plural(notes, "note"),
+        (0, _) => plural(folders, "folder"),
+        _ => format!("{} and {}", plural(notes, "note"), plural(folders, "folder")),
+    }
 }
 
 async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
@@ -735,7 +735,8 @@ mod tests {
         ];
         assert!(is_below(&fs, 12, 10) && is_below(&fs, 12, 11));
         assert!(!is_below(&fs, 13, 11) && !is_below(&fs, 11, 11));
-        assert_eq!(contents(1, 0), "1 note and 0 folders");
+        assert_eq!(contents(1, 0), "1 note");
+        assert_eq!(contents(0, 3), "3 folders");
         assert_eq!(contents(2, 1), "2 notes and 1 folder");
     }
 

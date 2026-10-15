@@ -498,6 +498,7 @@ pub fn notebook_created(app: &mut App, fx: &mut Vec<Effect>, notebook: NotebookS
     ensure_book(app, &notebook);
     app.notes.loc_init = true;
     enter_folder(app, NbKey::of(&notebook), notebook.notebook.root_folder_id);
+    app.info(format!("Created notebook \"{}\"", notebook.notebook.title));
     request_notebook(fx, notebook);
 }
 
@@ -688,11 +689,11 @@ pub fn save_failed(app: &mut App, nb: NotebookSummary, id: u64, error: String) {
 /// `3 notes and 1 folder` for a delete prompt.
 fn contents(notes: usize, folders: usize) -> String {
     let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
-    format!(
-        "{} and {}",
-        plural(notes, "note"),
-        plural(folders, "folder")
-    )
+    match (notes, folders) {
+        (_, 0) => plural(notes, "note"),
+        (0, _) => plural(folders, "folder"),
+        _ => format!("{} and {}", plural(notes, "note"), plural(folders, "folder")),
+    }
 }
 
 /// `folder` and every folder below it.

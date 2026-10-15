@@ -3,7 +3,7 @@
 use locus_client::photos::Photo;
 
 use crate::msg::{Effect, Msg, Nav};
-use crate::state::{App, Focus, Section, clamp_sel, matches_filter};
+use crate::state::{App, Focus, Input, InputKind, Section, clamp_sel, matches_filter};
 
 /// The content hash when `path` is `sha256:<hex>`; `None` for other paths.
 pub fn hash_of(path: &str) -> Option<&str> {
@@ -89,4 +89,82 @@ pub fn deleted(app: &mut App, id: u64) {
         app.focus = Focus::List;
     }
     app.info("Photo deleted");
+}
+
+fn selected(app: &App) -> Option<Photo> {
+    let sel = clamp_sel(app.photos.sel, visible(app).len());
+    visible(app).get(sel).map(|p| (*p).clone())
+}
+
+pub fn begin_rename(app: &mut App) {
+    match selected(app) {
+        Some(p) => {
+            app.input = Input {
+                text: p.title,
+                target: Some(p.id),
+            };
+            app.focus = Focus::Input(InputKind::RenamePhoto);
+        }
+        None => app.info("No photo selected"),
+    }
+}
+
+/// The album prompt shows the album as a path, `/` for none.
+pub fn begin_move(app: &mut App) {
+    match selected(app) {
+        Some(p) => {
+            app.input = Input {
+                text: format!("/{}", p.album.trim_matches('/')),
+                target: Some(p.id),
+            };
+            app.focus = Focus::Input(InputKind::MovePhoto);
+        }
+        None => app.info("No photo selected"),
+    }
+}
+
+pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
+    let title = app.input.text.trim().to_string();
+    if title.is_empty() {
+        app.error("Title is required");
+        return;
+    }
+    submit(app, fx, Some(title), None);
+}
+
+pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
+    let album = app.input.text.trim().trim_matches('/').to_string();
+    if album.split('/').any(|s| s == "..") {
+        app.error("Album cannot contain ..");
+        return;
+    }
+    submit(app, fx, None, Some(album));
+}
+
+fn submit(app: &mut App, fx: &mut Vec<Effect>, title: Option<String>, album: Option<String>) {
+    let Some(id) = app.input.target else {
+        app.focus = Focus::List;
+        return;
+    };
+    let Some(photo) = app.photos.items.iter().find(|p| p.id == id) else {
+        app.error("Photo no longer exists");
+        return;
+    };
+    fx.push(Effect::PatchPhoto {
+        id,
+        expected_revision: photo.revision,
+        title,
+        album,
+    });
+    app.input = Input::default();
+    app.focus = Focus::List;
+}
+
+pub fn patched(app: &mut App, photo: Photo) {
+    match app.photos.items.iter_mut().find(|p| p.id == photo.id) {
+        Some(slot) => *slot = photo,
+        None => app.photos.items.push(photo),
+    }
+    app.photos.sel = clamp_sel(app.photos.sel, visible(app).len());
+    app.info("Updated photo");
 }

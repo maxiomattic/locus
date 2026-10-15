@@ -226,11 +226,31 @@ fn move_rejects_relative_and_dotdot_paths() {
 }
 
 #[test]
-fn delete_file_confirms_and_folders_cannot_be_deleted() {
+fn delete_file_confirms_and_only_empty_folders_can_be_deleted() {
     let mut app = files_app();
+    assert!(!view_model::can_delete(&app), "Docs holds a file");
     press(&mut app, Key::Delete);
-    assert_eq!(app.focus, Focus::List, "folder rows are not deletable");
-    assert_eq!(app.status.text, "Folders cannot be deleted here");
+    assert_eq!(app.focus, Focus::List, "non-empty folders are not deletable");
+    assert_eq!(app.status.text, "Folder \"Docs\" is not empty");
+
+    press(&mut app, Key::Down);
+    assert!(view_model::can_delete(&app), "Music is empty");
+    press(&mut app, Key::Delete);
+    assert_eq!(app.focus, Focus::Confirm);
+    let fx = press(&mut app, Key::Char('y'));
+    assert_eq!(
+        fx,
+        vec![Effect::DeleteDir {
+            path: "/Music".into()
+        }]
+    );
+    send(
+        &mut app,
+        Msg::DirDeleted {
+            path: "/Music".into(),
+        },
+    );
+    assert_eq!(names(&app), ["Docs", "Photos", "readme.txt"]);
 
     press(&mut app, Key::End);
     press(&mut app, Key::Delete);

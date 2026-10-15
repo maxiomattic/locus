@@ -194,6 +194,7 @@ pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
         ]),
         Section::Photos => out.extend([
             ("Arrows", "move in the grid; previous / next in the viewer"),
+            ("F2", "rename the photo"),
             ("Ctrl+O", "upload photos"),
         ]),
         Section::Files => out.extend([

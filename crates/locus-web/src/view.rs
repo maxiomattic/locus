@@ -231,6 +231,8 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         Section::Photos => vec![
             tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
             tool(c, "Open", "Enter", when(item && app.focus != Focus::Detail, Msg::Activate)),
+            tool(c, "Rename", "F2", when(item, Msg::Rename)),
+            tool(c, "Move", "", when(item, Msg::Move)),
             tool(c, "Delete", "Delete", when(item, Msg::Delete)),
         ],
         Section::Files => vec![
@@ -238,8 +240,8 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "New folder", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
             tool(c, "Move", "", when(item, Msg::Move)),
-            tool(c, "Copy path", "Ctrl+C", when(item, Msg::Yank)),
-            tool(c, "Delete", "Delete", when(item, Msg::Delete)),
+            tool(c, "Copy path", "Ctrl+C", when(view_model::has_file_row_selected(app), Msg::Yank)),
+            tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Contacts => vec![
             tool(c, "New contact", "Ctrl+N or Alt+N", Some(Msg::New)),
@@ -326,18 +328,20 @@ fn click_row<'a>(
     .into()
 }
 
-/// A two-line list row of fixed height that sends `msg` when clicked. A
-/// row that leads somewhere (a notebook or folder) ends in a chevron.
+/// A two-line list row of fixed height: a click selects row `index`, a
+/// double click opens it. A row that leads somewhere (a notebook or folder)
+/// ends in a chevron.
 fn list_row<'a>(
     c: Colors,
-    msg: Message,
+    index: usize,
     title: &str,
     subtitle: &str,
     selected: bool,
     leads_in: bool,
 ) -> Element<'a, Message> {
     let chevron = if leads_in { "›" } else { "" };
-    button(
+    click_row(
+        c,
         row![
             column![
                 text(title.to_string()).size(14).color(c.text),
@@ -348,13 +352,11 @@ fn list_row<'a>(
             text(chevron).size(18).color(c.muted),
         ]
         .align_y(Center),
+        ROW_H,
+        selected,
+        Msg::Select(index),
+        Msg::Activate,
     )
-    .width(Fill)
-    .height(ROW_H)
-    .padding([6, 8])
-    .on_press(msg)
-    .style(style::row_button(c, selected))
-    .into()
 }
 
 fn empty_card<'a>(c: Colors, title: &str, hint: &str) -> Element<'a, Message> {
@@ -451,9 +453,7 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     } else {
         let mut col = Column::new();
         for (i, r) in rows.iter().enumerate() {
-            // One click opens a notebook, folder or note.
-            let open = core(Msg::Batch(vec![Msg::Select(i), Msg::Activate]));
-            col = col.push(list_row(c, open, &r.title, &r.subtitle, r.selected, r.is_dir));
+            col = col.push(list_row(c, i, &r.title, &r.subtitle, r.selected, r.is_dir));
         }
         col.into()
     };
@@ -469,7 +469,7 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
 
     let right: Element<'_, Message> = match view_model::editor(&s.app) {
         Some(ed) => editor_pane(s, ed),
-        None => empty_card(c, "No note open", "Click a note to open it."),
+        None => empty_card(c, "No note open", "Double-click a note to open it."),
     };
     row![left, right].spacing(16).height(Fill).into()
 }

@@ -210,23 +210,6 @@ fn empty_hint(app: &App, empty: &str) -> String {
 
 /// A list row: clicking an unselected row selects it, clicking the selected
 /// row activates it (open, enter, edit).
-fn list_item<'a>(
-    content: impl Into<Element<'a, Message>>,
-    height: f32,
-    selected: bool,
-    on_select: Msg,
-) -> widget::list::ListButton<'a, Message> {
-    let msg = if selected { Msg::Activate } else { on_select };
-    widget::list::button(
-        widget::container(content)
-            .height(Length::Fixed(height))
-            .width(Length::Fill)
-            .align_y(Alignment::Center),
-    )
-    .selected(selected)
-    .on_press(core(msg))
-}
-
 fn two_lines<'a>(title: String, subtitle: String) -> Element<'a, Message> {
     widget::column::with_capacity(2)
         .push(widget::text::body(title))
@@ -333,6 +316,8 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
         Section::Photos => vec![
             tool("Upload", "Ctrl+O", Some(Msg::Upload)),
             tool("Open", "Enter", when(item && ui.focus != Focus::Detail, Msg::Activate)),
+            tool("Rename", "F2", when(item, Msg::Rename)),
+            tool("Move", "", when(item, Msg::Move)),
             tool("Delete", "Delete", when(item, Msg::Delete)),
         ],
         Section::Files => vec![
@@ -340,8 +325,8 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("New folder", "Ctrl+N", Some(Msg::New)),
             tool("Rename", "F2", when(item, Msg::Rename)),
             tool("Move", "", when(item, Msg::Move)),
-            tool("Copy path", "Ctrl+C", when(item, Msg::Yank)),
-            tool("Delete", "Delete", when(item, Msg::Delete)),
+            tool("Copy path", "Ctrl+C", when(view_model::has_file_row_selected(ui), Msg::Yank)),
+            tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Contacts => vec![
             tool("New contact", "Ctrl+N", Some(Msg::New)),
@@ -472,13 +457,7 @@ fn notes(app: &App) -> Element<'_, Message> {
             } else {
                 content
             };
-            // One click opens a notebook, folder or note.
-            list = list.add(list_item(
-                content,
-                ROW2_H,
-                row.selected,
-                Msg::Batch(vec![Msg::Select(i), Msg::Activate]),
-            ));
+            list = list.add(row_area(content, ROW2_H, row.selected, Msg::Select(i), Msg::Activate));
         }
         scroll(NOTES_SCROLL, list)
     };
@@ -487,7 +466,7 @@ fn notes(app: &App) -> Element<'_, Message> {
         .height(Length::Fill);
     let right: Element<'_, Message> = match view_model::editor(&app.ui) {
         Some(editor) => editor_pane(app, editor),
-        None => empty("No note open", "Click a note to open it.".into()),
+        None => empty("No note open", "Double-click a note to open it.".into()),
     };
     widget::row::with_capacity(2)
         .spacing(s.space_s)

@@ -160,6 +160,10 @@ pub enum Msg {
     },
     /// Internal target of a notebook delete confirmation.
     ExecuteDeleteNotebook(NbKey),
+    /// Internal target of an empty folder delete confirmation (Files).
+    ExecuteDeleteDir {
+        path: String,
+    },
     BeginLogin,
 
     // ----- IO results -----
@@ -174,6 +178,11 @@ pub enum Msg {
         notes: Vec<Note>,
     },
     FoldersLoaded {
+        nb: NotebookSummary,
+        folders: Vec<Folder>,
+    },
+    /// A folder was created; `folders` is the notebook's new folder list.
+    NoteFolderCreated {
         nb: NotebookSummary,
         folders: Vec<Folder>,
     },
@@ -247,6 +256,9 @@ pub enum Msg {
     PhotoDeleted {
         id: u64,
     },
+    PhotoPatched {
+        photo: Photo,
+    },
     ContactDeleted {
         id: u64,
     },
@@ -257,6 +269,9 @@ pub enum Msg {
         dirs: Vec<String>,
     },
     DirCreated {
+        path: String,
+    },
+    DirDeleted {
         path: String,
     },
     FilePatched {
@@ -373,6 +388,13 @@ pub enum Effect {
     DeletePhoto {
         id: u64,
     },
+    /// Change a photo's title and/or album; `None` keeps the field.
+    PatchPhoto {
+        id: u64,
+        expected_revision: u64,
+        title: Option<String>,
+        album: Option<String>,
+    },
     CreateNoteFolder {
         nb: NotebookSummary,
         parent: u64,
@@ -385,6 +407,9 @@ pub enum Effect {
     LoadFiles,
     LoadDirs,
     CreateDir {
+        path: String,
+    },
+    DeleteDir {
         path: String,
     },
     PatchFile {

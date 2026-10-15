@@ -291,7 +291,7 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 .await
             {
                 Ok(_) => match client.list_folders(&nb.host, &nb.flag_name).await {
-                    Ok(folders) => vec![Msg::FoldersLoaded { nb, folders }],
+                    Ok(folders) => vec![Msg::NoteFolderCreated { nb, folders }],
                     Err(e) => vec![load_failed(Section::Notes, &e)],
                 },
                 Err(e) => vec![write_failed(Section::Notes, &e)],
@@ -316,6 +316,10 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             Ok(()) => vec![Msg::DirCreated { path }],
             Err(e) => vec![write_failed(Section::Files, &e)],
         },
+        Effect::DeleteDir { path } => match client.delete_dir(&path).await {
+            Ok(()) => vec![Msg::DirDeleted { path }],
+            Err(e) => vec![write_failed(Section::Files, &e)],
+        },
         Effect::PatchFile {
             id,
             expected_revision,
@@ -330,6 +334,22 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                     file: to_core_file(file),
                 }],
                 Err(e) => vec![write_failed(Section::Files, &e)],
+            }
+        }
+        Effect::PatchPhoto {
+            id,
+            expected_revision,
+            title,
+            album,
+        } => {
+            let patch = locus_client::photos::PhotoPatch {
+                title,
+                album,
+                ..Default::default()
+            };
+            match client.patch_photo(id, expected_revision, &patch).await {
+                Ok(photo) => vec![Msg::PhotoPatched { photo }],
+                Err(e) => vec![write_failed(Section::Photos, &e)],
             }
         }
         Effect::DeleteFile { id } => match client.delete_file(id, None).await {

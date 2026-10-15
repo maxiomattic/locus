@@ -200,6 +200,8 @@ pub enum InputKind {
     RenameFile,
     MoveFile,
     MoveNote,
+    RenamePhoto,
+    MovePhoto,
     Login,
 }
 

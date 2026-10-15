@@ -314,9 +314,36 @@ pub fn ask_delete(app: &mut App) {
                 id: f.id,
             },
         ),
-        Some(Row::Folder { .. }) => app.info("Folders cannot be deleted here"),
+        Some(Row::Folder { name, path }) => {
+            if dir_is_empty(app, &path) {
+                app.ask(
+                    format!("Delete empty folder \"{name}\"?"),
+                    Msg::ExecuteDeleteDir { path },
+                );
+            } else {
+                app.info(format!("Folder \"{name}\" is not empty"));
+            }
+        }
         None => app.info("Nothing selected"),
     }
+}
+
+/// True when no file and no other folder lies under `path`.
+pub fn dir_is_empty(app: &App, path: &str) -> bool {
+    let below = |p: &str| p.starts_with(&format!("{}/", path.trim_end_matches('/')));
+    !app.files.files.iter().any(|f| f.dir == path || below(&f.dir))
+        && !folders(app).iter().any(|d| below(d))
+}
+
+pub fn execute_delete_dir(app: &mut App, fx: &mut Vec<Effect>, path: String) {
+    fx.push(Effect::DeleteDir { path });
+    app.info("Deleting folder");
+}
+
+pub fn dir_deleted(app: &mut App, path: &str) {
+    app.files.dirs.retain(|d| normalize_dir(d).as_deref() != Ok(path));
+    app.files.sel = clamp_sel(app.files.sel, rows(app).len());
+    app.info("Folder deleted");
 }
 
 pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, id: u64) {

@@ -270,3 +270,46 @@ fn delete_asks_then_removes_the_selected_photo() {
     assert_eq!(app.photos.items.len(), 4);
     assert!(app.photos.items.iter().all(|p| p.id != 2));
 }
+
+#[test]
+fn rename_and_move_patch_the_selected_photo() {
+    let mut app = photos_app(2);
+    press(&mut app, Key::Right);
+    press(&mut app, Key::F(2));
+    assert_eq!(app.input.text, "Dunes");
+    for _ in 0..app.input.text.len() {
+        press(&mut app, Key::Backspace);
+    }
+    type_str(&mut app, "Dune walk");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::PatchPhoto {
+            id: 2,
+            expected_revision: 1,
+            title: Some("Dune walk".into()),
+            album: None,
+        }]
+    );
+
+    send(&mut app, Msg::Move);
+    assert_eq!(app.input.text, "/Holidays");
+    type_str(&mut app, "/2026/");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::PatchPhoto {
+            id: 2,
+            expected_revision: 1,
+            title: None,
+            album: Some("Holidays/2026".into()),
+        }]
+    );
+
+    let mut moved = photo(2, "Dunes", "holidays/dunes.jpg");
+    moved.album = "Holidays/2026".into();
+    moved.revision = 2;
+    send(&mut app, Msg::PhotoPatched { photo: moved });
+    assert_eq!(app.photos.items[1].album, "Holidays/2026");
+    assert_eq!(app.status.text, "Updated photo");
+}

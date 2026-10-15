@@ -61,6 +61,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::Move => match app.section {
             Section::Files => files::begin_move(app),
             Section::Notes => notes::begin_move(app),
+            Section::Photos => photos::begin_move(app),
             _ => app.info("Nothing to move here"),
         },
         Msg::ToggleTask => todo::toggle_selected(app, fx),
@@ -115,6 +116,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::ExecuteDeleteNote(note) => notes::execute_delete(app, fx, note),
         Msg::ExecuteDeleteFolder { nb, id } => notes::execute_delete_folder(app, fx, &nb, id),
         Msg::ExecuteDeleteNotebook(nb) => notes::execute_delete_notebook(app, fx, &nb),
+        Msg::ExecuteDeleteDir { path } => files::execute_delete_dir(app, fx, path),
         Msg::BeginLogin => {
             app.input = Input::default();
             app.focus = Focus::Input(InputKind::Login);
@@ -125,6 +127,10 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NotebookCreated { notebook } => notes::notebook_created(app, fx, notebook),
         Msg::NotesLoaded { nb, notes } => notes::notes_loaded(app, fx, nb, notes),
         Msg::FoldersLoaded { nb, folders } => notes::folders_loaded(app, nb, folders),
+        Msg::NoteFolderCreated { nb, folders } => {
+            notes::folders_loaded(app, nb, folders);
+            app.info("Created folder");
+        }
         Msg::NoteLoaded { nb, note } => notes::note_loaded(app, fx, nb, note),
         Msg::NoteCreated { nb, note } => notes::note_created(app, fx, nb, note),
         Msg::NoteSaved { nb, note } => notes::note_saved(app, fx, nb, note),
@@ -148,9 +154,11 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::ContactSaved { contact } => contacts::saved(app, contact),
         Msg::ContactDeleted { id } => contacts::deleted(app, id),
         Msg::PhotoDeleted { id } => photos::deleted(app, id),
+        Msg::PhotoPatched { photo } => photos::patched(app, photo),
         Msg::FilesLoaded { files } => files::files_loaded(app, files),
         Msg::DirsLoaded { dirs } => files::dirs_loaded(app, dirs),
         Msg::DirCreated { path } => files::dir_created(app, path),
+        Msg::DirDeleted { path } => files::dir_deleted(app, &path),
         Msg::FilePatched { file } => files::file_patched(app, file),
         Msg::FileDeleted { id } => files::file_deleted(app, id),
         Msg::UploadDone { dir, count } => {
@@ -328,6 +336,7 @@ fn rename(app: &mut App) {
     match app.section {
         Section::Notes => notes::begin_rename(app),
         Section::Files => files::begin_rename(app),
+        Section::Photos => photos::begin_rename(app),
         _ => app.info("Nothing to rename here"),
     }
 }
@@ -443,6 +452,8 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::RenameNote => notes::submit_rename(app, fx),
         InputKind::RenameFile => files::submit_rename(app, fx),
         InputKind::MoveFile => files::submit_move(app, fx),
+        InputKind::RenamePhoto => photos::submit_rename(app, fx),
+        InputKind::MovePhoto => photos::submit_move(app, fx),
         InputKind::MoveNote => notes::submit_move(app, fx),
         InputKind::Login => {
             let code = std::mem::take(&mut app.input.text);

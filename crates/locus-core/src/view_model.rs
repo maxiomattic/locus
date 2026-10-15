@@ -69,9 +69,19 @@ pub fn has_item_selected(app: &App) -> bool {
 
 /// Whether Delete has something to act on. In Notes that includes folders
 /// and notebooks, which go with everything in them.
+/// Files: any row, folder or file, is selected (Copy path works on both).
+pub fn has_file_row_selected(app: &App) -> bool {
+    crate::files::selected(app).is_some()
+}
+
 pub fn can_delete(app: &App) -> bool {
     match app.section {
         Section::Notes => notes_list(app).iter().any(|r| r.selected),
+        Section::Files => match crate::files::selected(app) {
+            Some(crate::files::Row::Folder { path, .. }) => crate::files::dir_is_empty(app, &path),
+            Some(_) => true,
+            None => false,
+        },
         _ => has_item_selected(app),
     }
 }
@@ -581,6 +591,8 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::RenameNote => ("note title", app.input.text.clone()),
         InputKind::RenameFile => ("file name", app.input.text.clone()),
         InputKind::MoveFile => ("move to directory", app.input.text.clone()),
+        InputKind::RenamePhoto => ("photo title", app.input.text.clone()),
+        InputKind::MovePhoto => ("move to album", app.input.text.clone()),
         InputKind::MoveNote => ("move to folder", app.input.text.clone()),
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
