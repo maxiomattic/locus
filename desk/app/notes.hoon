@@ -810,8 +810,22 @@
     ::  v1 per-request watch wire. Flag embedded in the wire so we can
     ::  route back into the right no-core context.
     =/  =flag:n  [(slav %p ship.pole) `@tas`name.pole]
-    ?.  (~(has by books) flag)  cor
     =/  rid=request-id:v1:n  (slav %uv id.pole)
+    ?.  (~(has by books) flag)
+      ::  the request deleted the notebook itself: there is no book to
+      ::  route into, so finalize straight from the host's response.
+      ?.  ?=(%fact -.sign)  cor
+      ?.  =(p.cage.sign %notes-response-update-1)  cor
+      =+  !<(ru=response-update:v1:n q.cage.sign)
+      =/  body=response-body:v1:n
+        ?-  -.body.ru
+          %no-change  [%no-change ~]
+          %ok         [%ok %update flag update.body.ru]
+          %error      [%error type.body.ru message.body.ru]
+        ==
+      =.  cor  (finalize-request rid body)
+      =/  =wire  /notes/req/[ship.pole]/[name.pole]/[id.pole]/watch
+      (emit %pass wire %agent [ship.flag %notes] %leave ~)
     no-abet:(no-agent-req-watch:(no-abed:no-core flag) rid sign)
   ::
       [%notes %req ship=@ name=@ id=@ %poke ~]
