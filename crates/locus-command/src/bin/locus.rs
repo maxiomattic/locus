@@ -1,6 +1,6 @@
 //! `locus` — clan command plane (same functions the ship audits).
 
-use locus_command::{Session, execute_allowed, import, load_saved, run_approved_job};
+use locus_command::{Session, apps, execute_allowed, import, load_saved, run_approved_job};
 use std::env;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
@@ -122,6 +122,9 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         "import-obsidian" => cmd_import_obsidian(args.collect()),
+        "connect" => apps::connect(args.collect()),
+        "open" => apps::open(args.collect()),
+        app if apps::is_app(app) => apps::run(app, args.collect()),
         other => Err(format!("unknown command {other}. try: locus help")),
     }
 }
@@ -148,7 +151,14 @@ fn cmd_execute(s: &Session, id: u64) -> Result<(), String> {
 
 fn print_help() {
     eprintln!(
-        "locus — clan command plane\n\
+        "locus — Locus apps and clan command plane\n\
+         \n\
+         Apps (every listing takes --json; `locus <app> --help` lists commands):\n\
+         locus connect [<server-url> [--code-file <path>]]   # save gateway + code\n\
+         locus notes|todo|calendar|photos|files|contacts <command>\n\
+         locus open <app> [target]   # launch the GUI app (locus-<app>)\n\
+         \n\
+         Clan command plane:\n\
          \n\
          locus login [code-file]   # +code file, or stdin; stores API key\n\
          locus whoami\n\
