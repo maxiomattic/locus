@@ -978,3 +978,54 @@ fn a_lowercase_inbox_note_is_reused_for_new_tasks() {
         "made a second inbox: {fx:?}"
     );
 }
+
+fn history_on_top_note(app: &mut App) {
+    key(app, 'j');
+    key(app, 'l');
+    key(app, 'G');
+    send(app, Msg::History);
+    send(
+        app,
+        Msg::HistoryLoaded {
+            nb: nb(),
+            id: 1,
+            revs: Ok(vec![rev(1, "second"), rev(0, "first")]),
+        },
+    );
+}
+
+#[test]
+fn history_closes_when_another_row_is_clicked_and_cancel_keeps_its_focus() {
+    let mut app = two_books();
+    history_on_top_note(&mut app);
+    send(&mut app, Msg::RestoreRevision);
+    send(&mut app, Msg::ConfirmAnswer(false));
+    assert_eq!(app.focus, Focus::Detail);
+    assert!(view_model::note_history(&app).is_some());
+    // Clicking the same note keeps it; another row closes it.
+    let same = view_model::notes_list(&app).iter().position(|r| r.selected).unwrap();
+    send(&mut app, Msg::Select(same));
+    assert!(view_model::note_history(&app).is_some());
+    send(&mut app, Msg::Select(0));
+    assert!(view_model::note_history(&app).is_none());
+}
+
+#[test]
+fn restore_waits_for_an_unsaved_editor() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    key(&mut app, 'l');
+    key(&mut app, 'G');
+    key(&mut app, 'l');
+    send(&mut app, Msg::EditorChanged("typing".into()));
+    send(
+        &mut app,
+        Msg::ExecuteRestore {
+            note: locus_core::NoteRef { nb: locus_core::NbKey { host: nb().host, flag_name: nb().flag_name }, id: 1 },
+            rev: 0,
+        },
+    )
+    .iter()
+    .for_each(|e| assert!(!matches!(e, Effect::RestoreNote { .. })));
+    assert!(view_model::status_line(&app).contains("still saving"));
+}

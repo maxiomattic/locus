@@ -113,6 +113,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
                 app.focus = Focus::List;
             }
             select_index(app, i);
+            if app.section == Section::Notes {
+                notes::close_history_unless_selected(app);
+            }
         }
         Msg::EditorFocus => {
             if app.editor.is_some() {
@@ -226,6 +229,9 @@ pub(crate) fn switch_section(app: &mut App, fx: &mut Vec<Effect>, section: Secti
         // A cross-link still waiting for data is dropped once the user
         // moves on; a switch to the same section (at startup) keeps it.
         app.pending_target = None;
+    }
+    if section != Section::Notes {
+        notes::close_history(app);
     }
     app.section = section;
     app.filter.clear();
@@ -392,7 +398,7 @@ fn escape(app: &mut App, fx: &mut Vec<Effect>) {
         }
         Focus::Confirm => {
             app.confirm = None;
-            app.focus = Focus::List;
+            app.focus = after_confirm(app);
         }
         Focus::Form => {
             app.form = None;
@@ -402,6 +408,8 @@ fn escape(app: &mut App, fx: &mut Vec<Effect>) {
         Focus::Input(InputKind::Filter) => app.focus = Focus::List,
         Focus::Input(_) => {
             app.input = Input::default();
+            app.notes.folder_edit = None;
+            app.notes.rename = None;
             app.focus = Focus::List;
         }
         Focus::Editor => {
@@ -551,7 +559,7 @@ fn confirm_answer(app: &mut App, now: Now, fx: &mut Vec<Effect>, yes: bool) {
     if app.focus != Focus::Confirm {
         return;
     }
-    app.focus = Focus::List;
+    app.focus = after_confirm(app);
     let Some(confirm) = app.confirm.take() else {
         return;
     };
@@ -559,6 +567,16 @@ fn confirm_answer(app: &mut App, now: Now, fx: &mut Vec<Effect>, yes: bool) {
         dispatch(app, confirm.on_yes, now, fx);
     } else {
         app.info("Cancelled");
+    }
+}
+
+/// Where focus goes when a confirm prompt closes: back to the revision
+/// list if the note history is open, else the list.
+fn after_confirm(app: &App) -> Focus {
+    if app.section == Section::Notes && app.notes.history.is_some() {
+        Focus::Detail
+    } else {
+        Focus::List
     }
 }
 

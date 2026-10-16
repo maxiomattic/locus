@@ -1275,6 +1275,18 @@ pub fn toggle_history(app: &mut App, fx: &mut Vec<Effect>) {
     app.info("Loading history");
 }
 
+/// A click picked another row: the history of a different note goes away.
+pub fn close_history_unless_selected(app: &mut App) {
+    let keep = match (app.notes.history.as_ref(), selected_note(app)) {
+        (Some(h), Some((note, _))) => h.note == note,
+        (Some(_), None) => false,
+        (None, _) => return,
+    };
+    if !keep {
+        close_history(app);
+    }
+}
+
 pub fn close_history(app: &mut App) {
     if app.notes.history.take().is_some() && app.focus == Focus::Detail {
         app.focus = Focus::List;
@@ -1299,7 +1311,16 @@ pub fn execute_restore(app: &mut App, fx: &mut Vec<Effect>, note: &NoteRef, rev:
     let Some(nb) = app.notes.book(&note.nb).map(|b| b.nb.clone()) else {
         return;
     };
-    flush_editor(app, fx);
+    // A save still on its way could land after the restore and undo it, or
+    // be refused and lose the typing. Restore once the note is saved.
+    if app
+        .editor
+        .as_ref()
+        .is_some_and(|e| e.is(&note.nb, note.id) && (e.dirty() || e.in_flight))
+    {
+        app.warn("The note is still saving. Try Restore again in a moment.");
+        return;
+    }
     fx.push(Effect::RestoreNote { nb, id: note.id, rev });
     app.info("Restoring");
 }

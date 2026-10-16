@@ -115,6 +115,7 @@ pub fn locate<'a>(
 /// The non-empty segments of a folder path.
 pub fn folder_names(path: &str) -> Vec<String> {
     path.split('/')
+        .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
@@ -765,6 +766,10 @@ async fn folder_rename(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .find(|f| f.id == id)
         .and_then(|f| f.parent_folder_id)
         .unwrap_or(root);
+    if names.last().is_some_and(|n| n == new_name) {
+        emit("unchanged\n");
+        return Ok(());
+    }
     check_folder_name(&folders, parent, new_name, id)?;
     client
         .update_folder(&nb.host, &nb.flag_name, id, Some(new_name), None)
