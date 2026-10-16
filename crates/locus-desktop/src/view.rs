@@ -381,7 +381,12 @@ fn files_path(app: &App) -> Element<'_, Message> {
             path = path.push(widget::text::caption("/"));
         }
         let up = (j < depth).then(|| core(Msg::Batch(vec![Msg::Nav(Nav::Left); depth - j])));
-        path = path.push(widget::button::text(crumb.label).on_press_maybe(up));
+        // The default text-button padding spread `/ ZZ test` wide apart.
+        path = path.push(
+            widget::button::text(crumb.label)
+                .padding([0, s.space_xxs])
+                .on_press_maybe(up),
+        );
     }
     path.into()
 }
