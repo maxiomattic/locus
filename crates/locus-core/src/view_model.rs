@@ -442,6 +442,21 @@ pub struct FieldView {
     pub active: bool,
 }
 
+/// How a form field's key reads on screen: `title` → `Title`.
+fn field_label(key: &'static str) -> &'static str {
+    match key {
+        "title" => "Title",
+        "date" => "Date",
+        "start" => "Start",
+        "end" => "End",
+        "notes" => "Notes",
+        "name" => "Name",
+        "email" => "Email",
+        "ship" => "Ship",
+        other => other,
+    }
+}
+
 pub fn form(app: &App) -> Option<FormView> {
     let f = app.form.as_ref()?;
     let title = match f.kind {
@@ -457,7 +472,7 @@ pub fn form(app: &App) -> Option<FormView> {
             .iter()
             .enumerate()
             .map(|(i, field)| FieldView {
-                label: field.label,
+                label: field_label(field.label),
                 value: field.value.clone(),
                 active: i == f.active,
             })
