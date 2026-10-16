@@ -156,10 +156,10 @@ pub fn row_button(
 /// A filled accent button (primary actions in dialogs).
 pub fn primary_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
     move |_, status| {
-        let bg = if matches!(status, button::Status::Hovered) {
-            with_alpha(c.accent, 0.85)
-        } else {
-            c.accent
+        let bg = match status {
+            button::Status::Hovered => with_alpha(c.accent, 0.85),
+            button::Status::Disabled => with_alpha(c.accent, 0.4),
+            _ => c.accent,
         };
         button::Style {
             background: Some(Background::Color(bg)),

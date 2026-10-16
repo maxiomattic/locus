@@ -31,6 +31,7 @@ const AGENDA_SCROLL: &str = "scroll-agenda";
 const FILES_SCROLL: &str = "scroll-files";
 const CONTACTS_SCROLL: &str = "scroll-contacts";
 const PALETTE_SCROLL: &str = "scroll-palette";
+const MOVE_SCROLL: &str = "scroll-move";
 
 pub fn form_id(i: usize) -> String {
     format!("form-{i}")
@@ -98,6 +99,13 @@ fn warning() -> Color {
 
 fn accent() -> Color {
     theme::active().cosmic().accent_text_color().into()
+}
+
+/// Text for something shown but not available.
+fn dimmed() -> Color {
+    let mut c: Color = theme::active().cosmic().on_bg_color().into();
+    c.a = 0.4;
+    c
 }
 
 fn colored<'a>(text: impl Into<String>, color: Color) -> Element<'a, Message> {
@@ -1224,6 +1232,57 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
                     .into(),
             )
         }
+        Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder) => {
+            let picker = view_model::move_picker(ui)?;
+            let list: Element<'_, Message> = if picker.rows.is_empty() {
+                widget::text::caption("No matching folders").into()
+            } else {
+                let mut list = widget::list_column();
+                for (i, row) in picker.rows.into_iter().enumerate() {
+                    // The current place is shown dimmed and cannot be picked.
+                    list = list.add(if row.enabled {
+                        row_area(
+                            widget::text::body(row.label),
+                            ROW1_H,
+                            row.selected,
+                            Msg::Select(i),
+                            Msg::Submit,
+                        )
+                    } else {
+                        widget::container(colored(row.label, dimmed()))
+                            .height(Length::Fixed(ROW1_H))
+                            .width(Length::Fill)
+                            .align_y(Alignment::Center)
+                            .padding([0, s.space_xxs])
+                            .into()
+                    });
+                }
+                scroll(MOVE_SCROLL, list)
+            };
+            let control = widget::column::with_capacity(2)
+                .spacing(s.space_s)
+                .push(
+                    widget::search_input("Filter folders", picker.filter)
+                        .id(Id::new(INPUT_ID))
+                        .on_input(set_text)
+                        .width(Length::Fill),
+                )
+                .push(widget::container(list).height(Length::Fixed(320.0)));
+            Some(
+                widget::dialog()
+                    .title(picker.title)
+                    .control(control)
+                    .primary_action(
+                        widget::button::suggested("Move")
+                            .on_press_maybe(picker.can_move.then(|| core(Msg::Submit))),
+                    )
+                    .secondary_action(
+                        widget::button::standard("Cancel").on_press(core(Msg::Escape)),
+                    )
+                    .width(Length::Fixed(600.0))
+                    .into(),
+            )
+        }
         Focus::Input(kind) if kind != InputKind::Filter && kind != InputKind::Login => {
             let prompt = view_model::input_prompt(ui)?;
             let control = widget::text_input(prompt.label, prompt.text)
@@ -1264,6 +1323,10 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
     if ui.focus == Focus::Palette {
         let i = view_model::palette_rows(ui).iter().position(|r| r.selected)?;
         return rect(PALETTE_SCROLL, i, ROW1_H);
+    }
+    if let Some(picker) = view_model::move_picker(ui) {
+        let i = picker.rows.iter().position(|r| r.selected)?;
+        return rect(MOVE_SCROLL, i, ROW1_H);
     }
     match ui.section {
         Section::Notes => {

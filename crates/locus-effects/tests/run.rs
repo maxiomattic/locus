@@ -226,6 +226,107 @@ async fn save_note_success_rereads_the_note() {
     assert!(seen[1].starts_with("GET /notes/~/v1/notebooks/~zod/nb-1/notes/7 "));
 }
 
+fn nb2() -> NotebookSummary {
+    NotebookSummary {
+        flag_name: "nb-2".into(),
+        notebook: Notebook {
+            id: 2,
+            title: "Other".into(),
+            root_folder_id: 3,
+        },
+        ..nb()
+    }
+}
+
+const NB2_NOTES_PATH: &str = "/notes/~/v1/notebooks/~zod/nb-2/notes";
+const CREATED: &str = r#"{"requestId":"0v1","body":{"type":"ok","response":{"update":{"noteUpdate":{"type":"note-created","note":{"id":9,"folderId":4,"title":"Todo","revision":0,"bodyMd":""}}}}}}"#;
+
+fn move_across() -> Effect {
+    Effect::MoveNoteAcross {
+        from: nb(),
+        id: 7,
+        to: nb2(),
+        folder: 4,
+    }
+}
+
+#[tokio::test]
+async fn move_across_reads_creates_then_deletes() {
+    let (c, seen) = serve(|m, p| match (m, p) {
+        ("GET", NOTE_PATH) => ("200 OK", note_json(3, "hello")),
+        ("POST", NB2_NOTES_PATH) => ("200 OK", CREATED.into()),
+        ("DELETE", NOTE_PATH) => ("200 OK", r#"{"body":{"type":"ok"}}"#.into()),
+        _ => ("404 Not Found", "{}".into()),
+    })
+    .await;
+    let msgs = run(&c, &Fake::default(), move_across()).await;
+    match msgs.as_slice() {
+        [
+            Msg::NoteMovedAcross {
+                from,
+                id: 7,
+                to,
+                note,
+                deleted: Ok(()),
+            },
+        ] => {
+            assert_eq!((from, to), (&nb(), &nb2()));
+            assert_eq!(
+                (note.id, note.folder_id, note.title.as_str()),
+                (9, 4, "Todo")
+            );
+            // The echo had no body; the copy's is the one written.
+            assert_eq!(note.body_md, "hello");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    let seen = seen.lock().unwrap();
+    assert!(seen[0].starts_with(&format!("GET {NOTE_PATH} ")));
+    assert!(seen[1].starts_with(&format!("POST {NB2_NOTES_PATH} ")));
+    assert!(seen[1].contains(r#""body":"hello""#) && seen[1].contains(r#""folder":4"#));
+    assert!(seen[2].starts_with(&format!("DELETE {NOTE_PATH} ")));
+}
+
+#[tokio::test]
+async fn move_across_reports_a_failed_delete_with_the_copy() {
+    let (c, _seen) = serve(|m, p| match (m, p) {
+        ("GET", NOTE_PATH) => ("200 OK", note_json(3, "hello")),
+        ("POST", NB2_NOTES_PATH) => ("200 OK", CREATED.into()),
+        _ => ("500 Internal Server Error", "{}".into()),
+    })
+    .await;
+    let msgs = run(&c, &Fake::default(), move_across()).await;
+    match msgs.as_slice() {
+        [
+            Msg::NoteMovedAcross {
+                note,
+                deleted: Err(e),
+                ..
+            },
+        ] => {
+            assert_eq!(note.id, 9);
+            assert!(e.contains("500"), "{e}");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn move_across_stops_when_the_copy_fails() {
+    let (c, seen) = serve(|m, p| match (m, p) {
+        ("GET", NOTE_PATH) => ("200 OK", note_json(3, "hello")),
+        _ => ("500 Internal Server Error", "{}".into()),
+    })
+    .await;
+    let msgs = run(&c, &Fake::default(), move_across()).await;
+    assert!(
+        matches!(msgs.as_slice(), [Msg::NoteMoveFailed { .. }]),
+        "{msgs:?}"
+    );
+    // Nothing was deleted.
+    assert!(!seen.lock().unwrap().iter().any(|r| r.starts_with("DELETE")));
+}
+
 #[tokio::test]
 async fn schedule_save_returns_timer_with_same_token() {
     let fake = Fake::default();

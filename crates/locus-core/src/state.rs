@@ -188,7 +188,8 @@ pub struct NoteRef {
 }
 
 /// Which single-line prompt has the keyboard. Filter edits `App::filter`;
-/// every other kind edits `App::input`.
+/// every other kind edits `App::input`. `MoveNote` and `MoveNoteFolder` are
+/// the Move destination picker, whose field filters the destinations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputKind {
     Filter,
@@ -385,6 +386,8 @@ pub struct NotesState {
     pub rename: Option<NoteRef>,
     /// The folder (notebook, id) a rename or move prompt is for.
     pub folder_edit: Option<(NbKey, u64)>,
+    /// The highlighted row of the Move destination picker.
+    pub move_sel: usize,
     /// Source of debounce tokens. Global so a timer for one editor can never
     /// match another editor's current token.
     pub token_seq: u64,

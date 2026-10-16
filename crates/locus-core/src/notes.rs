@@ -39,11 +39,7 @@ pub fn rows(app: &App) -> Vec<Row<'_>> {
                 .iter()
                 .filter(|b| matches_filter(&app.filter, &[&b.nb.notebook.title]))
                 .collect();
-            books.sort_by(|a, b| {
-                lower(&a.nb.notebook.title)
-                    .cmp(&lower(&b.nb.notebook.title))
-                    .then(a.key().cmp(&b.key()))
-            });
+            books.sort_by(|a, b| book_order(a, b));
             books.into_iter().map(Row::Notebook).collect()
         }
         NotesLoc::Folder { nb, folder } => {
@@ -75,6 +71,13 @@ pub fn rows(app: &App) -> Vec<Row<'_>> {
 
 fn lower(s: &str) -> String {
     s.to_lowercase()
+}
+
+/// Notebooks sort by title (case-insensitive).
+fn book_order(a: &Book, b: &Book) -> std::cmp::Ordering {
+    lower(&a.nb.notebook.title)
+        .cmp(&lower(&b.nb.notebook.title))
+        .then(a.key().cmp(&b.key()))
 }
 
 pub fn selected(app: &App) -> Option<Row<'_>> {
@@ -881,83 +884,9 @@ pub fn notebook_deleted(app: &mut App, nb: NotebookSummary) {
     app.info("Notebook deleted");
 }
 
-/// Move: ask for the folder, as a path inside the note's notebook.
-pub fn begin_move(app: &mut App) {
-    if let Some(Row::Folder(b, f)) = selected(app) {
-        let (key, id) = (b.key(), f.id);
-        let parent = f.parent_folder_id.unwrap_or(b.nb.notebook.root_folder_id);
-        app.input = Input {
-            text: folder_path(b, parent),
-            target: Some(id),
-        };
-        app.notes.folder_edit = Some((key, id));
-        app.focus = Focus::Input(InputKind::MoveNoteFolder);
-        return;
-    }
-    let Some((note, _)) = selected_note(app) else {
-        app.info("Select a note or folder to move");
-        return;
-    };
-    let path = app
-        .notes
-        .book(&note.nb)
-        .and_then(|b| Some(folder_path(b, b.note(note.id)?.folder_id)))
-        .unwrap_or_else(|| "/".into());
-    app.input = Input {
-        text: path,
-        target: Some(note.id),
-    };
-    app.notes.rename = Some(note);
-    app.focus = Focus::Input(InputKind::MoveNote);
-}
-
 /// `/Projects/2026` for a folder, `/` for the notebook's top.
 pub fn folder_path(book: &Book, folder: u64) -> String {
     format!("/{}", folder_names(book, folder).join("/"))
-}
-
-/// The folder at `path` (as [`folder_path`] prints it) in `book`.
-fn resolve_folder(book: &Book, path: &str) -> Option<u64> {
-    let mut cur = book.nb.notebook.root_folder_id;
-    for name in path.split('/').map(str::trim).filter(|s| !s.is_empty()) {
-        cur = book
-            .folders
-            .iter()
-            .find(|f| f.parent_folder_id == Some(cur) && f.id != cur && f.name == name)?
-            .id;
-    }
-    Some(cur)
-}
-
-pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
-    let Some(note) = app.notes.rename.clone() else {
-        app.focus = Focus::List;
-        return;
-    };
-    let Some(book) = app.notes.book(&note.nb) else {
-        app.focus = Focus::List;
-        return;
-    };
-    let path = app.input.text.trim().to_string();
-    let Some(folder) = resolve_folder(book, &path) else {
-        app.error(format!("No folder {path} in {}", book.nb.notebook.title));
-        return;
-    };
-    let nb = book.nb.clone();
-    let from = book.note(note.id).map(|n| n.folder_id);
-    app.notes.rename = None;
-    app.input = Input::default();
-    app.focus = Focus::List;
-    if from == Some(folder) {
-        app.info("The note is already there");
-        return;
-    }
-    fx.push(Effect::MoveNote {
-        nb,
-        id: note.id,
-        folder,
-    });
-    app.info("Moving note");
 }
 
 pub fn note_moved(app: &mut App, nb: NotebookSummary, id: u64, folder: u64) {
@@ -1181,46 +1110,344 @@ pub fn submit_folder_rename(app: &mut App, fx: &mut Vec<Effect>) {
     app.info("Renaming folder");
 }
 
-pub fn submit_folder_move(app: &mut App, fx: &mut Vec<Effect>) {
-    let path = app.input.text.trim().to_string();
-    let Some((book, id)) = folder_edit_target(app) else {
-        end_folder_prompt(app);
+// ----- move -----
+
+/// One destination in the Move picker: a folder of a loaded notebook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dest {
+    pub nb: NbKey,
+    pub folder: u64,
+    /// `Notebook › /folder/path`; the notebook's top is `/`.
+    pub label: String,
+    /// Where the note or folder is now: shown, but not choosable.
+    pub current: bool,
+}
+
+/// Whether the Move destination picker is open.
+pub fn picking(app: &App) -> bool {
+    matches!(
+        app.focus,
+        Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder)
+    )
+}
+
+/// What the open picker moves.
+enum Moving<'a> {
+    Note(&'a Book, &'a Note),
+    Folder(&'a Book, &'a Folder),
+}
+
+fn moving(app: &App) -> Option<Moving<'_>> {
+    match app.focus {
+        Focus::Input(InputKind::MoveNote) => {
+            let r = app.notes.rename.as_ref()?;
+            let book = app.notes.book(&r.nb)?;
+            Some(Moving::Note(book, book.note(r.id)?))
+        }
+        Focus::Input(InputKind::MoveNoteFolder) => {
+            let (key, id) = app.notes.folder_edit.as_ref()?;
+            let book = app.notes.book(key)?;
+            Some(Moving::Folder(book, book.folder(*id)?))
+        }
+        _ => None,
+    }
+}
+
+/// `folder` and every folder below it, depth first, siblings by name.
+fn tree(book: &Book, folder: u64, out: &mut Vec<u64>) {
+    // Bounded by the folder count, which also guards against parent cycles.
+    if out.len() > book.folders.len() || out.contains(&folder) {
         return;
+    }
+    out.push(folder);
+    let mut kids: Vec<&Folder> = book
+        .folders
+        .iter()
+        .filter(|f| f.parent_folder_id == Some(folder) && f.id != folder)
+        .collect();
+    kids.sort_by(|a, b| lower(&a.name).cmp(&lower(&b.name)).then(a.id.cmp(&b.id)));
+    for kid in kids {
+        tree(book, kid.id, out);
+    }
+}
+
+/// The destinations the picker offers, after its filter. A note may go to
+/// any folder of any notebook; a folder only within its own notebook, and
+/// not into itself or below it.
+pub fn move_dests(app: &App) -> Vec<Dest> {
+    let Some(what) = moving(app) else {
+        return Vec::new();
     };
-    let Some(dest) = resolve_folder(book, &path) else {
-        let msg = format!("No folder {path} in {}", book.nb.notebook.title);
-        app.error(msg);
-        return;
+    let (mut books, here, skip) = match what {
+        Moving::Note(book, note) => (
+            app.notes.books.iter().collect::<Vec<_>>(),
+            (book.key(), note.folder_id),
+            Vec::new(),
+        ),
+        Moving::Folder(book, f) => {
+            let parent = f
+                .parent_folder_id
+                .unwrap_or(book.nb.notebook.root_folder_id);
+            (vec![book], (book.key(), parent), subtree(book, f.id))
+        }
     };
-    let Some(folder) = book.folder(id) else {
-        end_folder_prompt(app);
-        return;
-    };
-    let err = if subtree(book, id).contains(&dest) {
-        Some("A folder cannot move into itself".to_string())
-    } else if name_taken(book, dest, &folder.name, id) {
-        Some(format!("A folder \"{}\" is already there", folder.name))
+    books.sort_by(|a, b| book_order(a, b));
+    let mut out = Vec::new();
+    for book in books {
+        let key = book.key();
+        let mut ids = Vec::new();
+        tree(book, book.nb.notebook.root_folder_id, &mut ids);
+        for id in ids.into_iter().filter(|id| !skip.contains(id)) {
+            let label = format!("{} › {}", book.nb.notebook.title, folder_path(book, id));
+            if !matches_filter(&app.input.text, &[&label]) {
+                continue;
+            }
+            out.push(Dest {
+                current: key == here.0 && id == here.1,
+                nb: key.clone(),
+                folder: id,
+                label,
+            });
+        }
+    }
+    out
+}
+
+/// The choosable destination nearest `i`, looking down from it first (or up).
+fn choosable_near(dests: &[Dest], i: usize, down: bool) -> Option<usize> {
+    let i = i.min(dests.len().checked_sub(1)?);
+    let below = (i..dests.len()).find(|&j| !dests[j].current);
+    let above = (0..=i).rev().find(|&j| !dests[j].current);
+    if down {
+        below.or(above)
     } else {
-        None
+        above.or(below)
+    }
+}
+
+/// Highlight the first choosable destination: when the picker opens and
+/// whenever its filter changes.
+pub fn reset_move_sel(app: &mut App) {
+    app.notes.move_sel = choosable_near(&move_dests(app), 0, true).unwrap_or(0);
+}
+
+/// Up and Down in the picker. The current place is skipped.
+pub fn move_nav(app: &mut App, nav: Nav) {
+    let dests = move_dests(app);
+    let to = step(app.notes.move_sel, dests.len(), nav);
+    let down = matches!(nav, Nav::Down | Nav::HalfDown | Nav::Bottom);
+    if let Some(i) = choosable_near(&dests, to, down) {
+        app.notes.move_sel = i;
+    }
+}
+
+/// A click on destination `i`.
+pub fn move_select(app: &mut App, i: usize) {
+    app.notes.move_sel = clamp_sel(i, move_dests(app).len());
+}
+
+/// Move: open the destination picker for the selected note or folder.
+pub fn begin_move(app: &mut App) {
+    let (kind, key, id) = match selected(app) {
+        Some(Row::Note(b, n)) => (InputKind::MoveNote, b.key(), n.id),
+        Some(Row::Folder(b, f)) => (InputKind::MoveNoteFolder, b.key(), f.id),
+        _ => {
+            app.info("Select a note or folder to move");
+            return;
+        }
     };
-    if let Some(err) = err {
-        app.error(err);
+    if kind == InputKind::MoveNote {
+        app.notes.rename = Some(NoteRef { nb: key, id });
+    } else {
+        app.notes.folder_edit = Some((key, id));
+    }
+    app.input = Input {
+        text: String::new(),
+        target: Some(id),
+    };
+    app.focus = Focus::Input(kind);
+    reset_move_sel(app);
+}
+
+fn end_move(app: &mut App) {
+    app.notes.rename = None;
+    app.notes.folder_edit = None;
+    app.input = Input::default();
+    app.focus = Focus::List;
+}
+
+/// Enter or the picker's Move button: move to the highlighted destination.
+/// Within a notebook this is a plain move; into another notebook it asks
+/// first, since the note is copied and its history stays behind.
+pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
+    enum Act {
+        Folder(NotebookSummary, u64),
+        Note(NotebookSummary, u64),
+        Ask(String, Box<Msg>),
+    }
+    let Some(what) = moving(app) else {
+        end_move(app);
+        return;
+    };
+    let dests = move_dests(app);
+    let Some(dest) = dests.get(app.notes.move_sel) else {
+        app.info("No folder matches");
+        return;
+    };
+    let act = match what {
+        Moving::Folder(..) if dest.current => {
+            app.info("The folder is already there");
+            return;
+        }
+        Moving::Note(..) if dest.current => {
+            app.info("The note is already there");
+            return;
+        }
+        Moving::Folder(book, f) => {
+            if name_taken(book, dest.folder, &f.name, f.id) {
+                let err = format!("A folder \"{}\" is already there", f.name);
+                app.error(err);
+                return;
+            }
+            Act::Folder(book.nb.clone(), f.id)
+        }
+        Moving::Note(book, n) if book.key() == dest.nb => Act::Note(book.nb.clone(), n.id),
+        Moving::Note(book, n) => {
+            let to = app
+                .notes
+                .book(&dest.nb)
+                .map_or_else(String::new, |b| b.nb.notebook.title.clone());
+            Act::Ask(
+                format!("Move \"{}\" to {to}?", n.title),
+                Box::new(Msg::ExecuteMoveNote {
+                    note: NoteRef {
+                        nb: book.key(),
+                        id: n.id,
+                    },
+                    to: dest.nb.clone(),
+                    folder: dest.folder,
+                }),
+            )
+        }
+    };
+    let folder = dest.folder;
+    end_move(app);
+    match act {
+        Act::Folder(nb, id) => {
+            fx.push(Effect::UpdateNoteFolder {
+                nb,
+                id,
+                name: None,
+                parent: Some(folder),
+            });
+            app.info("Moving folder");
+        }
+        Act::Note(nb, id) => {
+            fx.push(Effect::MoveNote { nb, id, folder });
+            app.info("Moving note");
+        }
+        Act::Ask(prompt, msg) => app.ask(prompt, *msg),
+    }
+}
+
+/// The move into another notebook was confirmed: copy the note there, then
+/// delete the original. Refused while the editor still has text on its way
+/// for the note, which the copy would miss.
+pub fn execute_move_note(
+    app: &mut App,
+    fx: &mut Vec<Effect>,
+    note: &NoteRef,
+    to: &NbKey,
+    folder: u64,
+) {
+    let from = app
+        .notes
+        .book(&note.nb)
+        .filter(|b| b.note(note.id).is_some());
+    let (Some(from), Some(to)) = (from, app.notes.book(to)) else {
+        app.error("Note not found");
+        return;
+    };
+    let (from, to) = (from.nb.clone(), to.nb.clone());
+    if app
+        .editor
+        .as_ref()
+        .is_some_and(|e| e.is(&note.nb, note.id) && (e.dirty() || e.in_flight))
+    {
+        app.warn("The note is still saving. Try Move again in a moment.");
         return;
     }
-    let unchanged = folder.parent_folder_id == Some(dest);
-    let nb = book.nb.clone();
-    end_folder_prompt(app);
-    if unchanged {
-        app.info("The folder is already there");
-        return;
-    }
-    fx.push(Effect::UpdateNoteFolder {
-        nb,
-        id,
-        name: None,
-        parent: Some(dest),
+    app.info(format!("Moving note to {}", to.notebook.title));
+    fx.push(Effect::MoveNoteAcross {
+        from,
+        id: note.id,
+        to,
+        folder,
     });
-    app.info("Moving folder");
+}
+
+/// The warning when a note was copied into another notebook but the
+/// original could not be deleted. `locus notes mv` prints the same.
+pub fn left_in_both(title: &str, from: &str, to: &str, error: &str) -> String {
+    format!(
+        "\"{title}\" was copied to {to}, but deleting it from {from} failed ({error}). \
+         The note is now in both notebooks."
+    )
+}
+
+/// Note `id` of `from` now exists in `to` as `note`, and is gone from
+/// `from` unless `deleted` failed. The copy is selected, and takes the
+/// original's place in the editor.
+pub fn note_moved_across(
+    app: &mut App,
+    fx: &mut Vec<Effect>,
+    from: NotebookSummary,
+    id: u64,
+    to: NotebookSummary,
+    note: Note,
+    deleted: Result<(), String>,
+) {
+    let (from_key, to_key) = (NbKey::of(&from), NbKey::of(&to));
+    let (new_id, folder, title) = (note.id, note.folder_id, note.title.clone());
+    let old_editor = app.editor.take_if(|e| e.is(&from_key, id));
+    upsert(app, &to, note);
+    if deleted.is_ok()
+        && let Some(book) = app.notes.book_mut(&from_key)
+    {
+        book.notes.retain(|n| n.id != id);
+        book.bodies.remove(&id);
+    }
+    drop_history_if_gone(app);
+    enter_folder(app, to_key.clone(), folder);
+    select_where(app, |r| matches!(r, Row::Note(_, n) if n.id == new_id));
+    if let Some(old) = old_editor {
+        let focus = app.focus;
+        open_editor(app, fx, &to_key, new_id);
+        // Text typed while the move ran goes on in the copy.
+        if let Some(ed) = app.editor.as_mut().filter(|_| old.dirty()) {
+            ed.body = old.body;
+            request_save(ed, fx);
+        }
+        app.focus = focus;
+    }
+    crate::todo::after_notes_changed(app, fx);
+    match deleted {
+        Ok(()) => {
+            let label = app
+                .notes
+                .book(&to_key)
+                .map_or_else(String::new, |b| path_label(b, folder));
+            app.info(format!("Moved to {label}"));
+        }
+        Err(e) => {
+            let msg = left_in_both(&title, &from.notebook.title, &to.notebook.title, &e);
+            app.warn(msg);
+        }
+    }
+}
+
+pub fn move_failed(app: &mut App, error: String) {
+    app.error(format!("Move failed: {error}. Nothing changed."));
 }
 
 // ----- history -----

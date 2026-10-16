@@ -102,6 +102,13 @@ pub enum Msg {
         note: NoteRef,
         rev: u64,
     },
+    /// Internal target of the confirmation to move a note into another
+    /// notebook (`folder` of notebook `to`).
+    ExecuteMoveNote {
+        note: NoteRef,
+        to: NbKey,
+        folder: u64,
+    },
     /// Space or `x` in Todo.
     ToggleTask,
     /// `z` in Todo: show or hide the Done group.
@@ -230,6 +237,20 @@ pub enum Msg {
         nb: NotebookSummary,
         id: u64,
         folder: u64,
+    },
+    /// Note `id` of `from` was copied to `to` as `note`. `deleted` says
+    /// whether the original then went; on `Err` the note is in both. The
+    /// note is boxed to keep `Msg` small.
+    NoteMovedAcross {
+        from: NotebookSummary,
+        id: u64,
+        to: NotebookSummary,
+        note: Box<Note>,
+        deleted: Result<(), String>,
+    },
+    /// Reading the note or creating the copy failed: nothing changed.
+    NoteMoveFailed {
+        error: String,
     },
     /// A folder and everything in it is gone.
     NoteFolderDeleted {
@@ -374,6 +395,15 @@ pub enum Effect {
     MoveNote {
         nb: NotebookSummary,
         id: u64,
+        folder: u64,
+    },
+    /// Move note `id` of `from` into `folder` of another notebook: read it,
+    /// create it there with the same title and body, then delete the
+    /// original. Answered by [`Msg::NoteMovedAcross`] or [`Msg::NoteMoveFailed`].
+    MoveNoteAcross {
+        from: NotebookSummary,
+        id: u64,
+        to: NotebookSummary,
         folder: u64,
     },
     /// Delete a folder with everything in it.

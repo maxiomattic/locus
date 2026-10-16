@@ -112,6 +112,8 @@ fn command(app: &App, key: Key, mods: Mods) -> Option<Msg> {
 /// Keys while a text field, form or palette has focus: plain characters are
 /// text, and only Escape, Enter, Tab and arrows (where meaningful) are commands.
 fn text_focus_key(app: &App, key: Key, mods: Mods) -> Option<Msg> {
+    // The palette and the Move picker are a field above a list.
+    let picks = app.focus == Focus::Palette || crate::notes::picking(app);
     match key {
         Key::Escape => Some(Msg::Escape),
         Key::Enter => Some(Msg::Submit),
@@ -121,8 +123,8 @@ fn text_focus_key(app: &App, key: Key, mods: Mods) -> Option<Msg> {
             Msg::NextField
         }),
         Key::Backspace => Some(Msg::Text(TextEdit::Backspace)),
-        Key::Up if app.focus == Focus::Palette => Some(Msg::Nav(Nav::Up)),
-        Key::Down if app.focus == Focus::Palette => Some(Msg::Nav(Nav::Down)),
+        Key::Up if picks => Some(Msg::Nav(Nav::Up)),
+        Key::Down if picks => Some(Msg::Nav(Nav::Down)),
         Key::Char(c) => Some(Msg::Text(TextEdit::Insert(c.to_string()))),
         _ => None,
     }

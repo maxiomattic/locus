@@ -214,6 +214,46 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }
         }
+        Effect::MoveNoteAcross {
+            from,
+            id,
+            to,
+            folder,
+        } => {
+            // Read, create the copy, then delete: a failure before the
+            // delete leaves the original untouched.
+            let failed = |e: &locus_client::Error| vec![Msg::NoteMoveFailed { error: describe(e) }];
+            let original = match client.get_note(&from.host, &from.flag_name, id).await {
+                Ok(note) => note,
+                Err(e) => return failed(&e),
+            };
+            let mut note = match client
+                .create_note(
+                    &to.host,
+                    &to.flag_name,
+                    folder,
+                    &original.title,
+                    &original.body_md,
+                )
+                .await
+            {
+                Ok(note) => note,
+                Err(e) => return failed(&e),
+            };
+            // An older server's echo may lack the body; it is what we wrote.
+            note.body_md = original.body_md;
+            let deleted = client
+                .delete_note(&from.host, &from.flag_name, id)
+                .await
+                .map_err(|e| describe(&e));
+            vec![Msg::NoteMovedAcross {
+                from,
+                id,
+                to,
+                note: Box::new(note),
+                deleted,
+            }]
+        }
         Effect::DeleteNoteFolder { nb, id } => {
             match client
                 .delete_folder(&nb.host, &nb.flag_name, id, true)

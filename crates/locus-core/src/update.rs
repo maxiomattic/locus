@@ -71,6 +71,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::SelectRevision(i) => notes::select_revision(app, fx, i),
         Msg::RestoreRevision => notes::ask_restore(app),
         Msg::ExecuteRestore { note, rev } => notes::execute_restore(app, fx, &note, rev),
+        Msg::ExecuteMoveNote { note, to, folder } => {
+            notes::execute_move_note(app, fx, &note, &to, folder);
+        }
         Msg::ToggleTask => todo::toggle_selected(app, fx),
         Msg::ToggleDoneTasks => todo::toggle_done_visibility(app),
         Msg::CalendarMode => calendar::toggle_mode(app),
@@ -101,6 +104,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::SaveTimer(token) => notes::save_timer(app, token, fx),
         Msg::Layout { photo_columns } => app.photos.columns = photo_columns.max(1),
         Msg::Goto { section, id } => open(app, fx, section, Target::item(section, id)),
+        Msg::Select(i) if notes::picking(app) => notes::move_select(app, i),
         Msg::Select(i) => {
             // Picking a row (a click) while typing in the editor moves focus
             // to the list, so list keys work again.
@@ -155,6 +159,14 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NoteRenamed { nb, id, title } => notes::note_renamed(app, nb, id, title),
         Msg::NoteDeleted { nb, id } => notes::note_deleted(app, nb, id),
         Msg::NoteMoved { nb, id, folder } => notes::note_moved(app, nb, id, folder),
+        Msg::NoteMovedAcross {
+            from,
+            id,
+            to,
+            note,
+            deleted,
+        } => notes::note_moved_across(app, fx, from, id, to, *note, deleted),
+        Msg::NoteMoveFailed { error } => notes::move_failed(app, error),
         Msg::NoteFolderDeleted { nb, id } => notes::folder_deleted(app, fx, nb, id),
         Msg::NotebookDeleted { nb } => notes::notebook_deleted(app, nb),
         Msg::NotebookRenamed { nb, title } => notes::notebook_renamed(app, &nb, title),
@@ -293,6 +305,10 @@ fn nav_key(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
     match app.focus {
         Focus::Palette => {
             palette::move_sel(app, nav);
+            return;
+        }
+        Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder) => {
+            notes::move_nav(app, nav);
             return;
         }
         Focus::List | Focus::Detail => {}
@@ -486,10 +502,9 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::MoveFile => files::submit_move(app, fx),
         InputKind::RenamePhoto => photos::submit_rename(app, fx),
         InputKind::MovePhoto => photos::submit_move(app, fx),
-        InputKind::MoveNote => notes::submit_move(app, fx),
+        InputKind::MoveNote | InputKind::MoveNoteFolder => notes::submit_move(app, fx),
         InputKind::RenameNoteFolder => notes::submit_folder_rename(app, fx),
         InputKind::RenameNotebook => notes::submit_notebook_rename(app, fx),
-        InputKind::MoveNoteFolder => notes::submit_folder_move(app, fx),
         InputKind::Login => {
             let code = std::mem::take(&mut app.input.text);
             app.input = Input::default();
@@ -552,6 +567,9 @@ fn text_edit(app: &mut App, edit: TextEdit) {
             buf.clear();
             buf.extend(s.chars().filter(|c| !c.is_control()));
         }
+    }
+    if notes::picking(app) {
+        notes::reset_move_sel(app);
     }
 }
 

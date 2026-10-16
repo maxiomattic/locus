@@ -9,74 +9,6 @@ mod common;
 use common::*;
 use locus_core::{Effect, Focus, InputKind, Key, Msg, Section, Target, view_model};
 
-fn two_books() -> App {
-    let mut app = App::new();
-    send(&mut app, Msg::Reload);
-    send(
-        &mut app,
-        Msg::NotebooksLoaded {
-            notebooks: vec![nb(), nb_journal()],
-        },
-    );
-    send(
-        &mut app,
-        Msg::FoldersLoaded {
-            nb: nb(),
-            folders: vec![
-                folder(10, "root", None),
-                folder(11, "beta", Some(10)),
-                folder(12, "Alpha", Some(10)),
-                folder(13, "deep", Some(11)),
-            ],
-        },
-    );
-    send(
-        &mut app,
-        Msg::FoldersLoaded {
-            nb: nb_journal(),
-            folders: vec![folder(20, "root", None), folder(21, "Daily", Some(20))],
-        },
-    );
-    send(
-        &mut app,
-        Msg::NotesLoaded {
-            nb: nb(),
-            notes: vec![
-                note_in(1, 10, "Top note", "", 5),
-                note_in(2, 11, "In beta", "x", 4),
-                note_in(3, 13, "In deep", "y", 3),
-                note_in(4, 10, "Newer top", "z", 9),
-            ],
-        },
-    );
-    send(
-        &mut app,
-        Msg::NotesLoaded {
-            nb: nb_journal(),
-            notes: vec![
-                note_in(1, 20, "Journal one", "j", 7),
-                note_in(2, 21, "Entry", "- [ ] journal task\n", 6),
-            ],
-        },
-    );
-    app
-}
-
-fn titles(app: &App) -> Vec<String> {
-    view_model::notes_list(app)
-        .into_iter()
-        .map(|r| r.title)
-        .collect()
-}
-
-fn selected_title(app: &App) -> String {
-    view_model::notes_list(app)
-        .into_iter()
-        .find(|r| r.selected)
-        .map(|r| r.title)
-        .unwrap_or_default()
-}
-
 /// Press the key for one shorthand letter: `j`/`k` down/up, `l` into the
 /// row, `h` back out, `G` to the bottom, `n` new, `d` delete, `r` rename.
 fn key(app: &mut App, c: char) {
@@ -507,63 +439,6 @@ fn deleting_a_notebook_from_the_list() {
 }
 
 #[test]
-fn moving_a_note_takes_a_folder_path() {
-    let mut app = two_books();
-    key(&mut app, 'j');
-    press(&mut app, Key::Enter);
-    key(&mut app, 'G');
-    assert_eq!(selected_title(&app), "Top note");
-    send(&mut app, Msg::Move);
-    assert_eq!(app.focus, Focus::Input(InputKind::MoveNote));
-    assert_eq!(app.input.text, "/");
-
-    send(
-        &mut app,
-        Msg::Text(locus_core::TextEdit::Set("/beta/nope".into())),
-    );
-    let fx = press(&mut app, Key::Enter);
-    assert!(fx.is_empty());
-    assert_eq!(app.focus, Focus::Input(InputKind::MoveNote));
-
-    send(
-        &mut app,
-        Msg::Text(locus_core::TextEdit::Set("beta/deep".into())),
-    );
-    let fx = press(&mut app, Key::Enter);
-    assert_eq!(
-        fx,
-        vec![Effect::MoveNote {
-            nb: nb(),
-            id: 1,
-            folder: 13
-        }]
-    );
-    send(
-        &mut app,
-        Msg::NoteMoved {
-            nb: nb(),
-            id: 1,
-            folder: 13,
-        },
-    );
-    assert_eq!(titles(&app), ["Alpha", "beta", "Newer top"]);
-}
-
-#[test]
-fn moving_a_note_starts_from_its_folder() {
-    let mut app = two_books();
-    at_beta(&mut app);
-    press(&mut app, Key::Enter);
-    key(&mut app, 'G');
-    assert_eq!(selected_title(&app), "In beta");
-    send(&mut app, Msg::Move);
-    assert_eq!(app.input.text, "/beta");
-    let fx = press(&mut app, Key::Enter);
-    assert!(fx.is_empty());
-    assert_eq!(app.focus, Focus::List);
-}
-
-#[test]
 fn a_conflict_copy_is_made_next_to_the_original() {
     let mut app = two_books();
     let fx = send(
@@ -823,7 +698,7 @@ fn clear_input(app: &mut App) {
 }
 
 #[test]
-fn folders_rename_and_move_with_checks() {
+fn folders_rename_with_checks() {
     let mut app = two_books();
     key(&mut app, 'j');
     press(&mut app, Key::Enter);
@@ -854,42 +729,6 @@ fn folders_rename_and_move_with_checks() {
     );
     assert_eq!(app.focus, Focus::List);
 
-    // Move: the prompt starts with the parent's path; into itself is refused.
-    send(&mut app, Msg::Move);
-    assert_eq!(app.focus, Focus::Input(InputKind::MoveNoteFolder));
-    assert_eq!(app.input.text, "/");
-    clear_input(&mut app);
-    type_str(&mut app, "/beta/deep");
-    assert!(press(&mut app, Key::Enter).is_empty());
-    assert!(view_model::status_line(&app).contains("into itself"));
-    clear_input(&mut app);
-    type_str(&mut app, "/Alpha");
-    let fx = press(&mut app, Key::Enter);
-    assert_eq!(
-        fx,
-        vec![Effect::UpdateNoteFolder {
-            nb: nb(),
-            id: 11,
-            name: None,
-            parent: Some(12),
-        }]
-    );
-
-    send(
-        &mut app,
-        Msg::NoteFolderUpdated {
-            nb: nb(),
-            folders: vec![
-                folder(10, "root", None),
-                folder(11, "beta", Some(12)),
-                folder(12, "Alpha", Some(10)),
-                folder(13, "deep", Some(11)),
-            ],
-            moved: true,
-        },
-    );
-    assert_eq!(app.status.text, "Moved folder");
-    assert_eq!(titles(&app), vec!["Alpha", "Newer top", "Top note"]);
 }
 
 #[test]

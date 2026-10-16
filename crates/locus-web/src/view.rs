@@ -1022,6 +1022,7 @@ fn overlay(s: &Shell) -> Option<Element<'_, Message>> {
         Focus::Palette => palette_card(s),
         Focus::Help => help_card(s),
         Focus::Confirm => confirm_card(s)?,
+        Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder) => move_card(s)?,
         Focus::Input(kind) if kind != InputKind::Filter && kind != InputKind::Login => {
             prompt_card(s)?
         }
@@ -1160,6 +1161,74 @@ fn confirm_card(s: &Shell) -> Option<Element<'_, Message>> {
         )
         .padding(16)
         .width(420)
+        .style(move |_| style::card(c))
+        .into(),
+    )
+}
+
+/// The Move dialog: a filter field over every place the note or folder can
+/// go. The current place is dimmed and cannot be picked.
+fn move_card(s: &Shell) -> Option<Element<'_, Message>> {
+    let c = s.colors;
+    let picker = view_model::move_picker(&s.app)?;
+    let list: Element<'_, Message> = if picker.rows.is_empty() {
+        muted_text(c, "No matching folders").into()
+    } else {
+        let mut col = Column::new();
+        for (i, r) in picker.rows.into_iter().enumerate() {
+            col = col.push(if r.enabled {
+                click_row(
+                    c,
+                    text(r.label).size(14).color(c.text),
+                    PALETTE_ROW_H,
+                    r.selected,
+                    Msg::Select(i),
+                    Msg::Submit,
+                )
+            } else {
+                container(muted_text(c, r.label))
+                    .width(Fill)
+                    .height(PALETTE_ROW_H)
+                    .padding([4, 8])
+                    .center_y(PALETTE_ROW_H)
+                    .into()
+            });
+        }
+        col.into()
+    };
+    let move_button = button(text("Move").size(14))
+        .padding([6, 14])
+        .on_press_maybe(picker.can_move.then(|| core(Msg::Submit)))
+        .style(style::primary_button(c));
+    Some(
+        container(
+            column![
+                text(picker.title).size(14).color(c.text),
+                text_input("Filter folders", &picker.filter)
+                    .id("prompt")
+                    .on_input(set_text)
+                    .padding(10)
+                    .size(14),
+                scrollable(list)
+                    .id("move-list")
+                    .spacing(4)
+                    .on_scroll(scroll_msg("move-list"))
+                    .height(Length::Fixed(320.0))
+                    .width(Fill),
+                row![
+                    space::horizontal(),
+                    button(text("Cancel").size(14))
+                        .padding([6, 14])
+                        .on_press(core(Msg::Escape))
+                        .style(style::quiet_button(c)),
+                    move_button,
+                ]
+                .spacing(8),
+            ]
+            .spacing(8),
+        )
+        .padding(16)
+        .width(560)
         .style(move |_| style::card(c))
         .into(),
     )

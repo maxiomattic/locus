@@ -409,6 +409,10 @@ impl Shell {
             let i = view_model::palette_rows(app).iter().position(|r| r.selected)?;
             return Some(("palette-list", i as f32 * PALETTE_ROW_H, PALETTE_ROW_H));
         }
+        if let Some(picker) = view_model::move_picker(app) {
+            let i = picker.rows.iter().position(|r| r.selected)?;
+            return Some(("move-list", i as f32 * PALETTE_ROW_H, PALETTE_ROW_H));
+        }
         match app.section {
             Section::Notes => {
                 let i = view_model::notes_list(app).iter().position(|r| r.selected)?;

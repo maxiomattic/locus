@@ -684,10 +684,14 @@ pub struct InputView {
 }
 
 /// The single-line prompt (filter, task, rename, ...), when one has focus.
+/// `None` for the Move picker, which [`move_picker`] describes.
 pub fn input_prompt(app: &App) -> Option<InputView> {
     let Focus::Input(kind) = app.focus else {
         return None;
     };
+    if notes::picking(app) {
+        return None;
+    }
     let (label, text) = match kind {
         InputKind::Filter => ("filter", app.filter.clone()),
         InputKind::TaskText => (
@@ -701,16 +705,65 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::MoveFile => ("move to directory", app.input.text.clone()),
         InputKind::RenamePhoto => ("photo title", app.input.text.clone()),
         InputKind::MovePhoto => ("move to album", app.input.text.clone()),
-        InputKind::MoveNote => ("move to folder", app.input.text.clone()),
         InputKind::RenameNoteFolder => ("folder name", app.input.text.clone()),
         InputKind::RenameNotebook => ("notebook title", app.input.text.clone()),
-        InputKind::MoveNoteFolder => ("move folder into", app.input.text.clone()),
+        InputKind::MoveNote | InputKind::MoveNoteFolder => return None,
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
     Some(InputView {
         label,
         text,
         masked: kind == InputKind::Login,
+    })
+}
+
+/// The Move dialog: a filter field over the places a note or folder can go.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MovePicker {
+    /// `Move "Title"` or `Move folder "Name"`.
+    pub title: String,
+    pub filter: String,
+    pub rows: Vec<MoveRow>,
+    /// Whether the highlighted row can be chosen (drives the Move button).
+    pub can_move: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveRow {
+    /// `Notebook › /folder/path`.
+    pub label: String,
+    /// False for the current place: drawn dimmed, not clickable.
+    pub enabled: bool,
+    pub selected: bool,
+}
+
+/// The Move destination picker, while it is open.
+pub fn move_picker(app: &App) -> Option<MovePicker> {
+    let title = match app.focus {
+        Focus::Input(InputKind::MoveNote) => {
+            let r = app.notes.rename.as_ref()?;
+            format!("Move \"{}\"", notes::find(app, &r.nb, r.id)?.title)
+        }
+        Focus::Input(InputKind::MoveNoteFolder) => {
+            let (key, id) = app.notes.folder_edit.as_ref()?;
+            format!("Move folder \"{}\"", app.notes.book(key)?.folder(*id)?.name)
+        }
+        _ => return None,
+    };
+    let rows: Vec<MoveRow> = notes::move_dests(app)
+        .into_iter()
+        .enumerate()
+        .map(|(i, d)| MoveRow {
+            label: d.label,
+            enabled: !d.current,
+            selected: i == app.notes.move_sel,
+        })
+        .collect();
+    Some(MovePicker {
+        title,
+        filter: app.input.text.clone(),
+        can_move: rows.iter().any(|r| r.selected && r.enabled),
+        rows,
     })
 }
 
@@ -733,25 +786,27 @@ pub struct ConfirmView {
 }
 
 pub fn confirm_view(app: &App) -> Option<ConfirmView> {
+    use crate::msg::Msg;
     let prompt = confirm_prompt(app)?;
-    let restore = matches!(
-        app.confirm.as_ref().map(|c| &c.on_yes),
-        Some(crate::msg::Msg::ExecuteRestore { .. })
-    );
-    Some(if restore {
-        ConfirmView {
+    Some(match app.confirm.as_ref().map(|c| &c.on_yes) {
+        Some(Msg::ExecuteRestore { .. }) => ConfirmView {
             prompt,
             detail: "The text it has now stays in the history.",
             button: "Restore",
             destructive: false,
-        }
-    } else {
-        ConfirmView {
+        },
+        Some(Msg::ExecuteMoveNote { .. }) => ConfirmView {
+            prompt,
+            detail: "The note's revision history stays behind.",
+            button: "Move",
+            destructive: false,
+        },
+        _ => ConfirmView {
             prompt,
             detail: "This cannot be undone.",
             button: "Delete",
             destructive: true,
-        }
+        },
     })
 }
 

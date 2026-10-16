@@ -201,3 +201,74 @@ pub fn note_in(id: u64, folder_id: u64, title: &str, body: &str, updated_at: u64
         ..note(id, title, body, 1, updated_at)
     }
 }
+
+/// Notes with two notebooks loaded: `Locus` (flag `notes`, root 10) has
+/// `Alpha`/`beta` under the root and `deep` under `beta`; `Journal` (flag
+/// `journal`, root 20) has `Daily`. Both have a note with id 1.
+pub fn two_books() -> App {
+    let mut app = App::new();
+    send(&mut app, Msg::Reload);
+    send(
+        &mut app,
+        Msg::NotebooksLoaded {
+            notebooks: vec![nb(), nb_journal()],
+        },
+    );
+    send(
+        &mut app,
+        Msg::FoldersLoaded {
+            nb: nb(),
+            folders: vec![
+                folder(10, "root", None),
+                folder(11, "beta", Some(10)),
+                folder(12, "Alpha", Some(10)),
+                folder(13, "deep", Some(11)),
+            ],
+        },
+    );
+    send(
+        &mut app,
+        Msg::FoldersLoaded {
+            nb: nb_journal(),
+            folders: vec![folder(20, "root", None), folder(21, "Daily", Some(20))],
+        },
+    );
+    send(
+        &mut app,
+        Msg::NotesLoaded {
+            nb: nb(),
+            notes: vec![
+                note_in(1, 10, "Top note", "", 5),
+                note_in(2, 11, "In beta", "x", 4),
+                note_in(3, 13, "In deep", "y", 3),
+                note_in(4, 10, "Newer top", "z", 9),
+            ],
+        },
+    );
+    send(
+        &mut app,
+        Msg::NotesLoaded {
+            nb: nb_journal(),
+            notes: vec![
+                note_in(1, 20, "Journal one", "j", 7),
+                note_in(2, 21, "Entry", "- [ ] journal task\n", 6),
+            ],
+        },
+    );
+    app
+}
+
+pub fn titles(app: &App) -> Vec<String> {
+    locus_core::view_model::notes_list(app)
+        .into_iter()
+        .map(|r| r.title)
+        .collect()
+}
+
+pub fn selected_title(app: &App) -> String {
+    locus_core::view_model::notes_list(app)
+        .into_iter()
+        .find(|r| r.selected)
+        .map(|r| r.title)
+        .unwrap_or_default()
+}

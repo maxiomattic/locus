@@ -6,6 +6,7 @@
 
 use locus_client::notes::{Folder, Note, NotebookSummary};
 use locus_client::{Client, Error};
+use locus_core::left_in_both;
 use serde_json::json;
 
 use super::args::{Parsed, parse_id};
@@ -26,7 +27,9 @@ pub const HELP: &str = "locus notes <command>
   new <notebook> [--folder <path>] <title> create a note; body from stdin if piped
   edit <ref>                               replace the body from stdin, or in $EDITOR
   rename <ref> <title>                     change a note's title
-  mv <ref> <folder path>                   move a note to a folder of its notebook (/ is the top)
+  mv <ref> [<notebook>:]<folder path>      move a note to a folder (/ is the top); with
+                                           <notebook>: into another notebook, as a new note
+                                           whose ref is printed (its history stays behind)
   rm <ref>                                 delete a note
   history <ref> [--json]                   list a note's saved revisions
   restore <ref> <rev>                      make a saved revision the note's text again
@@ -37,7 +40,8 @@ pub const HELP: &str = "locus notes <command>
   folder-rename <notebook> <folder path> <name>
                                            rename a folder
   folder-mv <notebook> <folder path> <dest folder path>
-                                           move a folder into another (/ is the top)
+                                           move a folder into another of its notebook
+                                           (/ is the top)
 
 A <ref> is <notebook>:<id>, as printed by ls and search.
 ";
@@ -119,6 +123,35 @@ pub fn folder_names(path: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+/// Where `notes mv` sends a note.
+#[derive(Debug, PartialEq)]
+pub enum Dest<'a> {
+    /// A folder path in the note's own notebook.
+    Here(Vec<String>),
+    /// `<notebook>:<folder path>`: a folder of the named notebook.
+    In(&'a NotebookSummary, Vec<String>),
+}
+
+/// Parse a move destination. Text before a `:` that names a notebook (flag
+/// name or title) picks that notebook, and `<notebook>:` or `<notebook>:/`
+/// is its top. The longest such prefix wins, so titles may contain `:`;
+/// when no prefix names a notebook the whole text is a folder path, as
+/// folder names may contain `:` too.
+pub fn parse_dest<'a>(books: &'a [NotebookSummary], spec: &str) -> Result<Dest<'a>, String> {
+    for (i, _) in spec.rmatch_indices(':') {
+        match find_notebook(books, &spec[..i]) {
+            Ok(nb) => return Ok(Dest::In(nb, folder_names(&spec[i + 1..]))),
+            Err(e) if e.contains("ambiguous") => return Err(e),
+            Err(_) => {}
+        }
+    }
+    Ok(Dest::Here(folder_names(spec)))
+}
+
+fn same_notebook(a: &NotebookSummary, b: &NotebookSummary) -> bool {
+    a.host == b.host && a.flag_name == b.flag_name
 }
 
 /// Split a note ref into its notebook name and note id.
@@ -481,26 +514,67 @@ async fn rename(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
 
 async fn mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &[])?;
-    let pos = p.positionals(2, 2, "locus notes mv <ref> <folder path>")?;
+    let pos = p.positionals(2, 2, "locus notes mv <ref> [<notebook>:]<folder path>")?;
+    let (from_name, id) = parse_note_ref(&pos[0])?;
     let client = ctx.client().await?;
-    let (nb, id) = note_target(&client, &pos[0]).await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let from = find_notebook(&books, from_name)?;
+    let (nb, names) = match parse_dest(&books, &pos[1])? {
+        Dest::Here(names) => (from, names),
+        Dest::In(to, names) => (to, names),
+    };
     let folders = client
         .list_folders(&nb.host, &nb.flag_name)
         .await
         .map_err(client_error)?;
     let root = nb.notebook.root_folder_id;
-    let folder = resolve_folder(&folders, root, &folder_names(&pos[1]))?;
+    let folder = resolve_folder(&folders, root, &names)?;
+    if !same_notebook(from, nb) {
+        return mv_across(&client, from, id, nb, folder).await;
+    }
     client
         .move_note(&nb.host, &nb.flag_name, id, folder)
         .await
         .map_err(client_error)?;
     emit(&format!(
         "moved {} to {}/{}\n",
-        note_ref(&nb, id),
+        note_ref(nb, id),
         nb.flag_name,
         folder_path(&folders, root, folder)
     ));
     Ok(())
+}
+
+/// Move a note into another notebook: read it, create it there with the
+/// same title and body, then delete the original. Prints the new ref.
+async fn mv_across(
+    client: &Client,
+    from: &NotebookSummary,
+    id: u64,
+    to: &NotebookSummary,
+    folder: u64,
+) -> Result<(), String> {
+    let note = client
+        .get_note(&from.host, &from.flag_name, id)
+        .await
+        .map_err(client_error)?;
+    let copy = client
+        .create_note(&to.host, &to.flag_name, folder, &note.title, &note.body_md)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("{}\n", note_ref(to, copy.id)));
+    client
+        .delete_note(&from.host, &from.flag_name, id)
+        .await
+        .map_err(|e| {
+            let error = client_error(e);
+            left_in_both(
+                &note.title,
+                &from.notebook.title,
+                &to.notebook.title,
+                &error,
+            )
+        })
 }
 
 async fn rm(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
@@ -798,7 +872,14 @@ async fn folder_mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .map_err(client_error)?;
     let root = nb.notebook.root_folder_id;
     let id = resolve_folder(&folders, root, &names)?;
-    let dest = resolve_folder(&folders, root, &folder_names(&pos[2]))?;
+    let dest_names = match parse_dest(&books, &pos[2])? {
+        Dest::Here(names) => names,
+        Dest::In(to, names) if same_notebook(nb, to) => names,
+        Dest::In(..) => {
+            return Err("folders cannot move to another notebook; move their notes with locus notes mv".into());
+        }
+    };
+    let dest = resolve_folder(&folders, root, &dest_names)?;
     if is_inside(&folders, id, dest) {
         return Err("a folder cannot move into itself".into());
     }
@@ -881,6 +962,42 @@ mod tests {
         assert_eq!(names, ["projects", "x"]);
         assert_eq!(locate(&books, "A/B").unwrap().0.flag_name, "odd");
         assert!(locate(&books, "missing/x").is_err());
+    }
+
+    #[test]
+    fn move_destinations_parse() {
+        let books = [
+            book("notes", "Notes"),
+            book("work", "Work: 2026"),
+            book("a", "Same"),
+            book("b", "same"),
+        ];
+        let here = |names: &[&str]| Dest::Here(names.iter().map(|s| s.to_string()).collect());
+        let into = |i: usize, names: &[&str]| {
+            Dest::In(&books[i], names.iter().map(|s| s.to_string()).collect())
+        };
+        assert_eq!(
+            parse_dest(&books, "/Projects/x"),
+            Ok(here(&["Projects", "x"]))
+        );
+        assert_eq!(parse_dest(&books, "/"), Ok(here(&[])));
+        assert_eq!(
+            parse_dest(&books, "notes:/Projects"),
+            Ok(into(0, &["Projects"]))
+        );
+        // By title, any case; the top as `nb:` or `nb:/`.
+        assert_eq!(parse_dest(&books, "NOTES:"), Ok(into(0, &[])));
+        assert_eq!(parse_dest(&books, "notes:/"), Ok(into(0, &[])));
+        // A title with a colon in it.
+        assert_eq!(
+            parse_dest(&books, "Work: 2026:/a/b"),
+            Ok(into(1, &["a", "b"]))
+        );
+        assert_eq!(parse_dest(&books, "work:a:b"), Ok(into(1, &["a:b"])));
+        // No notebook by that name: a folder whose name has a colon.
+        assert_eq!(parse_dest(&books, "/Re: notes"), Ok(here(&["Re: notes"])));
+        let err = parse_dest(&books, "same:/x").unwrap_err();
+        assert!(err.contains("ambiguous"));
     }
 
     #[test]
