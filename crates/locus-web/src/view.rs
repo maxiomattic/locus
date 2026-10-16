@@ -667,7 +667,9 @@ fn calendar_pane(s: &Shell) -> Element<'_, Message> {
         col = col.push(form_card(c, &form));
     }
     if agenda_mode {
-        col = col.push(text(view_model::selected_day_label(&s.app)).size(12).color(c.muted));
+        if let Some(label) = view_model::agenda_day_label(&s.app) {
+            col = col.push(text(label).size(12).color(c.muted));
+        }
         col = col.push(agenda_list(s));
     } else {
         col = col.push(month_grid(s, &month));

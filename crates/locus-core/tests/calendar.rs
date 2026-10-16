@@ -315,3 +315,17 @@ fn bad_form_does_not_emit_anything_on_edit_of_missing_event() {
     assert!(press_at(&mut app, Key::F(2), clock).is_empty());
     assert!(app.form.is_none());
 }
+
+#[test]
+fn agenda_names_the_selected_day_only_when_its_heading_is_not_first() {
+    let tz = 0;
+    let today = local_to_unix(date(2026, 10, 11), 9, 0, tz) as u64;
+    let app = cal_app(tz, vec![event(1, "a", today, today + 3600, 1)]);
+    assert_eq!(view_model::agenda_day_label(&app), None);
+    let later = local_to_unix(date(2026, 10, 14), 9, 0, tz) as u64;
+    let app = cal_app(tz, vec![event(1, "a", later, later + 3600, 1)]);
+    assert_eq!(
+        view_model::agenda_day_label(&app).as_deref(),
+        Some("Sun 11 October 2026")
+    );
+}

@@ -120,6 +120,13 @@ pub fn selected_day_label(app: &App) -> String {
     long_date_label(app.calendar.day)
 }
 
+/// Agenda view: the selected day's own line, unless the agenda already
+/// starts with that day's heading.
+pub fn agenda_day_label(app: &App) -> Option<String> {
+    let shown = agenda(app).first().is_some_and(|d| d.is_selected);
+    (!shown).then(|| selected_day_label(app))
+}
+
 // ----- notes -----
 
 #[derive(Debug, Clone, PartialEq, Eq)]

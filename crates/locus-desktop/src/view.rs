@@ -717,9 +717,10 @@ fn calendar(app: &App) -> Element<'_, Message> {
     }
     match mode {
         CalMode::Agenda => {
-            col = col
-                .push(widget::text::caption(view_model::selected_day_label(&app.ui)))
-                .push(agenda(app));
+            if let Some(label) = view_model::agenda_day_label(&app.ui) {
+                col = col.push(widget::text::caption(label));
+            }
+            col = col.push(agenda(app));
         }
         CalMode::Month => {
             col = col.push(month_grid(month)).push(day_events(app));
