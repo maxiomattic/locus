@@ -205,7 +205,9 @@ async fn add(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .await
         .map_err(client_error)?
         .into_iter()
-        .find(|n| n.title == INBOX_TITLE);
+        // Same rule as the GUI: any case, the oldest if several.
+        .filter(|n| locus_core::is_inbox_title(&n.title))
+        .min_by_key(|n| n.id);
     let id = match inbox {
         Some(n) => {
             let note = client

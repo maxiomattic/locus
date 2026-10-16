@@ -32,4 +32,5 @@ pub use keymap::{Key, Mods, bindings, keymap};
 pub use locus_client;
 pub use msg::{Effect, FileEntry, FilePatch, Msg, Nav, Now, TextEdit};
 pub use state::{App, CalMode, Focus, InputKind, Level, NbKey, NoteRef, NotesLoc, Section, Target};
+pub use todo::is_inbox_title;
 pub use update::update;

@@ -957,3 +957,24 @@ fn restoring_a_revision_asks_then_shows_the_note_again() {
     assert_eq!(view_model::editor(&app).unwrap().body, "first");
     assert_eq!(app.status.text, "Restored revision 0");
 }
+
+#[test]
+fn a_lowercase_inbox_note_is_reused_for_new_tasks() {
+    let mut app = two_books();
+    send(
+        &mut app,
+        Msg::NotesLoaded {
+            nb: nb_journal(),
+            notes: vec![note_in(5, 20, "inbox", "- [ ] old\n", 3)],
+        },
+    );
+    press(&mut app, Key::Enter); // browse Journal
+    send(&mut app, Msg::Switch(Section::Todo));
+    key(&mut app, 'n');
+    type_str(&mut app, "buy milk");
+    let fx = press(&mut app, Key::Enter);
+    assert!(
+        !fx.iter().any(|e| matches!(e, Effect::CreateNote { .. })),
+        "made a second inbox: {fx:?}"
+    );
+}

@@ -165,12 +165,20 @@ pub fn after_notes_changed(app: &mut App, fx: &mut Vec<Effect>) {
     add_to_inbox(app, fx, &pending.nb, pending.text, pending.due);
 }
 
+/// The notebook's Inbox: a note titled "Inbox" in any case, so an
+/// "inbox" note is reused rather than joined by a second one. The oldest
+/// wins when there are several.
 fn inbox_note<'a>(app: &'a App, nb: &NbKey) -> Option<&'a Note> {
     app.notes
         .book(nb)?
         .notes
         .iter()
-        .find(|n| n.title == INBOX_TITLE)
+        .filter(|n| is_inbox_title(&n.title))
+        .min_by_key(|n| n.id)
+}
+
+pub fn is_inbox_title(title: &str) -> bool {
+    title.trim().eq_ignore_ascii_case(INBOX_TITLE)
 }
 
 pub fn toggle_selected(app: &mut App, fx: &mut Vec<Effect>) {
