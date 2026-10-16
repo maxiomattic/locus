@@ -206,13 +206,14 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(app) => vec![
             tool(c, "New notebook", "", Some(Msg::NewNotebook)),
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
+            tool(c, "Rename", "F2", when(view_model::can_rename(app), Msg::Rename)),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "New folder", "", Some(Msg::NewFolder)),
             tool(c, "Rename", "F2", when(view_model::can_rename(app), Msg::Rename)),
-            tool(c, "Move", "", when(view_model::can_rename(app), Msg::Move)),
+            tool(c, "Move", "", when(view_model::can_move(app), Msg::Move)),
             tool(
                 c,
                 if app.notes.history.is_some() { "Close history" } else { "History" },
@@ -518,6 +519,7 @@ fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
     let header = row![
         text(format!("History of {}", h.title)).size(16).color(c.text),
         space::horizontal(),
+        tool(c, "Restore this version", "", h.can_restore.then_some(Msg::RestoreRevision)),
         tool(c, "Close", "Escape", Some(Msg::History)),
     ]
     .spacing(8)
@@ -1136,13 +1138,14 @@ fn help_card(s: &Shell) -> Element<'_, Message> {
 
 fn confirm_card(s: &Shell) -> Option<Element<'_, Message>> {
     let c = s.colors;
-    let prompt = view_model::confirm_prompt(&s.app)?;
+    let confirm = view_model::confirm_view(&s.app)?;
     Some(
         container(
             column![
-                text(prompt).size(14).color(c.text),
+                text(confirm.prompt).size(14).color(c.text),
+                muted_text(c, confirm.detail),
                 row![
-                    button(text("Delete").size(14))
+                    button(text(confirm.button).size(14))
                         .padding([6, 14])
                         .on_press(core(Msg::ConfirmAnswer(true)))
                         .style(style::primary_button(c)),

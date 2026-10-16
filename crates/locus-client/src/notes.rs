@@ -129,6 +129,57 @@ fn check_reply(path: &str, env: Envelope) -> Result<Reply> {
     }
 }
 
+/// Seed for request ids. The desktop and CLI seed it from the clock on
+/// first use; the web shell calls [`seed_request_ids`] with a random value,
+/// since wasm has no clock or randomness in std.
+static REQUEST_SEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static REQUEST_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Seed request ids for `POST /notes/~/v1` (see [`Client::submit`]).
+pub fn seed_request_ids(seed: u64) {
+    REQUEST_SEED.store(seed | 1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A fresh request id: a counter mixed into the seed, as `@uv` text.
+fn mint_request_id() -> String {
+    use std::sync::atomic::Ordering;
+    #[cfg(not(target_arch = "wasm32"))]
+    if REQUEST_SEED.load(Ordering::Relaxed) == 0 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(1, |d| d.as_nanos() as u64);
+        let _ = REQUEST_SEED.compare_exchange(0, nanos ^ u64::from(std::process::id()) | 1, Ordering::Relaxed, Ordering::Relaxed);
+    }
+    let n = REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
+    let seed = REQUEST_SEED.load(Ordering::Relaxed);
+    // splitmix64 of seed + n: distinct for each n, spread over 64 bits.
+    let mut z = seed.wrapping_add(n.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    uv(z ^ (z >> 31))
+}
+
+/// Urbit `@uv` text: base32, dot-separated groups of five from the right.
+fn uv(mut n: u64) -> String {
+    const DIGITS: &[u8; 32] = b"0123456789abcdefghijklmnopqrstuv";
+    let mut digits = Vec::new();
+    loop {
+        digits.push(DIGITS[(n % 32) as usize]);
+        n /= 32;
+        if n == 0 {
+            break;
+        }
+    }
+    let mut out = String::from("0v");
+    for (i, d) in digits.iter().rev().enumerate() {
+        if i > 0 && (digits.len() - i) % 5 == 0 {
+            out.push('.');
+        }
+        out.push(*d as char);
+    }
+    out
+}
+
 fn nb_path(host: &str, name: &str) -> String {
     format!("/notes/~/v1/notebooks/{}/{}", seg(host), seg(name))
 }
@@ -213,6 +264,29 @@ impl Client {
                 error: "not-found".into(),
                 message: "created folder missing from list".into(),
             })
+    }
+
+    /// Run a notebook-scoped action through the generic `POST /notes/~/v1`
+    /// (`submitAction`), for actions with no first-class endpoint.
+    async fn submit_notebook_action(&self, host: &str, name: &str, action: Value) -> Result<Reply> {
+        let body = json!({
+            "requestId": mint_request_id(),
+            "action": { "type": "notebook", "flag": format!("{host}/{name}"), "action": action },
+        });
+        self.write(Method::POST, "/notes/~/v1", Some(body)).await
+    }
+
+    pub async fn rename_notebook(&self, host: &str, name: &str, title: &str) -> Result<()> {
+        self.submit_notebook_action(host, name, json!({ "type": "rename", "title": title }))
+            .await
+            .map(|_| ())
+    }
+
+    /// Make revision `rev` of a note its current text again. The text it
+    /// replaces is kept in the history like any other edit.
+    pub async fn restore_note(&self, host: &str, name: &str, id: u64, rev: u64) -> Result<()> {
+        let action = json!({ "type": "note", "id": id, "action": { "type": "restore", "rev": rev } });
+        self.submit_notebook_action(host, name, action).await.map(|_| ())
     }
 
     /// Rename a folder (`folder_name`), move it under another folder
@@ -424,6 +498,18 @@ mod tests {
 
     fn env(raw: &str) -> Envelope {
         serde_json::from_str(raw).expect("envelope decodes")
+    }
+
+    #[test]
+    fn request_ids_are_uv_text_and_distinct() {
+        assert_eq!(uv(0), "0v0");
+        assert_eq!(uv(31), "0vv");
+        assert_eq!(uv(32), "0v10");
+        assert_eq!(uv(32u64.pow(5)), "0v1.00000");
+        let a = mint_request_id();
+        let b = mint_request_id();
+        assert!(a.starts_with("0v") && a != b);
+        assert!(a[2..].split('.').skip(1).all(|g| g.len() == 5));
     }
 
     #[test]

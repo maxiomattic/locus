@@ -416,11 +416,9 @@ fn rename_and_delete_use_the_selected_notes_notebook() {
 }
 
 #[test]
-fn edit_ignores_folder_rows_and_notebooks_cannot_be_renamed() {
+fn edit_ignores_folder_rows_and_notebooks_cannot_be_moved() {
     let mut app = two_books();
-    assert!(!view_model::can_rename(&app));
-    key(&mut app, 'r');
-    assert_eq!(app.focus, Focus::List);
+    assert!(!view_model::can_move(&app));
     send(&mut app, Msg::Move);
     assert_eq!(app.focus, Focus::List);
     press(&mut app, Key::Enter);
@@ -892,4 +890,70 @@ fn folders_rename_and_move_with_checks() {
     );
     assert_eq!(app.status.text, "Moved folder");
     assert_eq!(titles(&app), vec!["Alpha", "Newer top", "Top note"]);
+}
+
+#[test]
+fn notebooks_rename_from_the_list() {
+    let mut app = two_books();
+    assert!(view_model::can_rename(&app));
+    assert!(!view_model::can_move(&app));
+    key(&mut app, 'r');
+    assert_eq!(app.focus, Focus::Input(InputKind::RenameNotebook));
+    assert_eq!(app.input.text, "Journal");
+    clear_input(&mut app);
+    type_str(&mut app, "Diary");
+    let fx = press(&mut app, Key::Enter);
+    assert_eq!(
+        fx,
+        vec![Effect::RenameNotebook {
+            nb: nb_journal(),
+            title: "Diary".into(),
+        }]
+    );
+    send(
+        &mut app,
+        Msg::NotebookRenamed {
+            nb: nb_journal(),
+            title: "Diary".into(),
+        },
+    );
+    assert_eq!(titles(&app), vec!["Diary", "Locus"]);
+    assert_eq!(selected_title(&app), "Diary");
+}
+
+#[test]
+fn restoring_a_revision_asks_then_shows_the_note_again() {
+    let mut app = two_books();
+    key(&mut app, 'j');
+    key(&mut app, 'l');
+    key(&mut app, 'G');
+    send(&mut app, Msg::History);
+    send(
+        &mut app,
+        Msg::HistoryLoaded {
+            nb: nb(),
+            id: 1,
+            revs: Ok(vec![rev(1, "second"), rev(0, "first")]),
+        },
+    );
+    press(&mut app, Key::Down);
+    assert!(view_model::note_history(&app).unwrap().can_restore);
+    assert!(send(&mut app, Msg::RestoreRevision).is_empty());
+    assert_eq!(app.focus, Focus::Confirm);
+    assert!(confirm_prompt(&app).contains("revision 0"));
+    let dialog = view_model::confirm_view(&app).unwrap();
+    assert_eq!((dialog.button, dialog.destructive), ("Restore", false));
+    let fx = send(&mut app, Msg::ConfirmAnswer(true));
+    assert_eq!(fx, vec![Effect::RestoreNote { nb: nb(), id: 1, rev: 0 }]);
+    send(
+        &mut app,
+        Msg::NoteRestored {
+            nb: nb(),
+            note: note_in(1, 10, "Top note", "first", 9),
+            rev: 0,
+        },
+    );
+    assert!(view_model::note_history(&app).is_none());
+    assert_eq!(view_model::editor(&app).unwrap().body, "first");
+    assert_eq!(app.status.text, "Restored revision 0");
 }

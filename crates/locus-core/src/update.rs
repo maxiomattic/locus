@@ -69,6 +69,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             _ => app.info("History is available in Notes"),
         },
         Msg::SelectRevision(i) => notes::select_revision(app, fx, i),
+        Msg::RestoreRevision => notes::ask_restore(app),
+        Msg::ExecuteRestore { note, rev } => notes::execute_restore(app, fx, &note, rev),
         Msg::ToggleTask => todo::toggle_selected(app, fx),
         Msg::ToggleDoneTasks => todo::toggle_done_visibility(app),
         Msg::CalendarMode => calendar::toggle_mode(app),
@@ -152,6 +154,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::NoteMoved { nb, id, folder } => notes::note_moved(app, nb, id, folder),
         Msg::NoteFolderDeleted { nb, id } => notes::folder_deleted(app, fx, nb, id),
         Msg::NotebookDeleted { nb } => notes::notebook_deleted(app, nb),
+        Msg::NotebookRenamed { nb, title } => notes::notebook_renamed(app, &nb, title),
+        Msg::NoteRestored { nb, note, rev } => notes::note_restored(app, fx, nb, note, rev),
         Msg::HistoryLoaded { nb, id, revs } => notes::history_loaded(app, nb, id, revs),
         Msg::SaveConflict {
             nb,
@@ -476,6 +480,7 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::MovePhoto => photos::submit_move(app, fx),
         InputKind::MoveNote => notes::submit_move(app, fx),
         InputKind::RenameNoteFolder => notes::submit_folder_rename(app, fx),
+        InputKind::RenameNotebook => notes::submit_notebook_rename(app, fx),
         InputKind::MoveNoteFolder => notes::submit_folder_move(app, fx),
         InputKind::Login => {
             let code = std::mem::take(&mut app.input.text);

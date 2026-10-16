@@ -18,6 +18,7 @@ pub const HELP: &str = "locus notes <command>
   notebooks [--json]                       list notebooks
   notebook-new <title>                     create a notebook
   notebook-rm <notebook> [--force]         delete a notebook; --force if it is not empty
+  notebook-rename <notebook> <title>       change a notebook's title
   ls [<notebook>[/<folder path>]] [--json] list notes (all notebooks by default)
   folders [<notebook>[/<folder path>]] [--json]
                                            list folders, empty ones too, below a place
@@ -28,6 +29,7 @@ pub const HELP: &str = "locus notes <command>
   mv <ref> <folder path>                   move a note to a folder of its notebook (/ is the top)
   rm <ref>                                 delete a note
   history <ref> [--json]                   list a note's saved revisions
+  restore <ref> <rev>                      make a saved revision the note's text again
   search <query> [--json]                  search note text in all notebooks
   mkdir <notebook> <folder path>           create folders (like mkdir -p)
   rmdir <notebook> <folder path> [--recursive]
@@ -46,6 +48,8 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
         "notebooks" => notebooks(ctx, args).await,
         "notebook-new" => notebook_new(ctx, args).await,
         "notebook-rm" => notebook_rm(ctx, args).await,
+        "notebook-rename" => notebook_rename(ctx, args).await,
+        "restore" => restore(ctx, args).await,
         "ls" => ls(ctx, args).await,
         "folders" => folders(ctx, args).await,
         "show" => show(ctx, args).await,
@@ -536,6 +540,45 @@ async fn history(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
             .collect();
         emit(&table(&["REV", "WHEN", "AUTHOR", "TITLE"], &rows));
     }
+    Ok(())
+}
+
+async fn restore(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(2, 2, "locus notes restore <ref> <rev>")?;
+    let rev = parse_id(&pos[1], "revision")?;
+    let client = ctx.client().await?;
+    let (nb, id) = note_target(&client, &pos[0]).await?;
+    let revs = client
+        .history(&nb.host, &nb.flag_name, id)
+        .await
+        .map_err(client_error)?;
+    if !revs.iter().any(|v| v.rev == rev) {
+        return Err(format!("{} has no revision {rev}; see locus notes history", note_ref(&nb, id)));
+    }
+    client
+        .restore_note(&nb.host, &nb.flag_name, id, rev)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("restored {} to revision {rev}\n", note_ref(&nb, id)));
+    Ok(())
+}
+
+async fn notebook_rename(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(2, 2, "locus notes notebook-rename <notebook> <title>")?;
+    let title = pos[1].trim();
+    if title.is_empty() {
+        return Err("the title is empty".into());
+    }
+    let client = ctx.client().await?;
+    let books = client.list_notebooks().await.map_err(client_error)?;
+    let nb = find_notebook(&books, &pos[0])?;
+    client
+        .rename_notebook(&nb.host, &nb.flag_name, title)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("renamed {} to {title}\n", nb.flag_name));
     Ok(())
 }
 

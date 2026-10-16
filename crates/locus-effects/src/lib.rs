@@ -229,6 +229,21 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }
         }
+        Effect::RenameNotebook { nb, title } => {
+            match client.rename_notebook(&nb.host, &nb.flag_name, &title).await {
+                Ok(()) => vec![Msg::NotebookRenamed { nb, title }],
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
+        Effect::RestoreNote { nb, id, rev } => {
+            match client.restore_note(&nb.host, &nb.flag_name, id, rev).await {
+                Ok(()) => match client.get_note(&nb.host, &nb.flag_name, id).await {
+                    Ok(note) => vec![Msg::NoteRestored { nb, note, rev }],
+                    Err(e) => vec![load_failed(Section::Notes, &e)],
+                },
+                Err(e) => vec![write_failed(Section::Notes, &e)],
+            }
+        }
         Effect::LoadHistory { nb, id } => {
             let revs = client
                 .history(&nb.host, &nb.flag_name, id)

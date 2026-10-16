@@ -76,6 +76,11 @@ pub fn can_rename(app: &App) -> bool {
     }
 }
 
+/// Notes: whether Move applies (a note or folder, not a notebook).
+pub fn can_move(app: &App) -> bool {
+    app.section == Section::Notes && notes::can_move(app)
+}
+
 /// Files: any row, folder or file, is selected (Copy path works on both).
 pub fn has_file_row_selected(app: &App) -> bool {
     crate::files::selected(app).is_some()
@@ -234,6 +239,8 @@ pub struct HistoryView {
     /// Title and body of the selected revision.
     pub rev_title: String,
     pub body: String,
+    /// A revision is selected, so Restore has something to restore.
+    pub can_restore: bool,
 }
 
 pub fn note_history(app: &App) -> Option<HistoryView> {
@@ -259,6 +266,7 @@ pub fn note_history(app: &App) -> Option<HistoryView> {
         title: h.title.clone(),
         loading: h.revs.is_none(),
         rows,
+        can_restore: sel.is_some(),
         rev_title: sel.map(|r| r.title.clone()).unwrap_or_default(),
         body: sel.map(|r| r.body_md.clone()).unwrap_or_default(),
     })
@@ -680,6 +688,7 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::MovePhoto => ("move to album", app.input.text.clone()),
         InputKind::MoveNote => ("move to folder", app.input.text.clone()),
         InputKind::RenameNoteFolder => ("folder name", app.input.text.clone()),
+        InputKind::RenameNotebook => ("notebook title", app.input.text.clone()),
         InputKind::MoveNoteFolder => ("move folder into", app.input.text.clone()),
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
@@ -696,6 +705,39 @@ pub fn confirm_prompt(app: &App) -> Option<String> {
         return None;
     }
     app.confirm.as_ref().map(|c| c.prompt.clone())
+}
+
+/// The confirm dialog: the question, the line under it, and the button.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmView {
+    pub prompt: String,
+    pub detail: &'static str,
+    pub button: &'static str,
+    /// Draw the button as destructive (deletes).
+    pub destructive: bool,
+}
+
+pub fn confirm_view(app: &App) -> Option<ConfirmView> {
+    let prompt = confirm_prompt(app)?;
+    let restore = matches!(
+        app.confirm.as_ref().map(|c| &c.on_yes),
+        Some(crate::msg::Msg::ExecuteRestore { .. })
+    );
+    Some(if restore {
+        ConfirmView {
+            prompt,
+            detail: "The text it has now stays in the history.",
+            button: "Restore",
+            destructive: false,
+        }
+    } else {
+        ConfirmView {
+            prompt,
+            detail: "This cannot be undone.",
+            button: "Delete",
+            destructive: true,
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

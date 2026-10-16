@@ -109,6 +109,8 @@ pub fn tile_px(width: f32) -> f32 {
 
 impl Shell {
     fn boot() -> (Shell, Task<Message>) {
+        // wasm std has no randomness; request ids need a per-tab seed.
+        locus_client::notes::seed_request_ids((js_sys::Math::random() * u64::MAX as f64) as u64);
         let colors = if platform::prefers_light() {
             Colors::light()
         } else {

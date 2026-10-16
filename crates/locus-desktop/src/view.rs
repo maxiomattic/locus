@@ -315,13 +315,14 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(ui) => vec![
             tool("New notebook", "", Some(Msg::NewNotebook)),
             tool("New note", "Ctrl+N", Some(Msg::New)),
+            tool("Rename", "F2", when(view_model::can_rename(ui), Msg::Rename)),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool("New note", "Ctrl+N", Some(Msg::New)),
             tool("New folder", "", Some(Msg::NewFolder)),
             tool("Rename", "F2", when(view_model::can_rename(ui), Msg::Rename)),
-            tool("Move", "", when(view_model::can_rename(ui), Msg::Move)),
+            tool("Move", "", when(view_model::can_move(ui), Msg::Move)),
             tool(history_label(ui), "", when(view_model::can_show_history(ui), Msg::History)),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
@@ -547,10 +548,11 @@ fn history_label(ui: &locus_core::App) -> &'static str {
 /// on the right. Read only.
 fn history_pane(history: HistoryView) -> Element<'static, Message> {
     let s = theme::spacing();
-    let header = widget::row::with_capacity(2)
+    let header = widget::row::with_capacity(3)
         .spacing(s.space_xs)
         .align_y(Alignment::Center)
         .push(widget::text::title4(format!("History of {}", history.title)).width(Length::Fill))
+        .push(tool("Restore this version", "", history.can_restore.then_some(Msg::RestoreRevision)))
         .push(tool("Close", "Escape", Some(Msg::History)));
     let body: Element<'static, Message> = if history.loading {
         empty("History", "Loading...".into())
@@ -1137,14 +1139,17 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
     let ui = &app.ui;
     match ui.focus {
         Focus::Confirm => {
-            let prompt = view_model::confirm_prompt(ui)?;
+            let confirm = view_model::confirm_view(ui)?;
+            let yes = if confirm.destructive {
+                widget::button::destructive(confirm.button)
+            } else {
+                widget::button::suggested(confirm.button)
+            };
             Some(
                 widget::dialog()
-                    .title(prompt)
-                    .body("This cannot be undone.")
-                    .primary_action(
-                        widget::button::destructive("Delete").on_press(core(Msg::ConfirmAnswer(true))),
-                    )
+                    .title(confirm.prompt)
+                    .body(confirm.detail)
+                    .primary_action(yes.on_press(core(Msg::ConfirmAnswer(true))))
                     .secondary_action(
                         widget::button::standard("Cancel").on_press(core(Msg::ConfirmAnswer(false))),
                     )

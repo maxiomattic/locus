@@ -1029,6 +1029,16 @@ pub fn submit_new_notebook(app: &mut App, fx: &mut Vec<Effect>) {
 }
 
 pub fn begin_rename(app: &mut App) {
+    if let Some(Row::Notebook(b)) = selected(app) {
+        let (key, title) = (b.key(), b.nb.notebook.title.clone());
+        app.input = Input {
+            text: title,
+            target: None,
+        };
+        app.notes.folder_edit = Some((key, 0));
+        app.focus = Focus::Input(InputKind::RenameNotebook);
+        return;
+    }
     if let Some(Row::Folder(b, f)) = selected(app) {
         let (key, id, name) = (b.key(), f.id, f.name.clone());
         app.input = Input {
@@ -1074,7 +1084,47 @@ pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
 /// Whether the selected row is a note or a folder, which Rename and Move
 /// apply to.
 pub fn can_rename(app: &App) -> bool {
+    selected(app).is_some()
+}
+
+/// Whether Move applies: notes and folders; notebooks have no place.
+pub fn can_move(app: &App) -> bool {
     matches!(selected(app), Some(Row::Note(..) | Row::Folder(..)))
+}
+
+pub fn submit_notebook_rename(app: &mut App, fx: &mut Vec<Effect>) {
+    let title = app.input.text.trim().to_string();
+    if title.is_empty() {
+        app.error("Title cannot be empty");
+        return;
+    }
+    let nb = app
+        .notes
+        .folder_edit
+        .clone()
+        .and_then(|(key, _)| Some(app.notes.book(&key)?.nb.clone()));
+    end_folder_prompt(app);
+    let Some(nb) = nb else {
+        return;
+    };
+    if nb.notebook.title == title {
+        return;
+    }
+    fx.push(Effect::RenameNotebook { nb, title });
+    app.info("Renaming notebook");
+}
+
+pub fn notebook_renamed(app: &mut App, nb: &NotebookSummary, title: String) {
+    let key = NbKey::of(nb);
+    keeping_selection(app, |app| {
+        if let Some(b) = app.notes.book_mut(&key) {
+            b.nb.notebook.title = title.clone();
+        }
+        if let Some(ed) = app.editor.as_mut().filter(|e| key.is(&e.nb)) {
+            ed.nb.notebook.title = title.clone();
+        }
+    });
+    app.info(format!("Renamed notebook to \"{title}\""));
 }
 
 /// The folder a folder prompt is for, with its notebook.
@@ -1229,6 +1279,48 @@ pub fn close_history(app: &mut App) {
     if app.notes.history.take().is_some() && app.focus == Focus::Detail {
         app.focus = Focus::List;
     }
+}
+
+/// Restore: make the selected revision the note's text again, after asking.
+pub fn ask_restore(app: &mut App) {
+    let Some(h) = app.notes.history.as_ref() else {
+        return;
+    };
+    let Some(rev) = h.revs.as_ref().and_then(|r| r.get(h.sel)).map(|r| r.rev) else {
+        app.info("Select a revision to restore");
+        return;
+    };
+    let prompt = format!("Restore \"{}\" to revision {rev}?", h.title);
+    let note = h.note.clone();
+    app.ask(prompt, Msg::ExecuteRestore { note, rev });
+}
+
+pub fn execute_restore(app: &mut App, fx: &mut Vec<Effect>, note: &NoteRef, rev: u64) {
+    let Some(nb) = app.notes.book(&note.nb).map(|b| b.nb.clone()) else {
+        return;
+    };
+    flush_editor(app, fx);
+    fx.push(Effect::RestoreNote { nb, id: note.id, rev });
+    app.info("Restoring");
+}
+
+/// The server took the old text back: show the note again, not the history.
+pub fn note_restored(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, note: Note, rev: u64) {
+    let (key, id) = (NbKey::of(&nb), note.id);
+    if let Some(ed) = app.editor.as_mut().filter(|e| e.is(&key, id)) {
+        // The restore is the newest text; the editor was saved before it.
+        ed.body = note.body_md.clone();
+        ed.last_saved = note.body_md.clone();
+        ed.base_revision = note.revision;
+        ed.conflict = false;
+    }
+    note_loaded(app, fx, nb, note);
+    if app.notes.history.as_ref().is_some_and(|h| h.note.nb == key && h.note.id == id) {
+        close_history(app);
+        // Show what the note says now.
+        open_editor(app, fx, &key, id);
+    }
+    app.info(format!("Restored revision {rev}"));
 }
 
 /// A click on revision `i`.

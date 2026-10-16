@@ -95,6 +95,13 @@ pub enum Msg {
     History,
     /// Mouse selection of a revision in the note history.
     SelectRevision(usize),
+    /// Restore the selected revision (asks first).
+    RestoreRevision,
+    /// Internal target of a restore confirmation.
+    ExecuteRestore {
+        note: NoteRef,
+        rev: u64,
+    },
     /// Space or `x` in Todo.
     ToggleTask,
     /// `z` in Todo: show or hide the Done group.
@@ -231,6 +238,16 @@ pub enum Msg {
     },
     NotebookDeleted {
         nb: NotebookSummary,
+    },
+    NotebookRenamed {
+        nb: NotebookSummary,
+        title: String,
+    },
+    /// Revision `rev` is the note's text again; `note` is the re-read note.
+    NoteRestored {
+        nb: NotebookSummary,
+        note: Note,
+        rev: u64,
     },
     /// A note's saved revisions, newest first, or why they could not load.
     HistoryLoaded {
@@ -370,6 +387,15 @@ pub enum Effect {
     LoadHistory {
         nb: NotebookSummary,
         id: u64,
+    },
+    RenameNotebook {
+        nb: NotebookSummary,
+        title: String,
+    },
+    RestoreNote {
+        nb: NotebookSummary,
+        id: u64,
+        rev: u64,
     },
 
     LoadEvents,
