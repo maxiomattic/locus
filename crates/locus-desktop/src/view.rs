@@ -16,6 +16,8 @@ use crate::{App, Message, Screen, THUMB_GRID, THUMB_VIEW, thumb_key};
 
 // ----- widget ids -----
 
+/// Names the editor in focus bookkeeping; the widget itself uses
+/// `App::editor_id`.
 pub const EDITOR_ID: &str = "editor";
 pub const FILTER_ID: &str = "filter";
 pub const INPUT_ID: &str = "input";
@@ -519,7 +521,7 @@ fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
         .push(widget::text::title4(editor.title).width(Length::Fill))
         .push(status);
     let text = widget::text_editor::text_editor(&app.content)
-        .id(Id::new(EDITOR_ID))
+        .id(app.editor_id.clone())
         .on_action(Message::Editor)
         .padding(s.space_s)
         .height(Length::Fill);

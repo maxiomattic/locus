@@ -212,6 +212,12 @@ pub(crate) struct App {
     synced_body: String,
     /// The widget id keyboard focus was last moved to for the core's focus.
     focused: Option<String>,
+    /// The note editor's widget id. Unique, not named: libcosmic's text
+    /// editor gives its wrapper and the inner editor the same id, and two
+    /// trees under one name lose their state when the editor appears
+    /// together with other changes (a palette jump, an `--open` link),
+    /// which panics with "Downcast on stateless state".
+    pub(crate) editor_id: widget::Id,
     /// Last known `(offset_y, height, width)` per scrollable id.
     viewports: HashMap<&'static str, (f32, f32, f32)>,
     /// The selection rectangle last scrolled to, so scrolling by hand sticks.
@@ -367,6 +373,7 @@ impl App {
         let want = self.focus_id();
         if want != self.focused {
             tasks.push(match &want {
+                Some(id) if id == view::EDITOR_ID => widget::text_input::focus(self.editor_id.clone()),
                 Some(id) => widget::text_input::focus(widget::Id::new(id.clone())),
                 None => unfocus(),
             });
@@ -686,6 +693,7 @@ impl App {
             synced_note: None,
             synced_body: String::new(),
             focused: None,
+            editor_id: widget::Id::unique(),
             viewports: HashMap::new(),
             last_rect: None,
         };
