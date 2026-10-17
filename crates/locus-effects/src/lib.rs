@@ -122,8 +122,36 @@ pub async fn session_ok(client: &Client) -> bool {
 /// Perform one effect and return the messages the core expects back, in order.
 pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> Vec<Msg> {
     match effect {
-        // Shell-handled: nothing to do here.
-        Effect::CopyToClipboard(_) | Effect::OpenSection(..) => Vec::new(),
+        // Shell-handled: nothing to do here. The player is the shell's (native
+        // or browser media), and it reports back with Msg::PlayerTick.
+        Effect::CopyToClipboard(_) | Effect::OpenSection(..) | Effect::Playback(_) => Vec::new(),
+
+        Effect::LoadConversations => match client.list_conversations().await {
+            Ok(conversations) => vec![Msg::ConversationsLoaded { conversations }],
+            Err(e) => vec![load_failed(Section::Messages, &e)],
+        },
+        Effect::LoadThread { peer } => match client.thread(&peer).await {
+            Ok(messages) => vec![Msg::ThreadLoaded { peer, messages }],
+            Err(e) => vec![load_failed(Section::Messages, &e)],
+        },
+        Effect::SendMessage { to, body } => match client.send_message(&to, &body).await {
+            Ok(_) => vec![Msg::MessageSent { peer: to }],
+            Err(e) => vec![write_failed(Section::Messages, &e)],
+        },
+        // A missed read mark is not worth interrupting the user; the next read
+        // of the list will show the unread count again.
+        Effect::MarkRead { peer } => match client.mark_read(&peer).await {
+            Ok(()) => Vec::new(),
+            Err(_) => Vec::new(),
+        },
+        Effect::DeleteMessage { id } => match client.delete_message(id).await {
+            Ok(()) => vec![Msg::MessageDeleted { id }],
+            Err(e) => vec![write_failed(Section::Messages, &e)],
+        },
+        Effect::MoveDir { from, to } => match client.move_dir(&from, &to).await {
+            Ok(()) => vec![Msg::DirMoved { from, to }],
+            Err(e) => vec![write_failed(Section::Files, &e)],
+        },
 
         Effect::LoadNotebooks => match client.list_notebooks().await {
             Ok(notebooks) => vec![Msg::NotebooksLoaded { notebooks }],

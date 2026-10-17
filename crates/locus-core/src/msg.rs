@@ -4,6 +4,7 @@
 use locus_client::{
     calendar::{Event, EventPatch},
     contacts::{Contact, ContactPatch},
+    messages::{Conversation, Message},
     notes::{Folder, Note, NoteRevision, NotebookSummary},
     photos::Photo,
 };
@@ -111,6 +112,24 @@ pub enum Msg {
     },
     /// Space or `x` in Todo.
     ToggleTask,
+    /// Space in Movies, Music and the Photos viewer: play or pause.
+    TogglePlay,
+    /// Next and Previous in the player, for the list it was started from.
+    NextTrack,
+    PrevTrack,
+    /// The player's position slider, in milliseconds.
+    SeekTo(u64),
+    /// The volume slider, 0 to 100.
+    SetVolume(u8),
+    /// Stop: close the player.
+    StopPlayback,
+    /// Messages: the draft field was clicked, so typing goes there.
+    BeginDraft,
+    /// Messages: send the draft to the open conversation (Enter or Send).
+    SendDraft,
+    /// Messages: re-read the conversations and the open thread, quietly. The
+    /// shell sends this on a timer while Messages is open.
+    Poll,
     /// `z` in Todo: show or hide the Done group.
     ToggleDoneTasks,
     /// `m` in Calendar: switch Agenda and Month.
@@ -181,6 +200,10 @@ pub enum Msg {
     /// Internal target of an empty folder delete confirmation (Files).
     ExecuteDeleteDir {
         path: String,
+    },
+    /// Internal target of a message delete confirmation (Messages).
+    ExecuteDeleteMessage {
+        id: u64,
     },
     BeginLogin,
 
@@ -339,6 +362,37 @@ pub enum Msg {
         dir: String,
         count: usize,
     },
+    /// The player's position and length, as the shell reads them. A zero
+    /// `duration_ms` means the length is not known yet.
+    PlayerTick {
+        position_ms: u64,
+        duration_ms: u64,
+        playing: bool,
+    },
+    /// The file played to its end.
+    PlayerEnded,
+    /// The file could not be played.
+    PlayerFailed(String),
+    ConversationsLoaded {
+        conversations: Vec<Conversation>,
+    },
+    ThreadLoaded {
+        peer: String,
+        messages: Vec<Message>,
+    },
+    /// The peer's agent has the message (or the send failed); the thread and
+    /// the conversation list are read again.
+    MessageSent {
+        peer: String,
+    },
+    MessageDeleted {
+        id: u64,
+    },
+    /// A folder moved from `from` to `to` (a rename is a move too).
+    DirMoved {
+        from: String,
+        to: String,
+    },
     LoggedIn,
     LoginFailed {
         error: String,
@@ -351,6 +405,27 @@ pub enum Msg {
         section: Section,
         error: String,
     },
+}
+
+/// What the shell's player should do. Load starts a file; the other commands
+/// act on the file loaded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerCmd {
+    Load {
+        sha256: String,
+        name: String,
+        mime: String,
+        /// Show the picture (a movie or a video photo) as well as playing sound.
+        video: bool,
+        autoplay: bool,
+    },
+    Pause,
+    Resume,
+    /// Jump to this position, in milliseconds.
+    Seek(u64),
+    /// 0 to 100.
+    Volume(u8),
+    Stop,
 }
 
 /// IO the shell must perform. Each request's outcome is fed back as the
@@ -489,6 +564,11 @@ pub enum Effect {
 
     LoadFiles,
     LoadDirs,
+    /// Rename or move a folder, with everything in it. `from` and `to` are full paths.
+    MoveDir {
+        from: String,
+        to: String,
+    },
     CreateDir {
         path: String,
     },
@@ -508,6 +588,26 @@ pub enum Effect {
         sha256: String,
         name: String,
         mime: String,
+    },
+
+    /// Drive the player (shell-handled, like `OpenBlob`): no result message.
+    /// The shell reports position back with [`Msg::PlayerTick`].
+    Playback(PlayerCmd),
+
+    LoadConversations,
+    LoadThread {
+        peer: String,
+    },
+    /// Send `body` to the ship `to`. Answered by [`Msg::MessageSent`] or [`Msg::WriteFailed`].
+    SendMessage {
+        to: String,
+        body: String,
+    },
+    MarkRead {
+        peer: String,
+    },
+    DeleteMessage {
+        id: u64,
     },
 
     /// Start (or restart) a one-shot timer. Send `Msg::SaveTimer(token)` when it fires.

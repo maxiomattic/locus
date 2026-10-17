@@ -216,24 +216,92 @@ pub fn dir_created(app: &mut App, path: String) {
     app.info("Created folder");
 }
 
-fn selected_file(app: &App) -> Option<FileEntry> {
-    match selected(app) {
-        Some(Row::File(f)) => Some(f),
-        _ => None,
-    }
-}
-
 pub fn begin_rename(app: &mut App) {
-    match selected_file(app) {
-        Some(f) => {
+    match selected(app) {
+        Some(Row::File(f)) => {
             app.input = Input {
                 text: f.name,
                 target: Some(f.id),
             };
             app.focus = Focus::Input(InputKind::RenameFile);
         }
-        None => app.info("Select a file to rename"),
+        Some(Row::Folder { name, path }) => {
+            app.files.dir_edit = Some(path);
+            app.input = Input {
+                text: name,
+                target: None,
+            };
+            app.focus = Focus::Input(InputKind::RenameDir);
+        }
+        None => app.info("Select a file or folder to rename"),
     }
+}
+
+/// Rename a folder: the new name stays in the same parent folder.
+pub fn submit_rename_dir(app: &mut App, fx: &mut Vec<Effect>) {
+    let name = match valid_name(&app.input.text) {
+        Ok(n) => n,
+        Err(e) => {
+            app.error(e);
+            return;
+        }
+    };
+    let Some(from) = app.files.dir_edit.clone() else {
+        app.focus = Focus::List;
+        return;
+    };
+    let to = join(&parent(&from), &name);
+    finish_dir_move(app, fx, from, to);
+}
+
+/// The Move prompt for a folder takes the full path it should have.
+pub fn begin_move_dir(app: &mut App, path: String) {
+    app.files.dir_edit = Some(path.clone());
+    app.input = Input {
+        text: path,
+        target: None,
+    };
+    app.focus = Focus::Input(InputKind::MoveDir);
+}
+
+pub fn submit_move_dir(app: &mut App, fx: &mut Vec<Effect>) {
+    let to = match normalize_dir(&app.input.text) {
+        Ok(d) => d,
+        Err(e) => {
+            app.error(e);
+            return;
+        }
+    };
+    let Some(from) = app.files.dir_edit.clone() else {
+        app.focus = Focus::List;
+        return;
+    };
+    finish_dir_move(app, fx, from, to);
+}
+
+fn finish_dir_move(app: &mut App, fx: &mut Vec<Effect>, from: String, to: String) {
+    app.input = Input::default();
+    app.files.dir_edit = None;
+    app.focus = Focus::List;
+    if to == from {
+        app.info("The folder already has that name");
+    } else if to == "/" {
+        app.error("A folder cannot be the root");
+    } else if to.starts_with(&format!("{from}/")) {
+        app.error("A folder cannot move into itself");
+    } else {
+        fx.push(Effect::MoveDir { from, to });
+    }
+}
+
+/// A folder moved. A current folder inside it follows it to its new path.
+pub fn dir_moved(app: &mut App, from: &str, to: &str) {
+    let under = |p: &str| p == from || p.starts_with(&format!("{from}/"));
+    if under(&app.files.cwd) {
+        app.files.cwd = format!("{to}{}", &app.files.cwd[from.len()..]);
+        app.files.sel = 0;
+    }
+    app.info(format!("Moved folder to {to}"));
 }
 
 pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
@@ -265,15 +333,16 @@ pub fn submit_rename(app: &mut App, fx: &mut Vec<Effect>) {
 }
 
 pub fn begin_move(app: &mut App) {
-    match selected_file(app) {
-        Some(f) => {
+    match selected(app) {
+        Some(Row::File(f)) => {
             app.input = Input {
                 text: app.files.cwd.clone(),
                 target: Some(f.id),
             };
             app.focus = Focus::Input(InputKind::MoveFile);
         }
-        None => app.info("Select a file to move"),
+        Some(Row::Folder { path, .. }) => begin_move_dir(app, path),
+        None => app.info("Select a file or folder to move"),
     }
 }
 
@@ -303,6 +372,35 @@ pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
             dir: Some(dir),
         },
     });
+}
+
+/// Rename a file chosen in another list (Movies, Music).
+pub fn begin_rename_file(app: &mut App, f: &FileEntry) {
+    app.input = Input {
+        text: f.name.clone(),
+        target: Some(f.id),
+    };
+    app.focus = Focus::Input(InputKind::RenameFile);
+}
+
+/// Move a file chosen in another list (Movies, Music) to the folder typed in.
+pub fn begin_move_file(app: &mut App, f: &FileEntry) {
+    app.input = Input {
+        text: f.dir.clone(),
+        target: Some(f.id),
+    };
+    app.focus = Focus::Input(InputKind::MoveFile);
+}
+
+/// Delete a file chosen in another list (Movies, Music). Asks first.
+pub fn ask_delete_file(app: &mut App, f: &FileEntry) {
+    app.ask(
+        format!("Delete \"{}\"?", f.name),
+        Msg::ExecuteDelete {
+            section: Section::Files,
+            id: f.id,
+        },
+    );
 }
 
 pub fn ask_delete(app: &mut App) {
@@ -353,8 +451,11 @@ pub fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, id: u64) {
 
 pub fn files_loaded(app: &mut App, files: Vec<FileEntry>) {
     app.files.files = files;
-    app.loading[Section::Files.index()] = false;
-    app.loaded[Section::Files.index()] = true;
+    // Movies and Music read the same catalog, so its arrival ends their loads too.
+    for section in [Section::Files, Section::Movies, Section::Music] {
+        app.loading[section.index()] = false;
+        app.loaded[section.index()] = true;
+    }
     app.files.sel = clamp_sel(app.files.sel, rows(app).len());
 }
 

@@ -163,6 +163,20 @@ impl Client {
             .await?;
         check_ok(env.ok, env.error, env.message)
     }
+
+    /// Rename or move a folder: `from` becomes `to` (both full paths). Every
+    /// entry and folder under `from` moves with it. Returns
+    /// [`Error::Conflict`] when `to` already holds entries or folders.
+    pub async fn move_dir(&self, from: &str, to: &str) -> Result<()> {
+        let env: Envelope = self
+            .json(
+                Method::PUT,
+                "/files/~/v1/dirs",
+                Some(json!({ "from": from, "to": to })),
+            )
+            .await?;
+        check_ok(env.ok, env.error, env.message)
+    }
 }
 
 #[cfg(test)]

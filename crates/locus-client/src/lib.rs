@@ -18,6 +18,7 @@ pub mod config;
 pub mod contacts;
 pub mod files;
 pub mod locus;
+pub mod messages;
 pub mod notes;
 pub mod photos;
 pub mod tasks;
@@ -76,16 +77,44 @@ pub struct Client {
     base: Url,
     api_key: Option<String>,
     http: reqwest::Client,
+    /// The cookie jar `http` uses, kept so a native media engine can send the
+    /// same session cookie when it fetches a file itself.
+    #[cfg(not(target_arch = "wasm32"))]
+    jar: std::sync::Arc<reqwest::cookie::Jar>,
 }
 
 impl Client {
     /// Create a client for the ship at `base`, e.g. `http://127.0.0.1:8080`.
     pub fn new(base: Url) -> Result<Self> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
         Ok(Self {
             base,
             api_key: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            http: build_http(jar.clone())?,
+            #[cfg(target_arch = "wasm32")]
             http: build_http()?,
+            #[cfg(not(target_arch = "wasm32"))]
+            jar,
         })
+    }
+
+    /// The session cookies the gateway has set for this client, as `name=value`
+    /// pairs. Empty before login. Native only: the browser keeps its own.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn session_cookies(&self) -> Vec<String> {
+        use reqwest::cookie::CookieStore;
+        self.jar
+            .cookies(&self.base)
+            .and_then(|h| h.to_str().ok().map(str::to_string))
+            .map(|h| {
+                h.split("; ")
+                    .filter(|c| !c.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Send `X-Api-Key: <key>` on every request.
@@ -179,12 +208,17 @@ impl Client {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn build_http(jar: std::sync::Arc<reqwest::cookie::Jar>) -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .cookie_provider(jar)
+        .build()
+        .map_err(network)
+}
+
+#[cfg(target_arch = "wasm32")]
 fn build_http() -> Result<reqwest::Client> {
-    #[cfg(not(target_arch = "wasm32"))]
-    let builder = reqwest::Client::builder().cookie_store(true);
-    #[cfg(target_arch = "wasm32")]
-    let builder = reqwest::Client::builder();
-    builder.build().map_err(network)
+    reqwest::Client::builder().build().map_err(network)
 }
 
 async fn send_text(rb: RequestBuilder, path: &str) -> Result<String> {

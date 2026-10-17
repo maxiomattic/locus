@@ -14,6 +14,8 @@ use crate::state::{
 };
 
 pub const INBOX_TITLE: &str = "Inbox";
+/// The notebook new tasks go to, when the clan has one with this title.
+pub const TASKS_TITLE: &str = "Tasks";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskEntry {
@@ -260,13 +262,25 @@ pub fn submit_add(app: &mut App, fx: &mut Vec<Effect>) {
         Ok((text, due)) => {
             app.input = Input::default();
             app.focus = Focus::List;
-            match notes::default_notebook(app).map(NbKey::of) {
+            match task_notebook(app) {
                 Some(nb) => add_to_inbox(app, fx, &nb, text, due),
                 None => app.error("No notebook yet"),
             }
         }
         Err(e) => app.error(e),
     }
+}
+
+/// Tasks go to the notebook titled "Tasks" when there is one, else to the
+/// notebook the Notes list is browsing (or the first). Create a notebook
+/// called Tasks to keep them apart from notes.
+pub fn task_notebook(app: &App) -> Option<NbKey> {
+    app.notes
+        .books
+        .iter()
+        .find(|b| b.nb.notebook.title.eq_ignore_ascii_case(TASKS_TITLE))
+        .map(|b| NbKey::of(&b.nb))
+        .or_else(|| notes::default_notebook(app).map(NbKey::of))
 }
 
 /// Append a task to the Inbox note of notebook `key`, creating it when

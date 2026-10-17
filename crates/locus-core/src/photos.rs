@@ -2,13 +2,36 @@
 
 use locus_client::photos::Photo;
 
-use crate::msg::{Effect, Msg, Nav};
+use crate::media::{self, Kind};
+use crate::msg::{Effect, FileEntry, Msg, Nav};
 use crate::state::{App, Focus, Input, InputKind, Section, clamp_sel, matches_filter};
 
 /// The content hash when `path` is `sha256:<hex>`; `None` for other paths.
 pub fn hash_of(path: &str) -> Option<&str> {
     let hex = path.strip_prefix("sha256:")?;
     (!hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
+}
+
+/// Videos are catalog entries too: their title keeps the file name, so the
+/// extension says what they are.
+pub fn is_video(photo: &Photo) -> bool {
+    media::kind_of(&photo.title, "") == Kind::Video
+}
+
+/// The photo's bytes as a file, for the player. `None` for a path that is
+/// not a content hash.
+pub fn as_file(photo: &Photo) -> Option<FileEntry> {
+    let sha256 = hash_of(&photo.path)?.to_string();
+    Some(FileEntry {
+        id: photo.id,
+        dir: format!("/{}", photo.album.trim_matches('/')),
+        name: photo.title.clone(),
+        sha256,
+        size: 0,
+        mime: media::mime_for(&photo.title).to_string(),
+        modified: 0,
+        revision: photo.revision,
+    })
 }
 
 /// Photos in the filter, in catalog order. Grid indexes refer to this list.
@@ -20,7 +43,7 @@ pub fn visible(app: &App) -> Vec<&Photo> {
         .collect()
 }
 
-pub fn nav(app: &mut App, nav: Nav) {
+pub fn nav(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
     let len = visible(app).len();
     let cols = app.photos.columns.max(1);
     let sel = clamp_sel(app.photos.sel, len);
@@ -31,6 +54,12 @@ pub fn nav(app: &mut App, nav: Nav) {
             Nav::Right => (sel + 1).min(len.saturating_sub(1)),
             _ => sel,
         };
+        if app.photos.sel != sel {
+            // A video does not follow the viewer to the next photo.
+            if app.player.as_ref().is_some_and(|p| p.from == Section::Photos) {
+                media::stop(app, fx);
+            }
+        }
         return;
     }
     let last = len.saturating_sub(1);
@@ -46,10 +75,17 @@ pub fn nav(app: &mut App, nav: Nav) {
     };
 }
 
-pub fn open_viewer(app: &mut App) {
-    if visible(app).is_empty() {
+pub fn open_viewer(app: &mut App, fx: &mut Vec<Effect>) {
+    let sel = clamp_sel(app.photos.sel, visible(app).len());
+    let Some(photo) = visible(app).get(sel).map(|p| (*p).clone()) else {
         app.info("No photos");
         return;
+    };
+    if is_video(&photo) {
+        match as_file(&photo) {
+            Some(file) => media::play_photo(app, fx, file),
+            None => app.error("This video is not stored in the photo library"),
+        }
     }
     app.focus = Focus::Detail;
 }

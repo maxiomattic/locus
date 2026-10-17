@@ -21,10 +21,12 @@ pub const HELP: &str = "locus files <command>
   mkdir <dir>                       create a folder
   mv <path-or-id> <dest dir>        move a file to another folder
   rename <path-or-id> <new name>    rename a file
+  mvdir <from> <to>                 rename or move a folder, with everything in it
   rm <path-or-id>                   delete a file
   rmdir <dir>                       delete an empty folder
 
 A file is given as /folder/name.ext or as its numeric id (shown by ls).
+A folder is given as its full path: rename /a/x to y with mvdir /a/x /a/y.
 ";
 
 /// Run one `locus files` command.
@@ -36,6 +38,7 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
         "mkdir" => mkdir(ctx, args).await,
         "mv" => mv(ctx, args).await,
         "rename" => rename(ctx, args).await,
+        "mvdir" => mvdir(ctx, args).await,
         "rm" => rm(ctx, args).await,
         "rmdir" => rmdir(ctx, args).await,
         other => Err(format!(
@@ -173,10 +176,16 @@ fn path_of(f: &FileEntry) -> String {
 }
 
 async fn put(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    put_into(ctx, args, "/").await
+}
+
+/// `put` with the folder used when none is given. Movies and Music upload to
+/// their own folders this way.
+pub async fn put_into(ctx: &Ctx, args: Vec<String>, default_dir: &str) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &[])?;
     let pos = p.positionals(1, 2, "locus files put <local file> [<dir>]")?;
     let local = &pos[0];
-    let dir = normalize_dir(pos.get(1).map_or("/", String::as_str))?;
+    let dir = normalize_dir(pos.get(1).map_or(default_dir, String::as_str))?;
     let name = std::path::Path::new(local)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -252,6 +261,24 @@ async fn mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .await
         .map_err(client_error)?;
     emit(&format!("{}\n", path_of(&moved)));
+    Ok(())
+}
+
+/// `mvdir <from> <to>`: rename or move a folder. Refused when `to` is taken.
+async fn mvdir(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(2, 2, "locus files mvdir <from> <to>")?;
+    let from = normalize_dir(&pos[0])?;
+    let to = normalize_dir(&pos[1])?;
+    if from == "/" || to == "/" {
+        return Err("the root folder cannot be moved or replaced".into());
+    }
+    if to.starts_with(&format!("{from}/")) {
+        return Err(format!("{from} cannot move into itself"));
+    }
+    let client = ctx.client().await?;
+    client.move_dir(&from, &to).await.map_err(client_error)?;
+    emit(&format!("{to}\n"));
     Ok(())
 }
 

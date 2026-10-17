@@ -4,7 +4,7 @@
 
 use crate::msg::{Effect, Msg, Nav, Now, TextEdit};
 use crate::state::{App, Focus, Input, InputKind, NbKey, Section, Target, clamp_sel};
-use crate::{calendar, contacts, files, notes, palette, photos, todo};
+use crate::{calendar, contacts, files, media, messages, notes, palette, photos, todo};
 
 /// Apply one message. Returns effects in the order the shell should run them.
 pub fn update(app: &mut App, msg: Msg, now: Now) -> Vec<Effect> {
@@ -22,6 +22,7 @@ pub fn update(app: &mut App, msg: Msg, now: Now) -> Vec<Effect> {
             | Msg::ContactsLoaded { .. }
             | Msg::EventsLoaded { .. }
             | Msg::PhotosLoaded { .. }
+            | Msg::ConversationsLoaded { .. }
     );
     dispatch(app, msg, now, &mut fx);
     if settles && let Some(target) = app.pending_target.take() {
@@ -62,6 +63,10 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             Section::Files => files::begin_move(app),
             Section::Notes => notes::begin_move(app),
             Section::Photos => photos::begin_move(app),
+            Section::Movies | Section::Music => match media::selected(app, app.section) {
+                Some(file) => files::begin_move_file(app, &file),
+                None => app.info("Nothing selected"),
+            },
             _ => app.info("Nothing to move here"),
         },
         Msg::History => match app.section {
@@ -103,8 +108,42 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::EditorChanged(body) => notes::editor_changed(app, body, fx),
         Msg::SaveTimer(token) => notes::save_timer(app, token, fx),
         Msg::Layout { photo_columns } => app.photos.columns = photo_columns.max(1),
+        Msg::TogglePlay => media::toggle(app, fx),
+        Msg::NextTrack => media::next(app, fx),
+        Msg::PrevTrack => media::previous(app, fx),
+        Msg::SeekTo(ms) => media::seek(app, fx, ms),
+        Msg::SetVolume(v) => media::set_volume(app, fx, v),
+        Msg::StopPlayback => media::stop(app, fx),
+        Msg::PlayerTick {
+            position_ms,
+            duration_ms,
+            playing,
+        } => media::tick(app, position_ms, duration_ms, playing),
+        Msg::PlayerEnded => media::ended(app, fx),
+        Msg::PlayerFailed(error) => media::failed(app, error),
+        Msg::BeginDraft => messages::begin_draft(app),
+        Msg::SendDraft => messages::send(app, fx),
+        Msg::Poll => messages::poll(app, fx),
+        Msg::ConversationsLoaded { conversations } => {
+            messages::conversations_loaded(app, conversations);
+        }
+        Msg::ThreadLoaded { peer, messages } => messages::thread_loaded(app, peer, messages),
+        Msg::MessageSent { peer } => messages::message_sent(app, fx, peer),
+        Msg::MessageDeleted { id } => messages::message_deleted(app, fx, id),
+        Msg::ExecuteDeleteMessage { id } => messages::execute_delete(app, fx, id),
+        Msg::DirMoved { from, to } => {
+            files::dir_moved(app, &from, &to);
+            load_section(app, Section::Files, fx);
+        }
         Msg::Goto { section, id } => open(app, fx, section, Target::item(section, id)),
         Msg::Select(i) if notes::picking(app) => notes::move_select(app, i),
+        Msg::Select(i) if app.section == Section::Messages => {
+            if app.focus == Focus::Detail {
+                app.messages.thread_sel = clamp_sel(i, app.messages.thread.len());
+            } else {
+                messages::select(app, fx, i);
+            }
+        }
         Msg::Select(i) => {
             // Picking a row (a click) while typing in the editor moves focus
             // to the list, so list keys work again.
@@ -204,7 +243,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             }
         }
         Msg::LoggedIn => {
-            app.loaded = [false; 6];
+            app.loaded = [false; Section::COUNT];
             app.info("Logged in");
             let s = app.section;
             load_section(app, s, fx);
@@ -231,6 +270,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
 fn loading_group(section: Section) -> Vec<Section> {
     match section {
         Section::Notes | Section::Todo => vec![Section::Notes, Section::Todo],
+        Section::Files | Section::Movies | Section::Music => {
+            vec![Section::Files, Section::Movies, Section::Music]
+        }
         s => vec![s],
     }
 }
@@ -275,11 +317,12 @@ pub(crate) fn load_section(app: &mut App, section: Section, fx: &mut Vec<Effect>
         Section::Notes | Section::Todo => fx.push(Effect::LoadNotebooks),
         Section::Calendar => fx.push(Effect::LoadEvents),
         Section::Photos => fx.push(Effect::LoadPhotos),
-        Section::Files => {
+        Section::Files | Section::Movies | Section::Music => {
             fx.push(Effect::LoadFiles);
             fx.push(Effect::LoadDirs);
         }
         Section::Contacts => fx.push(Effect::LoadContacts),
+        Section::Messages => fx.push(Effect::LoadConversations),
     }
 }
 
@@ -321,11 +364,19 @@ fn nav_key(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
             app.todo.sel = step(app.todo.sel, len, nav);
         }
         Section::Calendar => calendar::nav(app, nav),
-        Section::Photos => photos::nav(app, nav),
+        Section::Photos => photos::nav(app, fx, nav),
         Section::Files => files::nav(app, nav),
         Section::Contacts => {
             let len = contacts::visible(app).len();
             app.contacts.sel = step(app.contacts.sel, len, nav);
+        }
+        Section::Movies | Section::Music => media::nav(app, app.section, nav),
+        Section::Messages => {
+            if app.focus == Focus::Detail {
+                messages::thread_nav(app, nav);
+            } else {
+                messages::nav(app, fx, nav);
+            }
         }
     }
 }
@@ -335,9 +386,12 @@ fn activate(app: &mut App, fx: &mut Vec<Effect>) {
         Section::Notes => notes::open_selected(app, fx),
         Section::Todo => todo::jump_to_source(app, fx),
         Section::Calendar => calendar::edit_selected(app),
-        Section::Photos => photos::open_viewer(app),
+        Section::Photos => photos::open_viewer(app, fx),
         Section::Files => files::activate(app, fx),
         Section::Contacts => contacts::open_detail(app),
+        Section::Movies => media::activate(app, fx, Section::Movies),
+        Section::Music => media::activate(app, fx, Section::Music),
+        Section::Messages => messages::activate(app, fx),
     }
 }
 
@@ -358,6 +412,8 @@ fn new_item(app: &mut App, fx: &mut Vec<Effect>) {
         Section::Files => files::begin_new_dir(app),
         Section::Contacts => contacts::new_contact(app),
         Section::Photos => app.info("Use Upload to add photos"),
+        Section::Movies | Section::Music => app.info("Use Upload to add files"),
+        Section::Messages => messages::begin_new(app),
     }
 }
 
@@ -368,6 +424,11 @@ fn delete(app: &mut App) {
         Section::Files => files::ask_delete(app),
         Section::Contacts => contacts::ask_delete(app),
         Section::Photos => photos::ask_delete(app),
+        Section::Movies | Section::Music => match media::selected(app, app.section) {
+            Some(file) => files::ask_delete_file(app, &file),
+            None => app.info("Nothing selected"),
+        },
+        Section::Messages => messages::ask_delete(app),
         _ => app.info("Nothing to delete here"),
     }
 }
@@ -377,6 +438,10 @@ fn rename(app: &mut App) {
         Section::Notes => notes::begin_rename(app),
         Section::Files => files::begin_rename(app),
         Section::Photos => photos::begin_rename(app),
+        Section::Movies | Section::Music => match media::selected(app, app.section) {
+            Some(file) => files::begin_rename_file(app, &file),
+            None => app.info("Nothing selected"),
+        },
         _ => app.info("Nothing to rename here"),
     }
 }
@@ -385,8 +450,10 @@ fn upload(app: &mut App, fx: &mut Vec<Effect>) {
     let dir = match app.section {
         Section::Photos => "/Photos".to_string(),
         Section::Files => app.files.cwd.clone(),
+        Section::Movies => media::MOVIES_DIR.to_string(),
+        Section::Music => media::MUSIC_DIR.to_string(),
         _ => {
-            app.info("Upload is available in Photos and Files");
+            app.info("Upload is available in Photos, Files, Movies and Music");
             return;
         }
     };
@@ -396,12 +463,11 @@ fn upload(app: &mut App, fx: &mut Vec<Effect>) {
 
 fn execute_delete(app: &mut App, fx: &mut Vec<Effect>, section: Section, id: u64) {
     match section {
-        Section::Notes => {}
+        Section::Notes | Section::Todo | Section::Messages => {}
         Section::Calendar => calendar::execute_delete(app, fx, id),
-        Section::Files => files::execute_delete(app, fx, id),
+        Section::Files | Section::Movies | Section::Music => files::execute_delete(app, fx, id),
         Section::Contacts => contacts::execute_delete(app, fx, id),
         Section::Photos => photos::execute_delete(app, fx, id),
-        Section::Todo => {}
     }
 }
 
@@ -422,8 +488,10 @@ fn escape(app: &mut App, fx: &mut Vec<Effect>) {
         }
         // Leave the prompt but keep the filter; a second Escape clears it.
         Focus::Input(InputKind::Filter) => app.focus = Focus::List,
+        Focus::Input(InputKind::MessageDraft) => app.focus = Focus::List,
         Focus::Input(_) => {
             app.input = Input::default();
+            app.files.dir_edit = None;
             app.notes.folder_edit = None;
             app.notes.rename = None;
             app.focus = Focus::List;
@@ -457,6 +525,8 @@ pub(crate) fn reset_sel(app: &mut App) {
         Section::Photos => app.photos.sel = 0,
         Section::Files => app.files.sel = 0,
         Section::Contacts => app.contacts.sel = 0,
+        Section::Movies | Section::Music => media::reset_sel(app),
+        Section::Messages => app.messages.sel = 0,
     }
 }
 
@@ -502,6 +572,10 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::MoveFile => files::submit_move(app, fx),
         InputKind::RenamePhoto => photos::submit_rename(app, fx),
         InputKind::MovePhoto => photos::submit_move(app, fx),
+        InputKind::RenameDir => files::submit_rename_dir(app, fx),
+        InputKind::MoveDir => files::submit_move_dir(app, fx),
+        InputKind::MessageDraft => messages::send(app, fx),
+        InputKind::NewPeer => messages::submit_new_peer(app, fx),
         InputKind::MoveNote | InputKind::MoveNoteFolder => notes::submit_move(app, fx),
         InputKind::RenameNoteFolder => notes::submit_folder_rename(app, fx),
         InputKind::RenameNotebook => notes::submit_notebook_rename(app, fx),
@@ -544,6 +618,7 @@ fn text_edit(app: &mut App, edit: TextEdit) {
             reset_sel(app);
             &mut app.filter
         }
+        Focus::Input(InputKind::MessageDraft) => &mut app.messages.draft,
         Focus::Input(_) => &mut app.input.text,
         Focus::Palette => {
             app.palette.sel = 0;
@@ -602,7 +677,7 @@ fn after_confirm(app: &App) -> Focus {
 /// hands both to the shell, which opens or focuses that section's window.
 pub(crate) fn open(app: &mut App, fx: &mut Vec<Effect>, section: Section, target: Option<Target>) {
     if let Some(locked) = app.locked
-        && locked != section
+        && locked.app() != section.app()
     {
         app.info(format!("Opening {}", section.label()));
         fx.push(Effect::OpenSection(section, target));
@@ -716,5 +791,7 @@ fn select_index(app: &mut App, i: usize) {
             let len = contacts::visible(app).len();
             app.contacts.sel = clamp_sel(i, len);
         }
+        Section::Movies | Section::Music => media::select(app, app.section, i),
+        Section::Messages => app.messages.sel = clamp_sel(i, app.messages.conversations.len()),
     }
 }

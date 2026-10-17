@@ -22,16 +22,24 @@ pub enum Section {
     Photos,
     Files,
     Contacts,
+    Movies,
+    Music,
+    Messages,
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const COUNT: usize = 9;
+
+    pub const ALL: [Section; Section::COUNT] = [
         Section::Notes,
         Section::Todo,
         Section::Calendar,
         Section::Photos,
         Section::Files,
         Section::Contacts,
+        Section::Movies,
+        Section::Music,
+        Section::Messages,
     ];
 
     pub fn index(self) -> usize {
@@ -46,10 +54,22 @@ impl Section {
             Section::Photos => "Photos",
             Section::Files => "Files",
             Section::Contacts => "Contacts",
+            Section::Movies => "Movies",
+            Section::Music => "Music",
+            Section::Messages => "Messages",
         }
     }
 
-    /// `1` maps to Notes, `6` to Contacts.
+    /// The app a section is shown in. Todo is a tab of the Calendar app; every
+    /// other section is an app of its own.
+    pub fn app(self) -> Section {
+        match self {
+            Section::Todo => Section::Calendar,
+            other => other,
+        }
+    }
+
+    /// `1` maps to Notes, `9` to Messages.
     pub fn from_digit(n: u8) -> Option<Section> {
         Section::ALL.get(usize::from(n).checked_sub(1)?).copied()
     }
@@ -64,6 +84,9 @@ impl Section {
             Section::Photos => "photos",
             Section::Files => "files",
             Section::Contacts => "contacts",
+            Section::Movies => "movies",
+            Section::Music => "music",
+            Section::Messages => "messages",
         }
     }
 
@@ -206,6 +229,14 @@ pub enum InputKind {
     MoveNoteFolder,
     RenamePhoto,
     MovePhoto,
+    /// Rename the folder in `FilesState::dir_edit`.
+    RenameDir,
+    /// Move the folder in `FilesState::dir_edit` to a full path.
+    MoveDir,
+    /// The message being written in Messages.
+    MessageDraft,
+    /// The ship to start a conversation with.
+    NewPeer,
     Login,
 }
 
@@ -465,12 +496,51 @@ pub struct FilesState {
     pub dirs: Vec<String>,
     pub cwd: String,
     pub sel: usize,
+    /// Full path of the folder a rename or move prompt is for.
+    pub dir_edit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ContactsState {
     pub items: Vec<Contact>,
     pub sel: usize,
+}
+
+/// Selection in the Movies and Music lists. Both read the Files catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MediaState {
+    pub movies_sel: usize,
+    pub music_sel: usize,
+}
+
+/// What the player is playing. `from` is the app that started it, so Next and
+/// Previous walk that app's list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Playback {
+    pub file: FileEntry,
+    pub is_video: bool,
+    pub from: Section,
+    pub playing: bool,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    /// 0 to 100.
+    pub volume: u8,
+    pub error: Option<String>,
+}
+
+/// Messenger: the conversation list, the open thread and the draft.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MessagesState {
+    pub conversations: Vec<locus_client::messages::Conversation>,
+    pub sel: usize,
+    /// The ship whose thread is open, e.g. `~zod`.
+    pub open: Option<String>,
+    pub thread: Vec<locus_client::messages::Message>,
+    /// The highlighted message in the open thread.
+    pub thread_sel: usize,
+    pub draft: String,
+    /// The conversation list has been read at least once.
+    pub listed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -485,9 +555,9 @@ pub struct App {
     pub focus: Focus,
     pub status: Status,
     /// Per section, indexed by [`Section::index`].
-    pub loading: [bool; 6],
+    pub loading: [bool; Section::COUNT],
     /// Per section: has the first load been requested?
-    pub loaded: [bool; 6],
+    pub loaded: [bool; Section::COUNT],
     pub filter: String,
     pub input: Input,
     pub form: Option<Form>,
@@ -500,6 +570,11 @@ pub struct App {
     pub photos: PhotosState,
     pub files: FilesState,
     pub contacts: ContactsState,
+    pub media: MediaState,
+    /// What the player holds, if anything. One player serves Movies, Music
+    /// and the Photos viewer.
+    pub player: Option<Playback>,
+    pub messages: MessagesState,
     /// The clock from the most recent `update` call; used by view models.
     pub now: Now,
     /// False until the first `update`, which sets the calendar's day to today.
@@ -525,8 +600,8 @@ impl App {
             pending_target: None,
             focus: Focus::List,
             status: Status::default(),
-            loading: [false; 6],
-            loaded: [false; 6],
+            loading: [false; Section::COUNT],
+            loaded: [false; Section::COUNT],
             filter: String::new(),
             input: Input::default(),
             form: None,
@@ -550,6 +625,9 @@ impl App {
                 ..FilesState::default()
             },
             contacts: ContactsState::default(),
+            media: MediaState::default(),
+            player: None,
+            messages: MessagesState::default(),
             now: Now {
                 unix_secs: 0,
                 today,

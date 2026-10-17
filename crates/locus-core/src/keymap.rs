@@ -91,7 +91,10 @@ pub fn keymap(app: &App, key: Key, mods: Mods) -> Option<Msg> {
 /// Shortcuts that work in every focus, including text fields.
 fn command(app: &App, key: Key, mods: Mods) -> Option<Msg> {
     let section = app.section;
-    let upload = matches!(section, Section::Photos | Section::Files);
+    let upload = matches!(
+        section,
+        Section::Photos | Section::Files | Section::Movies | Section::Music
+    );
     Some(match (key, mods.ctrl, mods.alt, mods.shift) {
         (Key::F(1), false, false, _) => Msg::ToggleHelp,
         (Key::F(5), false, false, _) => Msg::Reload,
@@ -152,6 +155,8 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
         Key::F(2) if matches!(section, Section::Calendar | Section::Contacts) => Msg::Edit,
         Key::F(2) => Msg::Rename,
         Key::Char(' ') if section == Section::Todo => Msg::ToggleTask,
+        Key::Char(' ') if matches!(section, Section::Movies | Section::Music) => Msg::TogglePlay,
+        Key::Char(' ') if section == Section::Photos && app.focus == Focus::Detail => Msg::TogglePlay,
         // Type-to-filter: the first letter opens the filter with that letter.
         Key::Char(c) if !c.is_whitespace() => Msg::Batch(vec![
             Msg::FocusFilter,
@@ -209,6 +214,19 @@ pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
             ("F2", "edit the contact"),
             ("Tab / Shift+Tab", "next / previous field"),
             ("Ctrl+Enter", "save the contact"),
+        ]),
+        Section::Movies | Section::Music => out.extend([
+            ("Enter", "play the selected item"),
+            ("Space", "play or pause"),
+            ("Ctrl+O", "upload here"),
+            ("F2", "rename"),
+        ]),
+        Section::Messages => out.extend([
+            ("Up / Down", "choose a conversation"),
+            ("Enter", "open it and write"),
+            ("Enter in the message box", "send"),
+            ("Ctrl+N or Alt+N", "start a conversation with a ship"),
+            ("Delete", "delete your copy of the selected message"),
         ]),
     }
     out

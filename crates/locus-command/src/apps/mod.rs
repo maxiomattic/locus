@@ -11,6 +11,8 @@ pub mod calendar;
 pub mod contacts;
 pub mod files;
 pub mod fmt;
+pub mod media;
+pub mod messages;
 pub mod notes;
 pub mod photos;
 pub mod todo;
@@ -20,7 +22,9 @@ use std::io::{IsTerminal, Read};
 use url::Url;
 
 /// The app names accepted by `locus <app>` and `locus open <app>`.
-pub const APPS: [&str; 6] = ["notes", "todo", "calendar", "photos", "files", "contacts"];
+pub const APPS: [&str; 9] = [
+    "notes", "todo", "calendar", "photos", "files", "contacts", "movies", "music", "messages",
+];
 
 /// Per-run state shared by the commands.
 pub struct Ctx {
@@ -61,6 +65,9 @@ pub fn run(app: &str, args: Vec<String>) -> Result<(), String> {
         "photos" => photos::HELP,
         "files" => files::HELP,
         "contacts" => contacts::HELP,
+        "movies" => media::help(media::Library::Movies),
+        "music" => media::help(media::Library::Music),
+        "messages" => messages::HELP,
         other => return Err(format!("unknown app {other}")),
     };
     let Some(cmd) = args.first().cloned() else {
@@ -92,6 +99,9 @@ pub fn run(app: &str, args: Vec<String>) -> Result<(), String> {
             "calendar" => calendar::run(&ctx, &cmd, rest).await,
             "photos" => photos::run(&ctx, &cmd, rest).await,
             "files" => files::run(&ctx, &cmd, rest).await,
+            "movies" => media::run(&ctx, media::Library::Movies, &cmd, rest).await,
+            "music" => media::run(&ctx, media::Library::Music, &cmd, rest).await,
+            "messages" => messages::run(&ctx, &cmd, rest).await,
             _ => contacts::run(&ctx, &cmd, rest).await,
         }
     })
@@ -100,7 +110,7 @@ pub fn run(app: &str, args: Vec<String>) -> Result<(), String> {
 /// `locus open <app> [target]`: replace this process with the GUI app.
 pub fn open(args: Vec<String>) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
-    let usage = "usage: locus open <notes|todo|calendar|photos|files|contacts> [target]";
+    let usage = "usage: locus open <notes|todo|calendar|photos|files|contacts|movies|music|messages> [target]";
     let app = args.first().ok_or(usage)?;
     if !is_app(app) || args.len() > 2 {
         return Err(usage.into());

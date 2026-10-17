@@ -6,11 +6,14 @@ use crate::calendar::events_on;
 use crate::date::{Date, local_date_of, local_hm_of};
 use crate::files::{self, Row as FileItem};
 use crate::keymap;
+use crate::media;
+use crate::messages;
 use crate::notes;
 use crate::palette;
 use crate::photos;
 use crate::state::{App, Focus, InputKind, Level, Section};
 use crate::todo::{self, GroupKind};
+use locus_client::messages::{Message, Status};
 
 const MONTHS: [&str; 12] = [
     "January",
@@ -61,9 +64,11 @@ pub fn has_item_selected(app: &App) -> bool {
             .rows
             .iter()
             .any(|r| r.iter().any(|c| c.selected)),
-        // Folders cannot be renamed, moved or deleted here.
-        Section::Files => file_rows(app).iter().any(|r| r.selected && !r.is_dir),
+        // Folders can be renamed and moved too; Delete allows only empty ones.
+        Section::Files => file_rows(app).iter().any(|r| r.selected),
         Section::Contacts => contact_detail(app).is_some(),
+        Section::Movies | Section::Music => media::selected(app, app.section).is_some(),
+        Section::Messages => app.messages.open.is_some(),
     }
 }
 
@@ -96,6 +101,7 @@ pub fn can_delete(app: &App) -> bool {
             Some(_) => true,
             None => false,
         },
+        Section::Messages => messages::thread_has_deletable(app),
         _ => has_item_selected(app),
     }
 }
@@ -486,6 +492,8 @@ pub fn form(app: &App) -> Option<FormView> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhotoCell {
     pub title: String,
+    /// A video: the grid shows a play mark, not a thumbnail.
+    pub is_video: bool,
     /// Content hash to fetch a thumbnail by, when the path is `sha256:<hex>`.
     pub hash: Option<String>,
     /// Catalog path otherwise.
@@ -508,6 +516,7 @@ pub fn photo_grid(app: &App, columns: usize) -> PhotoGrid {
         .enumerate()
         .map(|(i, p)| PhotoCell {
             title: p.title.clone(),
+            is_video: photos::is_video(p),
             hash: photos::hash_of(&p.path).map(str::to_string),
             path: p.path.clone(),
             selected: i == app.photos.sel,
@@ -524,6 +533,8 @@ pub fn photo_grid(app: &App, columns: usize) -> PhotoGrid {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhotoDetail {
     pub title: String,
+    /// The viewer plays this instead of showing an image.
+    pub is_video: bool,
     pub path: String,
     pub hash: Option<String>,
     pub tags: Vec<String>,
@@ -552,6 +563,7 @@ pub fn photo_detail(app: &App) -> Option<PhotoDetail> {
     meta.extend(p.tags.iter().cloned());
     Some(PhotoDetail {
         title: p.title.clone(),
+        is_video: photos::is_video(p),
         path: p.path.clone(),
         hash,
         tags: p.tags.clone(),
@@ -707,6 +719,10 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::MovePhoto => ("move to album", app.input.text.clone()),
         InputKind::RenameNoteFolder => ("folder name", app.input.text.clone()),
         InputKind::RenameNotebook => ("notebook title", app.input.text.clone()),
+        InputKind::RenameDir => ("folder name", app.input.text.clone()),
+        InputKind::MoveDir => ("move folder to (full path)", app.input.text.clone()),
+        InputKind::MessageDraft => ("message", app.messages.draft.clone()),
+        InputKind::NewPeer => ("ship to message, like ~zod", app.input.text.clone()),
         InputKind::MoveNote | InputKind::MoveNoteFolder => return None,
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
@@ -897,5 +913,264 @@ pub fn size_label(bytes: u64) -> String {
         format!("{bytes} B")
     } else {
         format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+// ----- movies and music -----
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MediaRow {
+    pub id: u64,
+    /// The movie's or track's title.
+    pub title: String,
+    /// Movies: the folder. Music: the track number's album, or empty.
+    pub subtitle: String,
+    /// Music only: the album heading shown above the first track of an album.
+    pub heading: Option<String>,
+    pub size: String,
+    pub selected: bool,
+    /// This row is what the player holds.
+    pub playing: bool,
+}
+
+/// The rows of the Movies or Music list, after the filter.
+pub fn media_rows(app: &App, section: Section) -> Vec<MediaRow> {
+    let playing = app.player.as_ref().map(|p| p.file.id);
+    let sel = media::selected(app, section).map(|f| f.id);
+    let mut out = Vec::new();
+    let mut last_album: Option<(String, String)> = None;
+    for f in media::rows(app, section) {
+        let (title, subtitle, heading) = match section {
+            Section::Music => {
+                let album_key = media::artist_album(&f.dir);
+                let album_text = album_line(&album_key.0, &album_key.1);
+                let heading = if last_album.as_ref() != Some(&album_key) {
+                    Some(album_text.clone())
+                } else {
+                    None
+                };
+                last_album = Some(album_key);
+                (media::track_title(&f.name), album_text, heading)
+            }
+            _ => (media::movie_title(&f.name), f.dir.clone(), None),
+        };
+        out.push(MediaRow {
+            id: f.id,
+            title,
+            subtitle,
+            heading,
+            size: size_label(f.size),
+            selected: sel == Some(f.id),
+            playing: playing == Some(f.id),
+        });
+    }
+    out
+}
+
+/// `artist · album` for a music folder; `Unsorted` for files outside `/Music`.
+fn album_line(artist: &str, album: &str) -> String {
+    match (artist.is_empty(), album.is_empty()) {
+        (true, _) => "Unsorted".to_string(),
+        (false, true) => artist.to_string(),
+        (false, false) => format!("{artist} · {album}"),
+    }
+}
+
+/// `m:ss`, or `h:mm:ss` from an hour on.
+pub fn clock(ms: u64) -> String {
+    let total = ms / 1000;
+    let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerView {
+    pub title: String,
+    /// Movies: the folder. Music: `artist · album`.
+    pub subtitle: String,
+    pub is_video: bool,
+    pub playing: bool,
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    pub position: String,
+    pub duration: String,
+    /// Position over length, 0.0 to 1.0.
+    pub fraction: f32,
+    pub volume: u8,
+    pub error: Option<String>,
+    /// Next and Previous have somewhere to go in the list the player came from.
+    pub can_next: bool,
+    pub can_prev: bool,
+}
+
+/// The player, when something is loaded (whatever app is showing).
+pub fn player(app: &App) -> Option<PlayerView> {
+    let p = app.player.as_ref()?;
+    let subtitle = match p.from {
+        Section::Music => {
+            let (artist, album) = media::artist_album(&p.file.dir);
+            album_line(&artist, &album)
+        }
+        _ => p.file.dir.clone(),
+    };
+    let fraction = if p.duration_ms > 0 {
+        (p.position_ms as f32 / p.duration_ms as f32).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let list = media::rows(app, p.from);
+    let index = list.iter().position(|f| f.id == p.file.id);
+    let len = list.len();
+    Some(PlayerView {
+        title: match p.from {
+            Section::Music => media::track_title(&p.file.name),
+            _ => media::movie_title(&p.file.name),
+        },
+        subtitle,
+        is_video: p.is_video,
+        playing: p.playing,
+        position_ms: p.position_ms,
+        duration_ms: p.duration_ms,
+        position: clock(p.position_ms),
+        duration: if p.duration_ms > 0 {
+            clock(p.duration_ms)
+        } else {
+            "--:--".into()
+        },
+        fraction,
+        volume: p.volume,
+        error: p.error.clone(),
+        can_next: index.is_some_and(|i| i + 1 < len),
+        can_prev: index.is_some_and(|i| i > 0 || p.position_ms > 3_000),
+    })
+}
+
+// ----- messages -----
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationView {
+    pub peer: String,
+    pub selected: bool,
+    pub open: bool,
+    pub unread: u64,
+    /// The last message, cut to one line.
+    pub preview: String,
+    /// The last message's local date, or empty.
+    pub when: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadMessage {
+    pub id: u64,
+    pub outgoing: bool,
+    pub body: String,
+    /// Local time, `HH:MM` on today, else the date.
+    pub when: String,
+    /// `Sending`, `Delivered`, `Failed`, or empty for received messages.
+    pub status: &'static str,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessagesView {
+    pub conversations: Vec<ConversationView>,
+    pub open: Option<String>,
+    pub thread: Vec<ThreadMessage>,
+    pub draft: String,
+    /// Sending is allowed: a conversation is open and the draft is not empty.
+    pub can_send: bool,
+    pub unread_total: u64,
+    /// What the thread pane says when no conversation is open.
+    pub hint: &'static str,
+}
+
+fn one_line(body: &str, max: usize) -> String {
+    let flat: String = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= max {
+        flat
+    } else {
+        let cut: String = flat.chars().take(max).collect();
+        format!("{cut}…")
+    }
+}
+
+fn message_when(unix: u64, app: &App) -> String {
+    if unix == 0 {
+        return String::new();
+    }
+    let date = local_date_of(unix as i64, app.now.tz_offset_secs);
+    if date == app.now.today {
+        hm(local_hm_of(unix as i64, app.now.tz_offset_secs))
+    } else {
+        date.iso()
+    }
+}
+
+fn status_label(m: &Message) -> &'static str {
+    if !m.outgoing {
+        return "";
+    }
+    match m.status {
+        Status::Pending => "Sending",
+        Status::Delivered => "Delivered",
+        Status::Failed => "Failed",
+        Status::Received => "",
+    }
+}
+
+/// The Messages app: conversations, the open thread and the draft.
+pub fn messages_view(app: &App) -> MessagesView {
+    let m = &app.messages;
+    let conversations = m
+        .conversations
+        .iter()
+        .enumerate()
+        .map(|(i, c)| ConversationView {
+            peer: c.peer.clone(),
+            selected: i == m.sel,
+            open: m.open.as_deref() == Some(c.peer.as_str()),
+            unread: c.unread,
+            preview: c
+                .last
+                .as_ref()
+                .map(|l| one_line(&l.body, 60))
+                .unwrap_or_default(),
+            when: c
+                .last
+                .as_ref()
+                .map(|l| message_when(l.sent_unix(), app))
+                .unwrap_or_default(),
+        })
+        .collect();
+    let thread = m
+        .thread
+        .iter()
+        .enumerate()
+        .map(|(i, t)| ThreadMessage {
+            id: t.id,
+            outgoing: t.outgoing,
+            body: t.body.clone(),
+            when: message_when(t.sent_unix(), app),
+            status: status_label(t),
+            selected: i == m.thread_sel,
+        })
+        .collect();
+    let hint = if m.conversations.is_empty() && m.open.is_none() {
+        "No conversations yet. Start one with New."
+    } else {
+        "Choose a conversation on the left."
+    };
+    MessagesView {
+        conversations,
+        open: m.open.clone(),
+        thread,
+        draft: m.draft.clone(),
+        can_send: m.open.is_some() && !m.draft.trim().is_empty(),
+        unread_total: messages::unread_total(app),
+        hint,
     }
 }
