@@ -18,7 +18,7 @@ A **clan** (a group with one administrator, across any number of homes and machi
 
 Early and experimental. Works end to end against a bring-up VM and a real server:
 
-- **Apps:** notes, todo (checkbox lines in notes), calendar, photos, files and contacts, keyboard-first. One shared core (`locus-core`) drives two shells: the browser app (`locus-web`, iced, served at `http://<server>:8090/app/`) and the desktop app (`locus-desktop`, libcosmic, binary `locus`).
+- **Apps:** notes, todo (checkbox lines in notes), calendar, photos, files, contacts, movies, music and messages. Standard point-and-click apps with keyboard shortcuts. One shared core (`locus-core`) drives two shells: the browser app (`locus-web`, iced, served at `http://<server>:8090/app/`) and the desktop app (`locus-desktop`, libcosmic, binary `locus`).
 - **Server:** a NixOS module with ZFS (Disko), the Urbit ship as a systemd service, and `locus-gateway`, which serves the browser app, stores file and photo bytes by SHA-256, and proxies the ship's API.
 - **Ship:** the `%locus` desk with `%notes` (a hard fork of Tlon's), `%calendar`, `%photos`, `%contacts`, `%files`, and the `%locus` command plane (members, named functions, approvals, audit).
 

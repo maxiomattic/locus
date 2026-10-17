@@ -1,6 +1,6 @@
 # Locus: status
 
-Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-16.
+Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-17.
 
 ## Now: stages 1 and 2, a first version to try
 
@@ -17,19 +17,22 @@ The near-term goal is a version the author can use day to day: working browser a
 ### 2. Core apps (in progress)
 
 - Done and tested (unit tests, plus clicking through each app against real data with throwaway items):
-  - Six standard point-and-click apps. Each runs in its own browser tab (`/app/<app>`) and as its own desktop program (`locus-<app>`).
+  - Nine standard point-and-click apps. Each runs in its own browser tab (`/app/<app>`) and as its own desktop program (`locus-<app>`). Todo is a tab of the Calendar app, so it has no app of its own.
   - The `locus` CLI covers the same actions as the apps.
   - Notes: folders, notebooks, rename, move, delete, revision history and restore, move between notebooks with a destination picker, and conflict copies.
-  - Todo: tasks are checkbox lines in an Inbox note.
-  - Files: upload, folders, rename, move, delete.
-  - Photos: albums, viewer, rename, move, delete.
+  - Todo: tasks are checkbox lines in notes. New tasks go to the notebook named "Tasks" if there is one, otherwise to the notebook being browsed.
+  - Files: upload, folders, rename, move, delete. Folders can be renamed and moved (the `%files` desk has `dir.move`).
+  - Photos: albums, viewer, rename, move, delete. A video in the library plays in the viewer, built but not yet tried.
   - Calendar and Contacts: create, edit, delete.
+  - Movies and Music: views over Files. A movie is a video file in `/Movies`; a track is an audio file in `/Music/<artist>/<album>/`. Play is tested in the browser and on the desktop, with video frames drawn in the app. Pause, seek, volume, next and previous are built but not yet tried.
+  - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. Tested with messages to the same ship; not yet between two real ships.
+- Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows (Notes, Files, Contacts, Photos, Movies, Music, Messages). Todo and the calendar agenda still draw every row.
 - Built but not on the server yet: the server still runs an older build. Everything after it needs a deploy, which needs the administrator's sudo.
 - Next:
-  1. Deploy the latest build and check it on the server.
+  1. Deploy the latest build and check it on the server (needs the administrator's confirmation).
   2. Fix a race in moving a note between notebooks: typing during the move can be lost when the original is deleted.
-  3. Folder rename and move in Files. The server has no endpoint for these yet.
-  4. Decide which notebook new tasks go into. Today it is the first notebook.
+  3. Virtual rows for Todo and the calendar agenda.
+  4. Messages between two real ships, and group conversations (not started).
   5. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
 
 ## Later stages

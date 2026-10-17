@@ -4,7 +4,7 @@ How to get from here to [intent.md](intent.md). This plan is high level and expe
 
 1. **Foundation.** One machine runs the clan server: NixOS, Urbit ID, backups and rollback. Keep whatever existing code fits the intent.
    *Done when:* a fresh machine reaches a working server through one documented procedure.
-2. **Core apps.** Notes, files, and calendar/tasks as one linked whole, in a fast keyboard-driven web interface.
+2. **Core apps.** Notes, files, calendar/tasks, photos, movies, music, messages and contacts as one linked whole: standard point-and-click apps, in the browser and as Linux desktop programs.
    *Done when:* the author uses them as their only system for these.
 3. **Agents and feedback.** Agents work through the same actions as people, within permissions. "This is broken" or "I want this" becomes a change the administrator approves.
    *Done when:* real improvements to Locus routinely come in this way.
