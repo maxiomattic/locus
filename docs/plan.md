@@ -1,6 +1,6 @@
 # Locus: plan
 
-How to get from here to [intent.md](intent.md). This plan is high level and expected to change. Implementation decisions belong in the code, not here.
+How to get from here to [intent.md](intent.md). This plan is high level and expected to change. Implementation decisions belong in the code, not here. Progress is tracked in [status.md](status.md).
 
 1. **Foundation.** One machine runs the clan server: NixOS, Urbit ID, backups and rollback. Keep whatever existing code fits the intent.
    *Done when:* a fresh machine reaches a working server through one documented procedure.
