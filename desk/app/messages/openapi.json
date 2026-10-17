@@ -1,0 +1,28 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Locus messages",
+    "version": "1.0.0",
+    "description": "Direct messages between ships. Each ship keeps its own copy; a sent message is pending until the peer acks it."
+  },
+  "paths": {
+    "/messages/openapi.json": {
+      "get": { "summary": "This spec (unauthenticated)" }
+    },
+    "/messages/~/v1/conversations": {
+      "get": { "summary": "One row per peer: count, unread, and the last message" }
+    },
+    "/messages/~/v1/conversations/{ship}": {
+      "get": { "summary": "All messages with one peer, oldest first" }
+    },
+    "/messages/~/v1/conversations/{ship}/read": {
+      "post": { "summary": "Mark messages from this peer as read, through the newest" }
+    },
+    "/messages/~/v1/messages": {
+      "post": { "summary": "Send: body {to, body}; returns the new message id" }
+    },
+    "/messages/~/v1/messages/{id}": {
+      "delete": { "summary": "Delete this ship's copy of a message (the peer keeps theirs)" }
+    }
+  }
+}

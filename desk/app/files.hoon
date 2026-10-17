@@ -143,6 +143,9 @@
     ?:  =(%'POST' method)
       =^  out=json  cor  (body-json inbound-request 'dir.create')
       (give-json-status eyre-id out)
+    ?:  =(%'PUT' method)
+      =^  out=json  cor  (body-json inbound-request 'dir.move')
+      (give-json-status eyre-id out)
     ?:  =(%'DELETE' method)
       ?~  p=(arg-value args.request-line 'path')
         (give-json-status eyre-id (err:enjs:files-json 'bad-request' 'need path query'))
@@ -264,6 +267,7 @@
   ?:  =(fn 'file.delete')  (delete-file args)
   ?:  =(fn 'dir.create')   (create-dir args)
   ?:  =(fn 'dir.delete')   (delete-dir args)
+  ?:  =(fn 'dir.move')     (move-dir args)
   [(err:enjs:files-json 'unknown-function' fn) cor]
 ::
 ::  validation
@@ -468,4 +472,53 @@
     [(err:enjs:files-json 'conflict' 'folder is not empty') cor]
   =.  dirs  (silt (skip ~(tap in dirs) |=(d=@t |(=(d dpath) (under dpath d)))))
   [(ok:enjs:files-json [path+s+dpath]~) cor]
+::
+::  rename or move a folder: every file and folder at or below `from` moves
+::  under `to`, keeping its path below the folder. Both are full paths, so
+::  "rename /a/x to y" is from=/a/x to=/a/y. Nothing is overwritten.
+++  rebase
+  |=  [from=@t to=@t d=@t]
+  ^-  @t
+  ?:  =(d from)  to
+  =/  pre=tape  (weld (trip from) "/")
+  (crip (weld (trip to) (weld "/" (slag (lent pre) (trip d)))))
+::
+++  dir-move-args
+  |=  args=json
+  ^-  [@t @t]
+  ?>  ?=(%o -.args)
+  :-  (so:dejs:format (~(got by p.args) 'from'))
+  (so:dejs:format (~(got by p.args) 'to'))
+::
+++  dir-taken
+  |=  p=@t
+  ^-  ?
+  ?|  (has-entries p)
+      (lien ~(tap in dirs) |=(d=@t |(=(d p) (under p d))))
+  ==
+::
+++  move-dir
+  |=  args=json
+  ^-  [json _cor]
+  =/  parsed=(each [@t @t] tang)
+    (mule |.((dir-move-args args)))
+  ?:  ?=(%| -.parsed)
+    (bad 'need from and to')
+  =/  [from=@t to=@t]  p.parsed
+  ?.  (valid-dir from)  (bad 'from must be absolute, with no empty or .. segments')
+  ?.  (valid-dir to)  (bad 'to must be absolute, with no empty or .. segments')
+  ?:  |(=('/' from) =('/' to))  (bad 'cannot move the root folder')
+  ?:  |(=(from to) (under from to))  (bad 'cannot move a folder into itself')
+  ?:  (dir-taken to)  [(err:enjs:files-json 'conflict' 'destination exists') cor]
+  =/  moving=$-(@t ?)  |=(d=@t |(=(d from) (under from d)))
+  =.  files
+    %-  ~(run by files)
+    |=  f=file:fil
+    ?:  |(=(dir.f from) (under from dir.f))
+      f(dir (rebase from to dir.f), modified now.bowl, revision +(revision.f))
+    f
+  =/  kept=(list @t)  (skip ~(tap in dirs) moving)
+  =/  shifted=(list @t)  (turn (skim ~(tap in dirs) moving) |=(d=@t (rebase from to d)))
+  =.  dirs  (~(put in (silt (weld kept shifted))) to)
+  [(ok:enjs:files-json [path+s+to]~) cor]
 --

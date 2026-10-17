@@ -65,4 +65,23 @@
   ?>  ?=(%n -.rev)
   ?>  =('1' p.rev)
   (pure:m ~)
+::
+++  move-folder
+  %-  pairs:enjs:format
+  :~  fn+s+'dir.move'
+      args+(pairs:enjs:format ~[from+s+'/school' to+s+'/classes'])
+  ==
+::
+++  test-move-folder-moves-files
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call create)
+  ;<  *  bind:m  (call move-folder)
+  ;<  =cage  bind:m  (got-peek /x/files)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?>  ?=(^ (find "/classes/cs101" txt))
+  ?<  ?=(^ (find "/school" txt))
+  (pure:m ~)
 --
