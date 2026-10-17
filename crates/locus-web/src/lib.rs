@@ -10,8 +10,11 @@
 #![cfg(target_arch = "wasm32")]
 
 mod platform;
+mod player;
 mod style;
 mod view;
+mod view_media;
+mod view_messages;
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,7 +22,7 @@ use iced::widget::{image, operation, scrollable, text_editor};
 use iced::{Event, Size, Subscription, Task, Theme, event, keyboard, window};
 use locus_client::Client;
 use locus_core::{
-    App, Effect, Focus, InputKind, Key, Mods, Msg, Section, keymap, view_model,
+    App, Effect, Focus, InputKind, Key, Mods, Msg, PlayerCmd, Section, keymap, view_model,
 };
 
 use style::Colors;
@@ -37,6 +40,14 @@ pub const ROW_H: f32 = 52.0;
 pub const TODO_ROW_H: f32 = 44.0;
 pub const HEADER_H: f32 = 32.0;
 pub const PALETTE_ROW_H: f32 = 36.0;
+/// Movie and track rows, conversation rows, and a message bubble's slot.
+pub const MEDIA_ROW_H: f32 = 56.0;
+pub const CONVERSATION_H: f32 = 56.0;
+/// How often the player's state is read, how often a video frame is copied
+/// (about 30 a second), and how often open Messages re-reads the ship.
+const PLAYER_POLL_MS: u64 = 250;
+const FRAME_MS: u64 = 33;
+const MESSAGES_POLL_MS: u64 = 3000;
 
 /// Ids of the form fields, by index. Forms have at most this many fields.
 pub const FORM_IDS: [&str; 8] = [
@@ -67,6 +78,9 @@ pub struct Shell {
     focused: Option<&'static str>,
     /// Last selected row as `(scrollable id, top in px)`, to scroll on change.
     last_rect: Option<(&'static str, u32)>,
+    /// The current player, and the picture of the video playing, if any.
+    player: player::Player,
+    frame: Option<image::Handle>,
 }
 
 /// Everything that reaches [`Shell::update`].
@@ -88,6 +102,10 @@ pub enum Message {
     Hash(String),
     /// A launcher tile: open that app's page.
     Launch(Section),
+    /// Read the player and feed what changed to the core.
+    PlayerPoll,
+    /// Copy the video's current picture.
+    PlayerFrame,
 }
 
 /// Photo grid columns for a main pane of `width` pixels.
@@ -134,6 +152,8 @@ impl Shell {
             viewports: HashMap::new(),
             focused: None,
             last_rect: None,
+            player: player::Player::default(),
+            frame: None,
         };
         shell.app.focus_section(locked);
         if let Some(target) = target {
@@ -167,12 +187,23 @@ impl Shell {
         self.theme.clone()
     }
 
-    fn subscription(_: &Shell) -> Subscription<Message> {
-        Subscription::batch([
+    fn subscription(shell: &Shell) -> Subscription<Message> {
+        let mut subs = vec![
             event::listen_raw(on_event),
             window::resize_events().map(|(_, size)| Message::Resized(size)),
             Subscription::run(platform::hash_changes).map(Message::Hash),
-        ])
+        ];
+        // Timers only while something needs them: a player, or open Messages.
+        if shell.app.player.is_some() {
+            subs.push(Subscription::run_with(PLAYER_POLL_MS, platform::ticks).map(|_| Message::PlayerPoll));
+        }
+        if shell.player.is_video() {
+            subs.push(Subscription::run_with(FRAME_MS, platform::ticks).map(|_| Message::PlayerFrame));
+        }
+        if shell.logged_in && shell.app.section == Section::Messages {
+            subs.push(Subscription::run_with(MESSAGES_POLL_MS, platform::ticks).map(|_| Message::Core(Msg::Poll)));
+        }
+        Subscription::batch(subs)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -233,6 +264,27 @@ impl Shell {
                 })
             }
             Message::Editor(action) => self.editor_action(action),
+            Message::PlayerFrame => {
+                if let Some(frame) = self.player.frame() {
+                    self.frame = Some(frame);
+                }
+                Task::none()
+            }
+            Message::PlayerPoll => {
+                let report = self.player.poll();
+                let mut msgs = vec![Msg::PlayerTick {
+                    position_ms: report.position_ms,
+                    duration_ms: report.duration_ms,
+                    playing: report.playing,
+                }];
+                if report.ended {
+                    msgs.push(Msg::PlayerEnded);
+                }
+                if let Some(error) = report.error {
+                    msgs.push(Msg::PlayerFailed(error));
+                }
+                self.update(Message::Msgs(msgs))
+            }
             Message::Scrolled(id, viewport) => {
                 self.viewports.insert(
                     id,
@@ -277,19 +329,38 @@ impl Shell {
         Task::batch(tasks)
     }
 
-    fn effect(&self, effect: Effect) -> Task<Message> {
+    fn effect(&mut self, effect: Effect) -> Task<Message> {
         match effect {
             Effect::CopyToClipboard(text) => return iced::clipboard::write::<Message>(text),
             Effect::OpenSection(section, target) => {
                 platform::open_section(section, target);
                 return Task::none();
             }
+            Effect::Playback(cmd) => return self.playback(cmd),
             _ => {}
         }
         let client = self.client.clone();
         Task::future(async move {
             Message::Msgs(locus_effects::run(&client, &platform::WebPlatform, effect).await)
         })
+    }
+
+    /// Carry out one player command on the page's media element.
+    fn playback(&mut self, cmd: PlayerCmd) -> Task<Message> {
+        // A new file starts with no picture; a stopped one leaves none behind.
+        if matches!(cmd, PlayerCmd::Stop | PlayerCmd::Load { .. }) {
+            self.frame = None;
+        }
+        let uri = match &cmd {
+            PlayerCmd::Load { sha256, name, .. } => {
+                self.client.blob_url(sha256, Some(name)).ok().map(|u| u.to_string())
+            }
+            _ => None,
+        };
+        match self.player.command(cmd, uri.as_deref()) {
+            Ok(()) => Task::none(),
+            Err(error) => self.apply(Msg::PlayerFailed(error)),
+        }
     }
 
     /// Keys the core should see. While a text widget has focus, plain
@@ -391,6 +462,7 @@ impl Shell {
         match self.app.focus {
             Focus::Input(InputKind::Filter) => Some("filter"),
             Focus::Input(InputKind::Login) => Some("login"),
+            Focus::Input(InputKind::MessageDraft) => Some(view::DRAFT_ID),
             Focus::Input(_) => Some("prompt"),
             Focus::Form => {
                 let active = self.app.form.as_ref()?.active;
@@ -461,6 +533,17 @@ impl Shell {
                 let i = view_model::file_rows(app).iter().position(|r| r.selected)?;
                 Some(("files", i as f32 * ROW_H, ROW_H))
             }
+            Section::Movies | Section::Music => {
+                let rows = view_model::media_rows(app, app.section);
+                let i = rows.iter().position(|r| r.selected)?;
+                let id = if app.section == Section::Movies { "movies" } else { "music" };
+                Some((id, i as f32 * MEDIA_ROW_H, MEDIA_ROW_H))
+            }
+            Section::Messages => {
+                let view = view_model::messages_view(app);
+                let i = view.conversations.iter().position(|c| c.selected)?;
+                Some(("conversations", i as f32 * CONVERSATION_H, CONVERSATION_H))
+            }
             Section::Contacts => {
                 let i = view_model::contact_rows(app).iter().position(|r| r.selected)?;
                 Some(("contacts", i as f32 * ROW_H, ROW_H))
@@ -518,6 +601,15 @@ impl Shell {
     }
 
     /// Thumbnail for a hash at a size, if it has arrived.
+    /// A scrollable's last reported `(offset_y, height)`; before its first
+    /// scroll report, the whole window.
+    pub fn viewport(&self, id: &'static str) -> (f32, f32) {
+        self.viewports
+            .get(id)
+            .copied()
+            .unwrap_or((0.0, self.window.height))
+    }
+
     pub fn thumb(&self, hash: &str, size: u32) -> Option<&image::Handle> {
         self.thumbs.get(&format!("{hash}@{size}"))
     }

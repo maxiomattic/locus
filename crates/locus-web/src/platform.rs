@@ -139,6 +139,21 @@ pub fn hash_changes() -> impl iced::futures::Stream<Item = String> {
     })
 }
 
+/// A tick every `ms` milliseconds, for the page's timers. The stream ends
+/// when its subscription is dropped.
+pub fn ticks(ms: &u64) -> impl iced::futures::Stream<Item = ()> + use<> {
+    let ms = (*ms).min(u64::from(u32::MAX)) as u32;
+    iced::stream::channel(1, async move |mut sender: iced::futures::channel::mpsc::Sender<()>| {
+        use iced::futures::SinkExt;
+        loop {
+            sleep_ms(ms).await;
+            if sender.send(()).await.is_err() {
+                break;
+            }
+        }
+    })
+}
+
 /// One-shot timer on the JS event loop.
 async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {

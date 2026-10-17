@@ -14,19 +14,24 @@ use locus_core::{Focus, InputKind, Level, Msg, Section, TextEdit};
 use crate::style::{self, Colors};
 use crate::{
     FORM_IDS, GAP, HEADER_H, Message, PAD, PALETTE_ROW_H, ROW_H, Shell, TODO_ROW_H,
-    photo_columns, tile_px,
+    photo_columns, tile_px, view_media, view_messages,
 };
+
+/// The draft box's widget id, shared with the core's focus.
+pub(crate) const DRAFT_ID: &str = "message-draft";
+/// Rows beyond the visible ones that are built too, so a short scroll shows no gap.
+const OVERSCAN: usize = 6;
 
 /// Text edits from any text widget.
 fn set_text(value: String) -> Message {
     Message::Core(Msg::Text(TextEdit::Set(value)))
 }
 
-fn core(msg: Msg) -> Message {
+pub(crate) fn core(msg: Msg) -> Message {
     Message::Core(msg)
 }
 
-fn scroll_msg(id: &'static str) -> impl Fn(scrollable::Viewport) -> Message + 'static {
+pub(crate) fn scroll_msg(id: &'static str) -> impl Fn(scrollable::Viewport) -> Message + 'static {
     move |vp| Message::Scrolled(id, vp)
 }
 
@@ -96,7 +101,8 @@ fn login_screen(s: &Shell) -> Element<'_, Message> {
 fn launcher(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let mut grid = Row::new().spacing(16);
-    for section in Section::ALL {
+    // Todo is a tab of the Calendar app, so it has no tile.
+    for section in Section::ALL.into_iter().filter(|s| *s != Section::Todo) {
         let tile = column![
             text(section.label()).size(18).color(c.text),
             muted_text(c, app_blurb(section)),
@@ -137,12 +143,15 @@ fn app_blurb(section: Section) -> &'static str {
         Section::Photos => "Photo library",
         Section::Files => "Your files",
         Section::Contacts => "People and ships",
+        Section::Movies => "Video files",
+        Section::Music => "Audio files by album",
+        Section::Messages => "Direct messages with ships",
     }
 }
 
 /// A toolbar button with a label and a tooltip naming its shortcut.
 /// `None` for `msg` draws it disabled.
-fn tool<'a>(c: Colors, label: &'a str, tip: &'a str, msg: Option<Msg>) -> Element<'a, Message> {
+pub(crate) fn tool<'a>(c: Colors, label: &'a str, tip: &'a str, msg: Option<Msg>) -> Element<'a, Message> {
     let b = button(text(label).size(13))
         .padding([5, 10])
         .on_press_maybe(msg.map(core))
@@ -190,7 +199,13 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         }
         other => other.label().to_string(),
     };
-    bar = bar.push(text(place).size(15).color(c.text));
+    if matches!(app.section, Section::Calendar | Section::Todo) {
+        // The Calendar app's two views are tabs where its title would be.
+        bar = bar.push(app_tab(c, "Calendar", app.section == Section::Calendar, Msg::Switch(Section::Calendar)));
+        bar = bar.push(app_tab(c, "Todo", app.section == Section::Todo, Msg::Switch(Section::Todo)));
+    } else {
+        bar = bar.push(text(place).size(15).color(c.text));
+    }
     bar = bar.push(space::horizontal());
     bar = bar.push(
         text_input("Search", &app.filter)
@@ -255,6 +270,15 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "Edit", "F2", when(item, Msg::Edit)),
             tool(c, "Delete", "Delete", when(item, Msg::Delete)),
         ],
+        Section::Movies | Section::Music => vec![
+            tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool(c, "Play", "Enter or Space", when(item, Msg::Activate)),
+            tool(c, "Rename", "F2", when(item, Msg::Rename)),
+            tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
+        ],
+        Section::Messages => vec![
+            tool(c, "Delete message", "Delete", when(deletable, Msg::Delete)),
+        ],
     };
     for action in actions {
         bar = bar.push(action);
@@ -266,6 +290,17 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         .padding([8, 12])
         .style(move |_| style::panel(c))
         .into()
+}
+
+/// One view of an app that has several, shown as a tab. The current one is
+/// highlighted and does nothing when pressed.
+fn app_tab(c: Colors, label: &'static str, current: bool, msg: Msg) -> Element<'static, Message> {
+    let tab = button(text(label).size(14)).padding([4, 10]);
+    if current {
+        tab.style(style::primary_button(c)).into()
+    } else {
+        tab.on_press(core(msg)).style(style::quiet_button(c)).into()
+    }
 }
 
 fn status_bar(s: &Shell) -> Element<'_, Message> {
@@ -302,6 +337,9 @@ fn main_pane(s: &Shell) -> Element<'_, Message> {
         Section::Photos => photos_pane(s),
         Section::Files => files_pane(s),
         Section::Contacts => contacts_pane(s),
+        Section::Movies => view_media::movies(s),
+        Section::Music => view_media::music(s),
+        Section::Messages => view_messages::messages(s),
     };
     container(body)
         .padding(PAD)
@@ -312,8 +350,43 @@ fn main_pane(s: &Shell) -> Element<'_, Message> {
 
 // ----- shared pieces -----
 
+/// Rows of one fixed height, built only where they are on screen (and a few
+/// either side). A long list then costs what its visible part costs. `id` is
+/// the scrollable's id; its last reported viewport decides which rows show.
+pub(crate) fn virtual_rows<'a>(
+    s: &Shell,
+    id: &'static str,
+    count: usize,
+    row_h: f32,
+    build: impl Fn(usize) -> Element<'a, Message> + 'a,
+) -> Element<'a, Message> {
+    let (offset, height) = s.viewport(id);
+    let first = ((offset / row_h).floor().max(0.0) as usize)
+        .saturating_sub(OVERSCAN)
+        .min(count);
+    let last = (((offset + height) / row_h).ceil().max(0.0) as usize + OVERSCAN).min(count);
+    let mut col = Column::new();
+    col = col.push(space::vertical().height(Length::Fixed(first as f32 * row_h)));
+    for i in first..last {
+        col = col.push(build(i));
+    }
+    col = col.push(space::vertical().height(Length::Fixed((count - last) as f32 * row_h)));
+    scrollable(col)
+        .id(id)
+        .on_scroll(scroll_msg(id))
+        .width(Fill)
+        .height(Fill)
+        .into()
+}
+
+/// `row` with `gap` pixels of space below it, so virtual rows keep the spacing
+/// a plain column would have given them.
+pub(crate) fn gapped<'a>(row: Element<'a, Message>, gap: f32) -> Element<'a, Message> {
+    column![row, space::vertical().height(Length::Fixed(gap))].into()
+}
+
 /// A list row: a click sends `select`, a double click also `open`.
-fn click_row<'a>(
+pub(crate) fn click_row<'a>(
     c: Colors,
     content: impl Into<Element<'a, Message>>,
     height: f32,
@@ -366,7 +439,7 @@ fn list_row<'a>(
     )
 }
 
-fn empty_card<'a>(c: Colors, title: &str, hint: &str) -> Element<'a, Message> {
+pub(crate) fn empty_card<'a>(c: Colors, title: &str, hint: &str) -> Element<'a, Message> {
     container(
         column![
             text(title.to_string()).size(16).color(c.text),
@@ -393,7 +466,7 @@ fn empty_hint(s: &Shell, empty: &str) -> String {
     }
 }
 
-fn muted_text<'a>(c: Colors, s: impl Into<String>) -> iced::widget::Text<'a> {
+pub(crate) fn muted_text<'a>(c: Colors, s: impl Into<String>) -> iced::widget::Text<'a> {
     text(s.into()).size(12).color(c.muted)
 }
 
@@ -458,21 +531,13 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     let list: Element<'_, Message> = if rows.is_empty() {
         muted_text(c, empty_hint(s, "No notes here yet. Click New note to write one.")).into()
     } else {
-        let mut col = Column::new();
-        for (i, r) in rows.iter().enumerate() {
-            col = col.push(list_row(c, i, &r.title, &r.subtitle, r.selected, r.is_dir));
-        }
-        col.into()
+        let count = rows.len();
+        virtual_rows(s, "notes", count, ROW_H + 4.0, move |i| {
+            let r = &rows[i];
+            gapped(list_row(c, i, &r.title, &r.subtitle, r.selected, r.is_dir), 4.0)
+        })
     };
-    let left = container(
-        scrollable(list)
-            .id("notes")
-            .spacing(4)
-            .on_scroll(scroll_msg("notes"))
-            .height(Fill),
-    )
-    .width(300)
-    .height(Fill);
+    let left = container(list).width(300).height(Fill);
 
     let right: Element<'_, Message> = match (view_model::note_history(&s.app), view_model::editor(&s.app)) {
         (Some(h), _) => history_pane(c, h),
@@ -819,52 +884,58 @@ fn photos_pane(s: &Shell) -> Element<'_, Message> {
         let hint = empty_hint(s, "Click Upload to add photos.");
         return empty_card(c, "No photos", &hint);
     }
-    let mut col = Column::new().spacing(GAP);
-    for (ri, cells) in grid.rows.iter().enumerate() {
-        let mut r = Row::new().spacing(GAP);
-        for (ci, cell) in cells.iter().enumerate() {
-            let index = ri * cols + ci;
-            let inner: Element<'_, Message> = match cell.hash.as_deref().and_then(|h| s.thumb(h, 256)) {
-                Some(handle) => image(handle.clone())
-                    .width(Fill)
-                    .height(Fill)
-                    .content_fit(ContentFit::Cover)
-                    .into(),
-                None => container(muted_text(c, cell.title.clone()))
-                    .width(Fill)
-                    .height(Fill)
-                    .center_x(Fill)
-                    .center_y(Fill)
-                    .into(),
-            };
-            let selected = cell.selected;
-            let framed = container(inner)
-                .width(tile)
-                .height(tile)
-                .style(move |_| container::Style {
-                    background: Some(iced::Background::Color(c.panel)),
-                    border: Border {
-                        color: if selected { c.accent } else { iced::Color::TRANSPARENT },
-                        width: 2.0,
-                        radius: Radius::from(6.0),
-                    },
-                    ..container::Style::default()
-                });
-            r = r.push(
-                mouse_area(framed)
-                    .on_press(core(Msg::Select(index)))
-                    .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate])))
-                    .interaction(iced::mouse::Interaction::Pointer),
-            );
-        }
-        col = col.push(r);
+    // Only the grid rows on screen are built; each row is one pitch tall.
+    let count = grid.rows.len();
+    let rows = grid.rows;
+    virtual_rows(s, "photos", count, tile + GAP, move |ri| photo_grid_row(s, &rows[ri], ri, cols, tile))
+}
+
+/// One row of the photo grid: `cols` tiles, then the gap below them.
+fn photo_grid_row<'a>(
+    s: &'a Shell,
+    cells: &[view_model::PhotoCell],
+    ri: usize,
+    cols: usize,
+    tile: f32,
+) -> Element<'a, Message> {
+    let c = s.colors;
+    let mut r = Row::new().spacing(GAP);
+    for (ci, cell) in cells.iter().enumerate() {
+        let index = ri * cols + ci;
+        let inner: Element<'a, Message> = match cell.hash.as_deref().and_then(|h| s.thumb(h, 256)) {
+            Some(handle) => image(handle.clone())
+                .width(Fill)
+                .height(Fill)
+                .content_fit(ContentFit::Cover)
+                .into(),
+            None => container(muted_text(c, cell.title.clone()))
+                .width(Fill)
+                .height(Fill)
+                .center_x(Fill)
+                .center_y(Fill)
+                .into(),
+        };
+        let selected = cell.selected;
+        let framed = container(inner)
+            .width(tile)
+            .height(tile)
+            .style(move |_| container::Style {
+                background: Some(iced::Background::Color(c.panel)),
+                border: Border {
+                    color: if selected { c.accent } else { iced::Color::TRANSPARENT },
+                    width: 2.0,
+                    radius: Radius::from(6.0),
+                },
+                ..container::Style::default()
+            });
+        r = r.push(
+            mouse_area(framed)
+                .on_press(core(Msg::Select(index)))
+                .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate])))
+                .interaction(iced::mouse::Interaction::Pointer),
+        );
     }
-    scrollable(col)
-        .id("photos")
-        .on_scroll(scroll_msg("photos"))
-        .width(Fill)
-        .height(Fill)
-        .into()
+    gapped(r.into(), GAP)
 }
 
 fn viewer(s: &Shell) -> Element<'_, Message> {
@@ -878,6 +949,7 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
         .as_deref()
         .and_then(|h| s.thumb(h, 1024).or_else(|| s.thumb(h, 256)));
     let picture: Element<'_, Message> = match handle {
+        _ if detail.is_video => view_media::video_picture(s, &detail.title),
         Some(handle) => image(handle.clone())
             .width(Fill)
             .height(Fill)
@@ -900,21 +972,42 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
     .spacing(8)
     .align_y(Center);
     let meta = detail.meta.clone();
-    column![
+    let mut col = column![
         caption,
         container(picture)
             .width(Fill)
             .height(Fill)
             .center_x(Fill)
             .center_y(Fill),
-        muted_text(c, meta),
     ]
     .spacing(8)
-    .height(Fill)
-    .into()
+    .height(Fill);
+    if detail.is_video
+        && let Some(player) = view_model::player(&s.app)
+    {
+        col = col.push(view_media::transport(c, &player));
+    }
+    col.push(muted_text(c, meta)).into()
 }
 
 // ----- files -----
+
+/// One file or folder: name, size, and when it changed.
+fn file_row(c: Colors, r: &view_model::FileRow, i: usize) -> Element<'static, Message> {
+    let (name_color, size) = if r.is_dir {
+        (c.accent, "Folder".to_string())
+    } else {
+        (c.text, r.size_label.clone())
+    };
+    let content = row![
+        text(r.name.clone()).size(14).color(name_color).width(Fill),
+        muted_text(c, size).width(96),
+        muted_text(c, r.modified_label.clone()).width(120),
+    ]
+    .spacing(8)
+    .align_y(Center);
+    click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Activate)
+}
 
 fn files_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
@@ -927,43 +1020,26 @@ fn files_pane(s: &Shell) -> Element<'_, Message> {
     .padding([0, 8]);
 
     let rows = view_model::file_rows(&s.app);
-    let mut col = Column::new();
-    if rows.is_empty() {
-        col = col.push(muted_text(
-            c,
-            empty_hint(s, "Empty folder. Click Upload to add files here."),
-        ));
-    }
-    for (i, r) in rows.iter().enumerate() {
-        let (name_color, size) = if r.is_dir {
-            (c.accent, "Folder".to_string())
-        } else {
-            (c.text, r.size_label.clone())
-        };
-        let content = row![
-            text(r.name.clone()).size(14).color(name_color).width(Fill),
-            muted_text(c, size).width(96),
-            muted_text(c, r.modified_label.clone()).width(120),
-        ]
-        .spacing(8)
-        .align_y(Center);
-        col = col.push(click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Activate));
-    }
-    column![
-        header,
-        scrollable(col)
-            .id("files")
-            .spacing(4)
-            .on_scroll(scroll_msg("files"))
-            .width(Fill)
-            .height(Fill),
-    ]
-    .spacing(8)
-    .height(Fill)
-    .into()
+    let list: Element<'_, Message> = if rows.is_empty() {
+        muted_text(c, empty_hint(s, "Empty folder. Click Upload to add files here.")).into()
+    } else {
+        let count = rows.len();
+        virtual_rows(s, "files", count, ROW_H + 4.0, move |i| gapped(file_row(c, &rows[i], i), 4.0))
+    };
+    column![header, list].spacing(8).height(Fill).into()
 }
 
 // ----- contacts -----
+
+/// One contact: name over the subtitle.
+fn contact_row(c: Colors, r: &view_model::ContactRow, i: usize) -> Element<'static, Message> {
+    let content = column![
+        text(r.name.clone()).size(14).color(c.text),
+        text(r.subtitle.clone()).size(12).color(c.muted),
+    ]
+    .spacing(2);
+    click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Edit)
+}
 
 fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
@@ -971,26 +1047,12 @@ fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     let list: Element<'_, Message> = if rows.is_empty() {
         muted_text(c, empty_hint(s, "No contacts yet. Click New contact to add one.")).into()
     } else {
-        let mut col = Column::new();
-        for (i, r) in rows.iter().enumerate() {
-            let content = column![
-                text(r.name.clone()).size(14).color(c.text),
-                text(r.subtitle.clone()).size(12).color(c.muted),
-            ]
-            .spacing(2);
-            col = col.push(click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Edit));
-        }
-        col.into()
+        let count = rows.len();
+        virtual_rows(s, "contacts", count, ROW_H + 4.0, move |i| {
+            gapped(contact_row(c, &rows[i], i), 4.0)
+        })
     };
-    let left = container(
-        scrollable(list)
-            .id("contacts")
-            .spacing(4)
-            .on_scroll(scroll_msg("contacts"))
-            .height(Fill),
-    )
-    .width(300)
-    .height(Fill);
+    let left = container(list).width(300).height(Fill);
 
     let right: Element<'_, Message> = if let Some(form) =
         view_model::form(&s.app).filter(|f| f.title.contains("contact"))
@@ -1023,7 +1085,9 @@ fn overlay(s: &Shell) -> Option<Element<'_, Message>> {
         Focus::Help => help_card(s),
         Focus::Confirm => confirm_card(s)?,
         Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder) => move_card(s)?,
-        Focus::Input(kind) if kind != InputKind::Filter && kind != InputKind::Login => {
+        Focus::Input(kind)
+            if !matches!(kind, InputKind::Filter | InputKind::Login | InputKind::MessageDraft) =>
+        {
             prompt_card(s)?
         }
         _ => return None,
