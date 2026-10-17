@@ -142,12 +142,21 @@
             rustc = rustToolchain;
           };
 
+          # GStreamer plugin directories for the desktop player's decoders.
+          gstPluginPath = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" [
+            pkgs.gst_all_1.gstreamer
+            pkgs.gst_all_1.gst-plugins-base
+            pkgs.gst_all_1.gst-plugins-good
+            pkgs.gst_all_1.gst-plugins-bad
+            pkgs.gst_all_1.gst-libav
+          ];
+
           # One vendored dependency set for every crate in the workspace.
           # Update the hash whenever Cargo.lock changes.
           cargoDeps = rustPlatform.fetchCargoVendor {
             src = pkgs.lib.cleanSource ./.;
             name = "locus-cargo-deps";
-            hash = "sha256-pnWOmYguziicT9uLkP1G5ahbMFiZ8uDCzMv3N4TTOXI=";
+            hash = "sha256-bAL5J3vtF1kt2casrS5QR8+Ew4BOC0FGyYp3c+e4p+U=";
           };
 
           # Vere (urbit runtime) pin: nixpkgs-unstable `pkgs.urbit` 4.6
@@ -184,6 +193,7 @@
               pkgs.cmake
               pkgs.libcosmicAppHook
               pkgs.rustPlatform.bindgenHook
+              pkgs.makeWrapper
             ];
             buildInputs = [
               pkgs.fontconfig
@@ -212,6 +222,7 @@
               pkgs.cmake
               pkgs.libcosmicAppHook
               pkgs.rustPlatform.bindgenHook
+              pkgs.makeWrapper
             ];
             buildInputs = [
               pkgs.fontconfig
@@ -219,13 +230,18 @@
               pkgs.expat
               pkgs.glib
               pkgs.dbus
+              pkgs.gst_all_1.gstreamer
+              pkgs.gst_all_1.gst-plugins-base
+              pkgs.gst_all_1.gst-plugins-good
+              pkgs.gst_all_1.gst-plugins-bad
+              pkgs.gst_all_1.gst-libav
             ];
             # Each app is its own program (`locus-notes`, app id
             # org.locus.Notes), so COSMIC gives it its own taskbar entry and
             # tiles it separately. They are all one binary, locus-app.
             postInstall = ''
               mkdir -p $out/share/applications
-              for app in notes todo calendar photos files contacts; do
+              for app in notes todo calendar photos files contacts movies music messages; do
                 ln -s locus-app "$out/bin/locus-$app"
               done
               entry() { # app-id name program icon comment
@@ -249,6 +265,14 @@
               entry org.locus.Photos "Locus Photos" locus-photos image-x-generic-symbolic "Photos"
               entry org.locus.Files "Locus Files" locus-files folder-symbolic "Files"
               entry org.locus.Contacts "Locus Contacts" locus-contacts x-office-address-book-symbolic "Contacts"
+              entry org.locus.Movies "Locus Movies" locus-movies video-x-generic-symbolic "Movies"
+              entry org.locus.Music "Locus Music" locus-music audio-x-generic-symbolic "Music"
+              entry org.locus.Messages "Locus Messages" locus-messages mail-message-new-symbolic "Messages"
+              # GStreamer finds its plugins through this variable, so the
+              # binaries carry it.
+              for b in $out/bin/locus-app $out/bin/locus; do
+                wrapProgram "$b" --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${gstPluginPath}"
+              done
             '';
             meta = {
               description = "Locus apps (libcosmic) and the locus command line";
@@ -327,11 +351,23 @@
               pkgs.wayland
               pkgs.libGL
               pkgs.vulkan-loader
+              pkgs.gst_all_1.gstreamer
+              pkgs.gst_all_1.gst-plugins-base
+              pkgs.gst_all_1.gst-plugins-good
+              pkgs.gst_all_1.gst-plugins-bad
+              pkgs.gst_all_1.gst-libav
               pkgs.git
               pkgs.cosmic-icons
               pkgs.adwaita-icon-theme
             ];
             LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+            GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" [
+              pkgs.gst_all_1.gstreamer
+              pkgs.gst_all_1.gst-plugins-base
+              pkgs.gst_all_1.gst-plugins-good
+              pkgs.gst_all_1.gst-plugins-bad
+              pkgs.gst_all_1.gst-libav
+            ];
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
               pkgs.wayland
               pkgs.libxkbcommon

@@ -12,7 +12,7 @@ use locus_core::state::{CalMode, Focus, InputKind, Level, Section};
 use locus_core::view_model::{self, EditorView, FormView, HistoryView};
 use locus_core::{Msg, Nav, TextEdit};
 
-use crate::{App, Message, Screen, THUMB_GRID, THUMB_VIEW, thumb_key};
+use crate::{App, Message, Screen, THUMB_GRID, THUMB_VIEW, thumb_key, view_media, view_messages};
 
 // ----- widget ids -----
 
@@ -23,15 +23,19 @@ pub const FILTER_ID: &str = "filter";
 pub const INPUT_ID: &str = "input";
 pub const PALETTE_ID: &str = "palette";
 pub const PHOTOS_SCROLL: &str = "scroll-photos";
-const NOTES_SCROLL: &str = "scroll-notes";
-const HISTORY_SCROLL: &str = "scroll-history";
-const REVISION_SCROLL: &str = "scroll-revision";
-const TODO_SCROLL: &str = "scroll-todo";
-const AGENDA_SCROLL: &str = "scroll-agenda";
-const FILES_SCROLL: &str = "scroll-files";
-const CONTACTS_SCROLL: &str = "scroll-contacts";
-const PALETTE_SCROLL: &str = "scroll-palette";
-const MOVE_SCROLL: &str = "scroll-move";
+pub(crate) const NOTES_SCROLL: &str = "scroll-notes";
+pub(crate) const HISTORY_SCROLL: &str = "scroll-history";
+pub(crate) const REVISION_SCROLL: &str = "scroll-revision";
+pub(crate) const TODO_SCROLL: &str = "scroll-todo";
+pub(crate) const AGENDA_SCROLL: &str = "scroll-agenda";
+pub(crate) const FILES_SCROLL: &str = "scroll-files";
+pub(crate) const CONTACTS_SCROLL: &str = "scroll-contacts";
+pub(crate) const PALETTE_SCROLL: &str = "scroll-palette";
+pub(crate) const MOVE_SCROLL: &str = "scroll-move";
+pub(crate) const MOVIES_SCROLL: &str = "scroll-movies";
+pub(crate) const MUSIC_SCROLL: &str = "scroll-music";
+pub(crate) const CONVERSATIONS_SCROLL: &str = "scroll-conversations";
+pub(crate) const CONVERSATION_H: f32 = 56.0;
 
 pub fn form_id(i: usize) -> String {
     format!("form-{i}")
@@ -42,33 +46,33 @@ pub fn form_id(i: usize) -> String {
 /// Horizontal room the page padding and scrollbar take from the grid.
 pub const PAGE_PAD_X: f32 = 56.0;
 /// Width of the list pane in Notes and Contacts.
-const LIST_W: f32 = 300.0;
+pub(crate) const LIST_W: f32 = 300.0;
 /// Content height of a two-line row and a one-line row. A list row is this
 /// plus the list's vertical item padding plus a 1px divider.
-const ROW2_H: f32 = 40.0;
-const ROW1_H: f32 = 28.0;
+pub(crate) const ROW2_H: f32 = 40.0;
+pub(crate) const ROW1_H: f32 = 28.0;
 /// Height of a group or day header in Todo and the agenda.
-const HEADER_H: f32 = 28.0;
+pub(crate) const HEADER_H: f32 = 28.0;
 /// Height of the "hidden" caption under a collapsed group.
-const NOTE_H: f32 = 20.0;
+pub(crate) const NOTE_H: f32 = 20.0;
 /// Target photo tile edge; the grid fits as many columns as the width allows.
-const TILE: f32 = 168.0;
-const GAP: f32 = 8.0;
+pub(crate) const TILE: f32 = 168.0;
+pub(crate) const GAP: f32 = 8.0;
 
-fn scroll_msg(id: &'static str) -> impl Fn(cosmic::iced::widget::scrollable::Viewport) -> Message {
+pub(crate) fn scroll_msg(id: &'static str) -> impl Fn(cosmic::iced::widget::scrollable::Viewport) -> Message {
     move |vp| Message::Scrolled(id, vp)
 }
 
-fn core(msg: Msg) -> Message {
+pub(crate) fn core(msg: Msg) -> Message {
     Message::Core(msg)
 }
 
-fn set_text(value: String) -> Message {
+pub(crate) fn set_text(value: String) -> Message {
     Message::Core(Msg::Text(TextEdit::Set(value)))
 }
 
 /// Distance from one list row's top to the next.
-fn row_pitch(content_h: f32) -> f32 {
+pub(crate) fn row_pitch(content_h: f32) -> f32 {
     content_h + 2.0 * f32::from(theme::spacing().space_xxs) + 1.0
 }
 
@@ -77,7 +81,7 @@ pub fn photo_columns(width: f32) -> usize {
 }
 
 /// Edge of a square tile so `cols` tiles fill `width`.
-fn tile_edge(width: f32, cols: usize) -> f32 {
+pub(crate) fn tile_edge(width: f32, cols: usize) -> f32 {
     let cols = cols.max(1) as f32;
     ((width - (cols - 1.0) * GAP) / cols).clamp(64.0, 2.0 * TILE)
 }
@@ -89,38 +93,38 @@ pub fn photo_pitch(width: f32, cols: usize) -> f32 {
 
 // ----- colors -----
 
-fn danger() -> Color {
+pub(crate) fn danger() -> Color {
     theme::active().cosmic().destructive_text_color().into()
 }
 
-fn warning() -> Color {
+pub(crate) fn warning() -> Color {
     theme::active().cosmic().warning_text_color().into()
 }
 
-fn accent() -> Color {
+pub(crate) fn accent() -> Color {
     theme::active().cosmic().accent_text_color().into()
 }
 
 /// Text for something shown but not available.
-fn dimmed() -> Color {
+pub(crate) fn dimmed() -> Color {
     let mut c: Color = theme::active().cosmic().on_bg_color().into();
     c.a = 0.4;
     c
 }
 
-fn colored<'a>(text: impl Into<String>, color: Color) -> Element<'a, Message> {
+pub(crate) fn colored<'a>(text: impl Into<String>, color: Color) -> Element<'a, Message> {
     widget::text::body(text.into())
         .class(theme::Text::Color(color))
         .into()
 }
 
-fn caption_colored<'a>(text: impl Into<String>, color: Color) -> Element<'a, Message> {
+pub(crate) fn caption_colored<'a>(text: impl Into<String>, color: Color) -> Element<'a, Message> {
     widget::text::caption(text.into())
         .class(theme::Text::Color(color))
         .into()
 }
 
-fn level_text<'a>(text: String, level: Level) -> Element<'a, Message> {
+pub(crate) fn level_text<'a>(text: String, level: Level) -> Element<'a, Message> {
     match level {
         Level::Error => caption_colored(text, danger()),
         Level::Warn => caption_colored(text, warning()),
@@ -130,13 +134,13 @@ fn level_text<'a>(text: String, level: Level) -> Element<'a, Message> {
 
 // ----- shared pieces -----
 
-fn text_button(label: &'static str, msg: Msg) -> Element<'static, Message> {
+pub(crate) fn text_button(label: &'static str, msg: Msg) -> Element<'static, Message> {
     widget::button::text(label).on_press(core(msg)).into()
 }
 
 /// The standard button look, with dimmed text when disabled. The stock
 /// style only dims the background, so a disabled button read as enabled.
-fn tool_class() -> theme::Button {
+pub(crate) fn tool_class() -> theme::Button {
     use widget::button::Catalog;
     let std = || theme::Button::Standard;
     theme::Button::Custom {
@@ -155,7 +159,7 @@ fn tool_class() -> theme::Button {
 
 /// A labelled toolbar button with a tooltip naming its shortcut; `None`
 /// draws it disabled.
-fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'static, Message> {
+pub(crate) fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'static, Message> {
     let b = widget::button::standard(label)
         .class(tool_class())
         .on_press_maybe(msg.map(core));
@@ -166,7 +170,7 @@ fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'st
 }
 
 /// A list row: a click sends `select`, a double click also `open`.
-fn row_area<'a>(
+pub(crate) fn row_area<'a>(
     content: impl Into<Element<'a, Message>>,
     height: f32,
     selected: bool,
@@ -200,7 +204,7 @@ fn row_area<'a>(
         .into()
 }
 
-fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> Element<'static, Message> {
+pub(crate) fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> Element<'static, Message> {
     widget::tooltip(
         widget::button::icon(widget::icon::from_name(icon)).on_press(core(msg)),
         widget::text::caption(tip),
@@ -209,7 +213,7 @@ fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> Element<'stat
     .into()
 }
 
-fn card<'a>(content: impl Into<Element<'a, Message>>) -> widget::Container<'a, Message, cosmic::Theme> {
+pub(crate) fn card<'a>(content: impl Into<Element<'a, Message>>) -> widget::Container<'a, Message, cosmic::Theme> {
     widget::container(content)
         .padding(theme::spacing().space_m)
         .class(theme::Container::Card)
@@ -217,7 +221,7 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> widget::Container<'a, M
 }
 
 /// Centered title and hint for an empty pane.
-fn empty<'a>(title: &str, hint: String) -> Element<'a, Message> {
+pub(crate) fn empty<'a>(title: &str, hint: String) -> Element<'a, Message> {
     let s = theme::spacing();
     widget::container(
         widget::column::with_capacity(2)
@@ -231,7 +235,7 @@ fn empty<'a>(title: &str, hint: String) -> Element<'a, Message> {
 }
 
 /// What an empty list should say: loading, no filter matches, or `empty`.
-fn empty_hint(app: &App, empty: &str) -> String {
+pub(crate) fn empty_hint(app: &App, empty: &str) -> String {
     if app.ui.is_loading(app.ui.section) {
         "Loading...".into()
     } else if !app.ui.filter.is_empty() {
@@ -243,20 +247,58 @@ fn empty_hint(app: &App, empty: &str) -> String {
 
 /// A list row: clicking an unselected row selects it, clicking the selected
 /// row activates it (open, enter, edit).
-fn two_lines<'a>(title: String, subtitle: String) -> Element<'a, Message> {
+pub(crate) fn two_lines<'a>(title: String, subtitle: String) -> Element<'a, Message> {
     widget::column::with_capacity(2)
         .push(widget::text::body(title))
         .push(widget::text::caption(subtitle))
         .into()
 }
 
-fn scroll<'a>(id: &'static str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub(crate) fn scroll<'a>(id: &'static str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     widget::scrollable(content)
         .id(Id::new(id))
         .on_scroll(scroll_msg(id))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// Rows of a list drawn beyond each edge of the viewport, so a short scroll
+/// does not wait for the next frame to show a row.
+const OVERSCAN: usize = 6;
+
+/// A list of `count` rows of one height, scrolled inside `id`. Only the rows
+/// near the viewport are built (`build` is called for them alone), and spacers
+/// stand in for the rest, so a list of thousands costs what its screenful
+/// costs. Rows must all have `row_h` height.
+pub(crate) fn virtual_list<'a>(
+    app: &App,
+    id: &'static str,
+    count: usize,
+    row_h: f32,
+    build: impl Fn(usize) -> Element<'a, Message>,
+) -> Element<'a, Message> {
+    let (offset, height) = app
+        .viewports
+        .get(id)
+        .map(|&(offset, height, _)| (offset, height))
+        .unwrap_or((0.0, app.default_view_height()));
+    let first = ((offset / row_h).floor() as usize)
+        .saturating_sub(OVERSCAN)
+        .min(count);
+    let last = (((offset + height) / row_h).ceil() as usize + OVERSCAN).min(count);
+    let mut col = widget::column::with_capacity(last - first + 2);
+    col = col.push(spacer(first as f32 * row_h));
+    for i in first..last {
+        col = col.push(build(i));
+    }
+    col = col.push(spacer((count - last) as f32 * row_h));
+    scroll(id, col)
+}
+
+/// An empty block of `h` pixels, for the rows a virtual list is not drawing.
+pub(crate) fn spacer<'a>(h: f32) -> Element<'a, Message> {
+    widget::Space::new().width(Length::Fill).height(Length::Fixed(h.max(0.0))).into()
 }
 
 // ----- chrome -----
@@ -283,7 +325,7 @@ pub fn footer(app: &App) -> Element<'_, Message> {
 
 /// The app's toolbar: Back and where you are, the search box, then the
 /// app's actions.
-fn app_toolbar(app: &App) -> Element<'_, Message> {
+pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let ui = &app.ui;
     let item = view_model::has_item_selected(ui);
@@ -307,6 +349,12 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
             bar = bar.push(widget::text::title4(view_model::notes_breadcrumb(ui)).width(Length::Fill));
         }
         Section::Files => bar = bar.push(files_path(app)),
+        // The Calendar app's two tabs sit where its title would be.
+        Section::Calendar | Section::Todo => {
+            bar = bar.push(tool_tab("Calendar", ui.section == Section::Calendar, Msg::Switch(Section::Calendar)));
+            bar = bar.push(tool_tab("Todo", ui.section == Section::Todo, Msg::Switch(Section::Todo)));
+            bar = bar.push(widget::space::horizontal().width(Length::Fill));
+        }
         other => bar = bar.push(widget::text::title4(other.label()).width(Length::Fill)),
     }
     bar = bar.push(
@@ -333,6 +381,25 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("Move", "", when(view_model::can_move(ui), Msg::Move)),
             tool(history_label(ui), "", when(view_model::can_show_history(ui), Msg::History)),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
+        ],
+        Section::Movies => vec![
+            tool("Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool("Play", "Enter", when(item, Msg::Activate)),
+            tool("Rename", "F2", when(item, Msg::Rename)),
+            tool("Move", "", when(item, Msg::Move)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Music => vec![
+            tool("Upload", "Ctrl+O", Some(Msg::Upload)),
+            tool("Play", "Enter", when(item, Msg::Activate)),
+            tool("Rename", "F2", when(item, Msg::Rename)),
+            tool("Move", "", when(item, Msg::Move)),
+            tool("Delete", "Delete", when(item, Msg::Delete)),
+        ],
+        Section::Messages => vec![
+            tool("New conversation", "Ctrl+N", Some(Msg::New)),
+            tool("Delete message", "Delete", when(deletable, Msg::Delete)),
+            tool("Refresh", "F5", Some(Msg::Reload)),
         ],
         Section::Todo => vec![
             tool("Add task", "Ctrl+N", Some(Msg::New)),
@@ -375,8 +442,18 @@ fn app_toolbar(app: &App) -> Element<'_, Message> {
     bar.into()
 }
 
+/// One tab of the Calendar app: a flat button, highlighted when it is the one shown.
+pub(crate) fn tool_tab(label: &'static str, current: bool, msg: Msg) -> Element<'static, Message> {
+    let b = if current {
+        widget::button::suggested(label)
+    } else {
+        widget::button::standard(label)
+    };
+    b.on_press_maybe((!current).then(|| core(msg))).into()
+}
+
 /// The Files path as clickable crumbs: each one goes that many levels up.
-fn files_path(app: &App) -> Element<'_, Message> {
+pub(crate) fn files_path(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let crumbs = view_model::breadcrumb(&app.ui);
     let depth = crumbs.len().saturating_sub(1);
@@ -421,6 +498,9 @@ pub fn content(app: &App) -> Element<'_, Message> {
                 Section::Photos => photos(app),
                 Section::Files => files(app),
                 Section::Contacts => contacts(app),
+                Section::Movies => view_media::movies(app),
+                Section::Music => view_media::music(app),
+                Section::Messages => view_messages::messages(app),
             });
             widget::container(col)
                 .padding([s.space_xxs, s.space_s, s.space_xs, s.space_s])
@@ -431,7 +511,7 @@ pub fn content(app: &App) -> Element<'_, Message> {
     }
 }
 
-fn login(app: &App) -> Element<'_, Message> {
+pub(crate) fn login(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let code = view_model::input_prompt(&app.ui)
         .map(|v| v.text)
@@ -481,25 +561,27 @@ fn login(app: &App) -> Element<'_, Message> {
 
 // ----- notes -----
 
-fn notes(app: &App) -> Element<'_, Message> {
+/// A note or notebook: its title over its subtitle, and a chevron for a folder.
+fn note_row<'a>(row: &view_model::Row, i: usize) -> Element<'a, Message> {
+    let content = widget::row::with_capacity(2)
+        .align_y(Alignment::Center)
+        .push(widget::container(two_lines(row.title.clone(), row.subtitle.clone())).width(Length::Fill));
+    let content = if row.is_dir {
+        content.push(widget::icon::from_name("go-next-symbolic").size(16).icon())
+    } else {
+        content
+    };
+    row_area(content, ROW2_H, row.selected, Msg::Select(i), Msg::Activate)
+}
+
+pub(crate) fn notes(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::notes_list(&app.ui);
     let list: Element<'_, Message> = if rows.is_empty() {
         empty("No notes", empty_hint(app, "Click New note to write one."))
     } else {
-        let mut list = widget::list_column();
-        for (i, row) in rows.into_iter().enumerate() {
-            let content = widget::row::with_capacity(2)
-                .align_y(Alignment::Center)
-                .push(widget::container(two_lines(row.title, row.subtitle)).width(Length::Fill));
-            let content = if row.is_dir {
-                content.push(widget::icon::from_name("go-next-symbolic").size(16).icon())
-            } else {
-                content
-            };
-            list = list.add(row_area(content, ROW2_H, row.selected, Msg::Select(i), Msg::Activate));
-        }
-        scroll(NOTES_SCROLL, list)
+        let count = rows.len();
+        virtual_list(app, NOTES_SCROLL, count, ROW2_H, move |i| note_row(&rows[i], i))
     };
     let left = widget::container(list)
         .width(Length::Fixed(LIST_W))
@@ -516,7 +598,7 @@ fn notes(app: &App) -> Element<'_, Message> {
         .into()
 }
 
-fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
+pub(crate) fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
     let s = theme::spacing();
     let status = if editor.conflict {
         caption_colored("Changed elsewhere; your text is kept", warning())
@@ -549,7 +631,7 @@ fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message> {
 }
 
 /// The toolbar label of the History toggle.
-fn history_label(ui: &locus_core::App) -> &'static str {
+pub(crate) fn history_label(ui: &locus_core::App) -> &'static str {
     if ui.notes.history.is_some() {
         "Close history"
     } else {
@@ -559,7 +641,7 @@ fn history_label(ui: &locus_core::App) -> &'static str {
 
 /// A note's saved revisions: the list on the left, the selected one's text
 /// on the right. Read only.
-fn history_pane(history: HistoryView) -> Element<'static, Message> {
+pub(crate) fn history_pane(history: HistoryView) -> Element<'static, Message> {
     let s = theme::spacing();
     let header = widget::row::with_capacity(3)
         .spacing(s.space_xs)
@@ -609,14 +691,14 @@ fn history_pane(history: HistoryView) -> Element<'static, Message> {
 // ----- todo -----
 
 /// Todo groups shown: empty groups are left out.
-fn todo_groups(app: &App) -> Vec<view_model::Group> {
+pub(crate) fn todo_groups(app: &App) -> Vec<view_model::Group> {
     view_model::todo_groups(&app.ui)
         .into_iter()
         .filter(|g| g.count > 0)
         .collect()
 }
 
-fn todo(app: &App) -> Element<'_, Message> {
+pub(crate) fn todo(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let groups = todo_groups(app);
     if groups.is_empty() {
@@ -687,7 +769,7 @@ fn todo(app: &App) -> Element<'_, Message> {
     scroll(TODO_SCROLL, col)
 }
 
-fn dim() -> Color {
+pub(crate) fn dim() -> Color {
     let mut c: Color = theme::active().cosmic().on_bg_color().into();
     c.a = 0.5;
     c
@@ -695,7 +777,7 @@ fn dim() -> Color {
 
 // ----- calendar -----
 
-fn calendar(app: &App) -> Element<'_, Message> {
+pub(crate) fn calendar(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let mode = app.ui.calendar.mode;
     let month = view_model::month_grid(&app.ui);
@@ -744,7 +826,7 @@ fn calendar(app: &App) -> Element<'_, Message> {
     col.into()
 }
 
-fn event_row<'a>(time: String, title: String) -> Element<'a, Message> {
+pub(crate) fn event_row<'a>(time: String, title: String) -> Element<'a, Message> {
     widget::row::with_capacity(2)
         .spacing(s_s())
         .align_y(Alignment::Center)
@@ -753,11 +835,11 @@ fn event_row<'a>(time: String, title: String) -> Element<'a, Message> {
         .into()
 }
 
-fn s_s() -> u16 {
+pub(crate) fn s_s() -> u16 {
     theme::spacing().space_s
 }
 
-fn agenda(app: &App) -> Element<'_, Message> {
+pub(crate) fn agenda(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let days = view_model::agenda(&app.ui);
     if days.is_empty() {
@@ -806,7 +888,7 @@ fn agenda(app: &App) -> Element<'_, Message> {
 
 /// The selected day's events under the month grid, so Edit and Delete have
 /// a visible target.
-fn day_events(app: &App) -> Element<'_, Message> {
+pub(crate) fn day_events(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let mut col = widget::column::with_capacity(2)
         .spacing(s.space_xxs)
@@ -834,7 +916,7 @@ fn day_events(app: &App) -> Element<'_, Message> {
     col.height(Length::Fill).into()
 }
 
-fn month_grid<'a>(month: view_model::MonthView) -> Element<'a, Message> {
+pub(crate) fn month_grid<'a>(month: view_model::MonthView) -> Element<'a, Message> {
     let s = theme::spacing();
     let mut col = widget::column::with_capacity(7).spacing(s.space_xxxs);
     let mut head = widget::row::with_capacity(7).spacing(s.space_xxxs);
@@ -885,7 +967,7 @@ fn month_grid<'a>(month: view_model::MonthView) -> Element<'a, Message> {
 }
 
 /// The inline event or contact form.
-fn form_card<'a>(form: FormView) -> Element<'a, Message> {
+pub(crate) fn form_card<'a>(form: FormView) -> Element<'a, Message> {
     let s = theme::spacing();
     let len = form.fields.len();
     let active = form.fields.iter().position(|f| f.active).unwrap_or(0);
@@ -928,7 +1010,7 @@ fn form_card<'a>(form: FormView) -> Element<'a, Message> {
 
 // ----- photos -----
 
-fn photos(app: &App) -> Element<'_, Message> {
+pub(crate) fn photos(app: &App) -> Element<'_, Message> {
     if app.ui.focus == Focus::Detail {
         return viewer(app);
     }
@@ -937,65 +1019,85 @@ fn photos(app: &App) -> Element<'_, Message> {
     if grid.rows.is_empty() {
         return empty("No photos", empty_hint(app, "Click Upload to add photos."));
     }
+    // Only the rows on screen are built; each one carries the gap below it, so
+    // a row is exactly one pitch tall.
     let tile = tile_edge(app.photo_width(), cols);
     let radius = theme::active().cosmic().radius_s();
-    let mut col = widget::column::with_capacity(grid.rows.len()).spacing(GAP);
-    for (r, cells) in grid.rows.into_iter().enumerate() {
-        let mut row = widget::row::with_capacity(cols).spacing(GAP);
-        for (c, cell) in cells.into_iter().enumerate() {
-            let index = r * cols + c;
-            let thumb = cell
-                .hash
-                .as_deref()
-                .and_then(|sha| app.thumbs.get(&thumb_key(sha, THUMB_GRID)));
-            let inner: Element<'_, Message> = match thumb {
-                Some(Some(handle)) => widget::image(handle.clone())
-                    .content_fit(ContentFit::Cover)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into(),
-                _ => widget::container(widget::text::caption(cell.title))
-                    .padding(theme::spacing().space_xs)
-                    .center(Length::Fill)
-                    .into(),
-            };
-            let selected = cell.selected;
-            let framed = widget::container(inner)
-                .width(Length::Fixed(tile))
-                .height(Length::Fixed(tile))
-                .padding(3)
-                .class(theme::Container::custom(move |t| {
-                    let cosmic = t.cosmic();
-                    widget::container::Style {
-                        background: Some(Color::from(cosmic.bg_component_color()).into()),
-                        border: Border {
-                            color: if selected {
-                                cosmic.accent_color().into()
-                            } else {
-                                Color::TRANSPARENT
-                            },
-                            width: 3.0,
-                            radius: radius.into(),
-                        },
-                        ..Default::default()
-                    }
-                }));
-            row = row.push(
-                widget::mouse_area(framed)
-                    .on_press(core(Msg::Select(index)))
-                    .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate]))),
-            );
-        }
-        col = col.push(row);
-    }
-    scroll(PHOTOS_SCROLL, col)
+    let count = grid.rows.len();
+    let rows = grid.rows;
+    virtual_list(app, PHOTOS_SCROLL, count, photo_pitch(app.photo_width(), cols), move |r| {
+        photo_row(app, &rows[r], r, cols, tile, radius)
+    })
 }
 
-fn viewer(app: &App) -> Element<'_, Message> {
+/// One row of the photo grid: `cols` tiles, then the gap below them.
+fn photo_row<'a>(
+    app: &'a App,
+    cells: &[view_model::PhotoCell],
+    r: usize,
+    cols: usize,
+    tile: f32,
+    radius: [f32; 4],
+) -> Element<'a, Message> {
+    let mut row = widget::row::with_capacity(cols).spacing(GAP);
+    for (c, cell) in cells.iter().enumerate() {
+        let index = r * cols + c;
+        let thumb = cell
+            .hash
+            .as_deref()
+            .and_then(|sha| app.thumbs.get(&thumb_key(sha, THUMB_GRID)));
+        let inner: Element<'a, Message> = match thumb {
+            Some(Some(handle)) => widget::image(handle.clone())
+                .content_fit(ContentFit::Cover)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into(),
+            _ => widget::container(widget::text::caption(cell.title.clone()))
+                .padding(theme::spacing().space_xs)
+                .center(Length::Fill)
+                .into(),
+        };
+        let selected = cell.selected;
+        let framed = widget::container(inner)
+            .width(Length::Fixed(tile))
+            .height(Length::Fixed(tile))
+            .padding(3)
+            .class(theme::Container::custom(move |t| {
+                let cosmic = t.cosmic();
+                widget::container::Style {
+                    background: Some(Color::from(cosmic.bg_component_color()).into()),
+                    border: Border {
+                        color: if selected {
+                            cosmic.accent_color().into()
+                        } else {
+                            Color::TRANSPARENT
+                        },
+                        width: 3.0,
+                        radius: radius.into(),
+                    },
+                    ..Default::default()
+                }
+            }));
+        row = row.push(
+            widget::mouse_area(framed)
+                .on_press(core(Msg::Select(index)))
+                .on_double_click(core(Msg::Batch(vec![Msg::Select(index), Msg::Activate]))),
+        );
+    }
+    widget::column::with_capacity(2)
+        .push(row)
+        .push(spacer(GAP))
+        .into()
+}
+
+pub(crate) fn viewer(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let Some(detail) = view_model::photo_detail(&app.ui) else {
         return empty("No photo", "Nothing to show.".into());
     };
+    if detail.is_video {
+        return view_media::video_viewer(app, &detail);
+    }
     // The grid thumbnail stands in until the large one arrives.
     let handle = detail.hash.as_deref().and_then(|sha| {
         app.thumbs
@@ -1041,7 +1143,26 @@ fn viewer(app: &App) -> Element<'_, Message> {
 
 // ----- files -----
 
-fn files(app: &App) -> Element<'_, Message> {
+/// One file or folder: icon, name, size, and when it changed.
+fn file_row<'a>(row: &view_model::FileRow, i: usize) -> Element<'a, Message> {
+    let s = theme::spacing();
+    let icon = if row.is_dir {
+        "folder-symbolic"
+    } else {
+        "text-x-generic-symbolic"
+    };
+    let size = if row.is_dir { "Folder".to_string() } else { row.size_label.clone() };
+    let content = widget::row::with_capacity(4)
+        .spacing(s.space_s)
+        .align_y(Alignment::Center)
+        .push(widget::icon::from_name(icon).size(16).icon())
+        .push(widget::text::body(row.name.clone()).width(Length::Fill))
+        .push(widget::text::caption(size).width(Length::Fixed(90.0)))
+        .push(widget::text::caption(row.modified_label.clone()).width(Length::Fixed(100.0)));
+    row_area(content, ROW1_H, row.selected, Msg::Select(i), Msg::Activate)
+}
+
+pub(crate) fn files(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::file_rows(&app.ui);
     let body: Element<'_, Message> = if rows.is_empty() {
@@ -1050,25 +1171,7 @@ fn files(app: &App) -> Element<'_, Message> {
             empty_hint(app, "Click Upload to add files here."),
         )
     } else {
-        let mut list = widget::list_column();
-        for (i, row) in rows.into_iter().enumerate() {
-            let icon = if row.is_dir {
-                "folder-symbolic"
-            } else {
-                "text-x-generic-symbolic"
-            };
-            let content = widget::row::with_capacity(4)
-                .spacing(s.space_s)
-                .align_y(Alignment::Center)
-                .push(widget::icon::from_name(icon).size(16).icon())
-                .push(widget::text::body(row.name).width(Length::Fill))
-                .push(
-                    widget::text::caption(if row.is_dir { "Folder".into() } else { row.size_label })
-                        .width(Length::Fixed(90.0)),
-                )
-                .push(widget::text::caption(row.modified_label).width(Length::Fixed(100.0)));
-            list = list.add(row_area(content, ROW1_H, row.selected, Msg::Select(i), Msg::Activate));
-        }
+        let count = rows.len();
         let header = widget::row::with_capacity(3)
             .spacing(s.space_s)
             .padding([0, s.space_m])
@@ -1078,7 +1181,7 @@ fn files(app: &App) -> Element<'_, Message> {
         widget::column::with_capacity(2)
             .spacing(s.space_xxs)
             .push(header)
-            .push(scroll(FILES_SCROLL, list))
+            .push(virtual_list(app, FILES_SCROLL, count, ROW1_H, move |i| file_row(&rows[i], i)))
             .into()
     };
     body
@@ -1086,23 +1189,23 @@ fn files(app: &App) -> Element<'_, Message> {
 
 // ----- contacts -----
 
-fn contacts(app: &App) -> Element<'_, Message> {
+pub(crate) fn contacts(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::contact_rows(&app.ui);
     let list: Element<'_, Message> = if rows.is_empty() {
         empty("No contacts", empty_hint(app, "Click New contact to add one."))
     } else {
-        let mut list = widget::list_column();
-        for (i, row) in rows.into_iter().enumerate() {
-            list = list.add(row_area(
-                two_lines(row.name, row.subtitle),
+        let count = rows.len();
+        virtual_list(app, CONTACTS_SCROLL, count, ROW2_H, move |i| {
+            let row = &rows[i];
+            row_area(
+                two_lines(row.name.clone(), row.subtitle.clone()),
                 ROW2_H,
                 row.selected,
                 Msg::Select(i),
                 Msg::Edit,
-            ));
-        }
-        scroll(CONTACTS_SCROLL, list)
+            )
+        })
     };
     let left = widget::container(list)
         .width(Length::Fixed(LIST_W))
@@ -1283,7 +1386,8 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
                     .into(),
             )
         }
-        Focus::Input(kind) if kind != InputKind::Filter && kind != InputKind::Login => {
+        // The message draft is a field in the thread, not a dialog.
+        Focus::Input(kind) if !matches!(kind, InputKind::Filter | InputKind::Login | InputKind::MessageDraft) => {
             let prompt = view_model::input_prompt(ui)?;
             let control = widget::text_input(prompt.label, prompt.text)
                 .id(Id::new(INPUT_ID))
@@ -1304,7 +1408,7 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
     }
 }
 
-fn capitalize(s: &str) -> String {
+pub(crate) fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {
         Some(c) => c.to_uppercase().chain(chars).collect(),
@@ -1340,6 +1444,14 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
         Section::Contacts => {
             let i = view_model::contact_rows(ui).iter().position(|r| r.selected)?;
             rect(CONTACTS_SCROLL, i, ROW2_H)
+        }
+        Section::Movies | Section::Music => {
+            let i = view_model::media_rows(ui, ui.section).iter().position(|r| r.selected)?;
+            rect(if ui.section == Section::Music { MUSIC_SCROLL } else { MOVIES_SCROLL }, i, ROW2_H)
+        }
+        Section::Messages => {
+            let i = ui.messages.sel;
+            rect(CONVERSATIONS_SCROLL, i, CONVERSATION_H)
         }
         Section::Todo => {
             let pitch = row_pitch(ROW2_H);

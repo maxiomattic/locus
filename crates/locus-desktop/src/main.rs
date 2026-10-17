@@ -9,7 +9,10 @@
 
 mod keys;
 mod platform;
+mod player;
 mod view;
+mod view_media;
+mod view_messages;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -23,7 +26,7 @@ use cosmic::widget::text_editor;
 use cosmic::{Element, executor, widget};
 use locus_client::{Client, config};
 use locus_core::state::{App as Ui, Focus, InputKind};
-use locus_core::{Effect, Key, Mods, Msg, Section, Target, TextEdit, view_model};
+use locus_core::{Effect, Key, Mods, Msg, PlayerCmd, Section, Target, TextEdit, view_model};
 use url::Url;
 
 /// Local UTC offset, read in `main` before any thread exists (the `time`
@@ -34,17 +37,29 @@ static TZ_OFFSET: OnceLock<i32> = OnceLock::new();
 const DEFAULT_SERVER: &str = "http://surface:8090";
 /// Refresh interval for the core's clock (day rollover, relative dates).
 const TICK: Duration = Duration::from_secs(30);
+/// How often the player's position is read while something plays.
+const PLAYER_POLL: Duration = Duration::from_millis(250);
+/// The video picture: one frame per 1/30 s at most.
+const FRAME: Duration = Duration::from_millis(33);
+/// How often an open Messages window reads new messages.
+const MESSAGES_POLL: Duration = Duration::from_secs(3);
 /// Thumbnail edge for the grid and for the viewer.
 const THUMB_GRID: u32 = 256;
 const THUMB_VIEW: u32 = 1024;
 
 const USAGE: &str = "usage: locus-<app> [--open <target>]
-  apps: locus-notes, locus-todo, locus-calendar, locus-photos, locus-files, locus-contacts
-        (or locus-app <app>)
+  apps: locus-notes, locus-calendar (with Todo), locus-contacts, locus-files,
+        locus-photos, locus-movies, locus-music, locus-messages
+        (or locus-app <app>; locus-todo opens the Calendar app's Todo tab)
   --open <target>    show note:<id>, file:<id>, contact:<id>, new or upload
 Each app is its own window. For the command line, see `locus --help`.";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Media playback needs GStreamer; without it the apps still run, and the
+    // player says so when something is played.
+    if let Err(e) = gstreamer::init() {
+        eprintln!("locus: media playback is unavailable: {e}");
+    }
     // `locus-notes` is Notes; `locus-app notes` works too.
     let mut args = std::env::args();
     let program = args.next().unwrap_or_default();
@@ -75,25 +90,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `locus-notes` focuses the running one and hands it the target.
     macro_rules! launch {
         ($($n:literal),*) => {
-            match flags.section.index() + 1 {
+            match usize::from(window_n(flags.section)) {
                 $($n => cosmic::app::run_single_instance::<Window<$n>>(settings, flags)?,)*
-                _ => unreachable!("Section::index is below 6"),
+                _ => unreachable!("window_n is 1 to 9 and every window is listed"),
             }
         };
     }
-    launch!(1, 2, 3, 4, 5, 6);
+    // Window 2 is Todo, which lives in the Calendar window (window 3).
+    launch!(1, 3, 4, 5, 6, 7, 8, 9);
     Ok(())
 }
 
+/// The window a section is shown in, numbered 1 to 9 in [`Section::ALL`]
+/// order. Todo is a tab of the Calendar app, so it shares window 3.
+pub(crate) fn window_n(section: Section) -> u8 {
+    section.app().index() as u8 + 1
+}
+
 /// The app id COSMIC files a window under, one per app, so each is its own
-/// app (taskbar entry, tiling, `.desktop` file). 1..=6 follow [`Section::ALL`].
+/// app (taskbar entry, tiling, `.desktop` file). Numbers follow [`window_n`].
 pub(crate) const fn app_id(n: u8) -> &'static str {
     match n {
-        2 => "org.locus.Todo",
         3 => "org.locus.Calendar",
         4 => "org.locus.Photos",
         5 => "org.locus.Files",
         6 => "org.locus.Contacts",
+        7 => "org.locus.Movies",
+        8 => "org.locus.Music",
+        9 => "org.locus.Messages",
         _ => "org.locus.Notes",
     }
 }
@@ -182,6 +206,10 @@ pub(crate) enum Message {
     Scrolled(&'static str, Viewport),
     Resized(Size),
     Tick,
+    /// Read the player's position and end of file (while something plays).
+    PlayerPoll,
+    /// Pick up the newest video frame (while a video plays).
+    PlayerFrame,
 }
 
 pub(crate) struct App {
@@ -222,6 +250,9 @@ pub(crate) struct App {
     viewports: HashMap<&'static str, (f32, f32, f32)>,
     /// The selection rectangle last scrolled to, so scrolling by hand sticks.
     last_rect: Option<(&'static str, u32)>,
+    /// The native player (GStreamer), and the video frame it last produced.
+    player: player::Player,
+    frame: Option<widget::image::Handle>,
 }
 
 impl App {
@@ -275,11 +306,49 @@ impl App {
             Effect::CopyToClipboard(text) => clipboard::write::<Message>(text).map(cosmic::Action::App),
             Effect::Login { code } => self.login(code),
             Effect::OpenSection(section, target) => self.open_section(section, target),
+            Effect::Playback(cmd) => self.playback(cmd),
             other => match self.client.clone() {
                 Some(client) => run_effect(client, other),
                 None => Task::none(),
             },
         }
+    }
+
+    /// Carry out a player command. A load resolves the file's address on the
+    /// gateway; a failure goes back to the core as a message.
+    fn playback(&mut self, cmd: PlayerCmd) -> Task<Message> {
+        // A new file starts with no picture; a stopped one leaves none behind.
+        if matches!(cmd, PlayerCmd::Stop | PlayerCmd::Load { .. }) {
+            self.frame = None;
+        }
+        let (uri, cookies) = match (&cmd, self.client.as_ref()) {
+            (PlayerCmd::Load { sha256, name, .. }, Some(client)) => (
+                client.blob_url(sha256, Some(name)).ok().map(|u| u.to_string()),
+                client.session_cookies(),
+            ),
+            _ => (None, Vec::new()),
+        };
+        match self.player.command(cmd, uri.as_deref(), &cookies) {
+            Ok(()) => Task::none(),
+            Err(error) => self.dispatch(Msg::PlayerFailed(error)),
+        }
+    }
+
+    /// Read the player and feed what changed to the core.
+    fn on_player_poll(&mut self) -> Task<Message> {
+        let report = self.player.poll();
+        let mut msgs = vec![Msg::PlayerTick {
+            position_ms: report.position_ms,
+            duration_ms: report.duration_ms,
+            playing: report.playing,
+        }];
+        if report.ended {
+            msgs.push(Msg::PlayerEnded);
+        }
+        if let Some(error) = report.error {
+            msgs.push(Msg::PlayerFailed(error));
+        }
+        Task::batch(msgs.into_iter().map(|m| self.dispatch(m)).collect::<Vec<_>>())
     }
 
     /// Open or focus `section`'s own window and show `target` there: run
@@ -295,7 +364,7 @@ impl App {
             return Task::none();
         }
         use cosmic::iced::runtime::platform_specific::{self, wayland::activation};
-        let app_id = app_id(section.index() as u8 + 1).to_string();
+        let app_id = app_id(window_n(section)).to_string();
         cosmic::iced::runtime::task::oneshot(move |channel| {
             cosmic::iced::runtime::Action::PlatformSpecific(platform_specific::Action::Wayland(
                 platform_specific::wayland::Action::Activation(activation::Action::RequestToken {
@@ -696,6 +765,8 @@ impl App {
             editor_id: widget::Id::unique(),
             viewports: HashMap::new(),
             last_rect: None,
+            player: player::Player::default(),
+            frame: None,
         };
         app.ui.focus_section(Some(flags.section));
         app.ui.pending_target = flags.target;
@@ -743,7 +814,7 @@ impl App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch(vec![
+        let mut subs = vec![
             // Captured events are included on purpose: a focused text widget
             // captures keys (Enter, Escape, Tab) the core also needs.
             event::listen_with(|event, _status, _id| match event {
@@ -754,7 +825,17 @@ impl App {
                 _ => None,
             }),
             cosmic::iced::time::every(TICK).map(|_| Message::Tick),
-        ])
+        ];
+        if self.ui.player.is_some() {
+            subs.push(cosmic::iced::time::every(PLAYER_POLL).map(|_| Message::PlayerPoll));
+        }
+        if self.ui.player.as_ref().is_some_and(|p| p.is_video && p.playing) {
+            subs.push(cosmic::iced::time::every(FRAME).map(|_| Message::PlayerFrame));
+        }
+        if self.screen == Screen::Main && self.ui.section == Section::Messages {
+            subs.push(cosmic::iced::time::every(MESSAGES_POLL).map(|_| Message::Core(Msg::Poll)));
+        }
+        Subscription::batch(subs)
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -786,6 +867,13 @@ impl App {
             }
             // Refresh the core's clock (today, relative dates).
             Message::Tick => self.dispatch(Msg::Batch(Vec::new())),
+            Message::PlayerPoll => self.on_player_poll(),
+            Message::PlayerFrame => {
+                if let Some(handle) = self.player.take_frame() {
+                    self.frame = Some(handle);
+                }
+                Task::none()
+            }
         }
     }
 
