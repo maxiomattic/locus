@@ -85,10 +85,9 @@
   ^+  cor
   ::  Pill leftover %contacts is Tlon's agent (negotiate %2). Our state is
   ::  %0; a nest-fail here must reset, not crash mill of the rest of desk.bill.
-  =/  tried=(each state-0:con tang)
-    (mule |.(!<(state-0:con vase)))
-  ?:  ?=(%| -.tried)  init
-  =.  state  p.tried
+  ::  a state that does not fit crashes the upgrade, so Gall keeps the old
+  ::  agent and its data, rather than starting over empty
+  =.  state  !<(state-0:con vase)
   (emit [%pass /eyre/contacts %arvo %e %connect [~ /contacts] %contacts])
 ::
 ++  poke
@@ -160,14 +159,13 @@
 ::
 ::  decimal id. slaw %ud wants dots from 1.000 up, so insert one before the
 ::  last three digits (ids above 999,999 are rejected).
+::  plain digits ("1234567") or Hoon's dotted form ("1.234.567")
 ++  parse-id
   |=  t=@t
   ^-  (unit @ud)
-  =/  s=tape  (trip t)
-  ?:  (lte (lent s) 3)  (slaw %ud t)
-  ?:  (gth (lent s) 6)  ~
-  =/  cut=@ud  (sub (lent s) 3)
-  (slaw %ud (crip :(weld (scag cut s) "." (slag cut s))))
+  =/  plain=(unit @ud)  (rush t dem)
+  ?^  plain  plain
+  (slaw %ud t)
 ::
 ++  arg-value
   |=  [args=(list [key=@t value=@t]) k=@t]

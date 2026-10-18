@@ -10,6 +10,8 @@
 |%
 +$  card  card:agent:gall
 +$  current-state  state-0:msg
+::  longest message body, in bytes, sent or accepted
+++  max-body  8.192
 --
 =|  current-state
 =*  state  -
@@ -91,10 +93,9 @@
 ++  load
   |=  =vase
   ^+  cor
-  =/  tried=(each state-0:msg tang)
-    (mule |.(!<(state-0:msg vase)))
-  ?:  ?=(%| -.tried)  init
-  =.  state  p.tried
+  ::  a state that does not fit crashes the upgrade, so Gall keeps the old
+  ::  agent and its data, rather than starting over empty
+  =.  state  !<(state-0:msg vase)
   (emit [%pass /eyre/messages %arvo %e %connect [~ /messages] %messages])
 ::
 ++  poke
@@ -111,17 +112,18 @@
     (receive vase)
   ==
 ::
-::  a message from another ship (or from ourselves): store it as received
+::  a message from another ship: store it as received. A poke over Ames
+::  arrives as a vase of type *, so the noun is molded, not cast with !<.
+::  Anything unreadable, empty or too long crashes, which nacks the poke
+::  and the sender shows %failed. A message to ourselves is already stored
+::  as outgoing, so its received copy is dropped.
 ++  receive
   |=  =vase
   ^+  cor
-  =/  parsed=(each [@tas @t @da] tang)
-    (mule |.(!<([@tas @t @da] vase)))
-  ?:  ?=(%| -.parsed)
-    cor
-  ?:  !=(%msg -.p.parsed)
-    cor
-  =/  [* body=@t sent=@da]  p.parsed
+  =/  [* body=@t sent=@da]  ;;([%msg @t @da] q.vase)
+  ?<  =('' body)
+  ?>  (lte (met 3 body) max-body)
+  ?:  =(our.bowl src.bowl)  cor
   =/  id=@ud  next-id
   =.  next-id  +(next-id)
   =.  messages  (~(put by messages) id [id src.bowl %.n body sent %received])
@@ -218,14 +220,13 @@
   ?~  hdr=(get-api-key-header req)  |
   =(u.hdr u.api-key)
 ::
+::  plain digits ("1234567") or Hoon's dotted form ("1.234.567")
 ++  parse-id
   |=  t=@t
   ^-  (unit @ud)
-  =/  s=tape  (trip t)
-  ?:  (lte (lent s) 3)  (slaw %ud t)
-  ?:  (gth (lent s) 6)  ~
-  =/  cut=@ud  (sub (lent s) 3)
-  (slaw %ud (crip :(weld (scag cut s) "." (slag cut s))))
+  =/  plain=(unit @ud)  (rush t dem)
+  ?^  plain  plain
+  (slaw %ud t)
 ::
 ++  bad
   |=  msg=@t
@@ -273,14 +274,20 @@
   |=  [a=message:msg b=message:msg]
   (lth id.a id.b)
 ::
-::  one row per peer: how many messages, how many unread, and the last one
+::  one row per peer: how many messages, how many unread, and the last one.
+::  Newest conversation first (ids only grow, so the highest is the newest).
 ++  summaries
-  ^-  (list [peer=@p count=@ud unread=@ud last=(unit message:msg)])
+  ^-  (list summary)
   =/  peers=(list @p)
     ~(tap in (silt (turn ~(val by messages) |=(m=message:msg peer.m))))
-  %+  turn  peers
+  %+  sort  (turn peers summary-of)
+  |=  [a=summary b=summary]
+  (gth ?~(last.a 0 id.u.last.a) ?~(last.b 0 id.u.last.b))
+::
++$  summary  [peer=@p count=@ud unread=@ud last=(unit message:msg)]
+++  summary-of
   |=  who=@p
-  ^-  [peer=@p count=@ud unread=@ud last=(unit message:msg)]
+  ^-  summary
   =/  mine=(list message:msg)  (thread who)
   =/  seen=@ud  (~(gut by read) who 0)
   =/  unread=@ud
@@ -303,7 +310,7 @@
   =/  [to=@p body=@t]  p.parsed
   ?:  =('' body)
     [(err:enjs:messages-json 'bad-request' 'message is empty') cor]
-  ?:  (gth (met 3 body) 8.192)
+  ?:  (gth (met 3 body) max-body)
     [(err:enjs:messages-json 'bad-request' 'message is too long') cor]
   =/  id=@ud  next-id
   =.  next-id  +(next-id)

@@ -65,4 +65,67 @@
   =/  txt=tape  (trip (en:json:html !<(json q.cage)))
   ?<  ?=(^ (find (trip '"~dev"') txt))
   (pure:m ~)
+::
+::  a poke from another ship arrives over Ames as an untyped noun
+++  remote
+  |=  [body=@t sent=@da]
+  (do-poke %noun !>(`*`[%msg body sent]))
+::
+++  test-untyped-remote-poke-is-stored
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'over ames' ~2026.10.16)
+  ;<  =cage  bind:m  (got-peek /x/messages)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?>  ?=(^ (find (trip '"body":"over ames"') txt))
+  (pure:m ~)
+::
+++  test-unreadable-poke-is-nacked
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  (ex-fail (do-poke %noun !>(`*`[%hello 42])))
+::
+++  test-too-long-body-is-nacked
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  =/  long=@t  (crip (reap 8.193 'x'))
+  (ex-fail (remote long ~2026.10.16))
+::
+++  test-own-copy-is-not-stored-twice
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (remote 'to myself' ~2026.10.16)
+  ;<  =cage  bind:m  (got-peek /x/messages)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?<  ?=(^ (find (trip '"body":"to myself"') txt))
+  (pure:m ~)
+::
+++  test-newest-conversation-first
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'first' ~2026.10.16)
+  ;<  ~  bind:m  (set-src ~nec)
+  ;<  *  bind:m  (remote 'second' ~2026.10.16)
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'third' ~2026.10.16)
+  ;<  =cage  bind:m  (got-peek /x/messages)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  =/  dev=(unit @ud)  (find (trip '"peer":"~dev"') txt)
+  =/  nec=(unit @ud)  (find (trip '"peer":"~nec"') txt)
+  ?>  &(?=(^ dev) ?=(^ nec) (lth u.dev u.nec))
+  (pure:m ~)
 --

@@ -99,10 +99,9 @@
 ++  load
   |=  =vase
   ^+  cor
-  =/  tried=(each state-0:loc tang)
-    (mule |.(!<(state-0:loc vase)))
-  ?:  ?=(%| -.tried)  init
-  =.  state  p.tried
+  ::  a state that does not fit crashes the upgrade, so Gall keeps the old
+  ::  agent and its data, rather than starting over empty
+  =.  state  !<(state-0:loc vase)
   (emit [%pass /eyre/locus %arvo %e %connect [~ /locus] %locus])
 ::
 ++  poke

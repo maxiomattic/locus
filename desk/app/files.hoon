@@ -83,10 +83,9 @@
 ++  load
   |=  =vase
   ^+  cor
-  =/  tried=(each state-0:fil tang)
-    (mule |.(!<(state-0:fil vase)))
-  ?:  ?=(%| -.tried)  init
-  =.  state  p.tried
+  ::  a state that does not fit crashes the upgrade, so Gall keeps the old
+  ::  agent and its data, rather than starting over empty
+  =.  state  !<(state-0:fil vase)
   (emit [%pass /eyre/files %arvo %e %connect [~ /files] %files])
 ::
 ++  poke
@@ -200,14 +199,13 @@
 ::
 ::  decimal id. slaw %ud wants dots from 1.000 up, so insert one before the
 ::  last three digits (ids above 999,999 are rejected).
+::  plain digits ("1234567") or Hoon's dotted form ("1.234.567")
 ++  parse-id
   |=  t=@t
   ^-  (unit @ud)
-  =/  s=tape  (trip t)
-  ?:  (lte (lent s) 3)  (slaw %ud t)
-  ?:  (gth (lent s) 6)  ~
-  =/  cut=@ud  (sub (lent s) 3)
-  (slaw %ud (crip :(weld (scag cut s) "." (slag cut s))))
+  =/  plain=(unit @ud)  (rush t dem)
+  ?^  plain  plain
+  (slaw %ud t)
 ::
 ++  bad
   |=  msg=@t
@@ -509,6 +507,7 @@
   ?.  (valid-dir to)  (bad 'to must be absolute, with no empty or .. segments')
   ?:  |(=('/' from) =('/' to))  (bad 'cannot move the root folder')
   ?:  |(=(from to) (under from to))  (bad 'cannot move a folder into itself')
+  ?.  (dir-taken from)  [(err:enjs:files-json 'not-found' 'no such folder') cor]
   ?:  (dir-taken to)  [(err:enjs:files-json 'conflict' 'destination exists') cor]
   =/  moving=$-(@t ?)  |=(d=@t |(=(d from) (under from d)))
   =.  files
