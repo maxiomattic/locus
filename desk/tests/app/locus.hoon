@@ -67,8 +67,8 @@
   ^-  form:m
   ;<  ~  bind:m  init
   ;<  *  bind:m  (call add-agent)
-  ;<  =cage  bind:m  (got-peek /x/members)
-  =/  jon=json  !<(json q.cage)
+  ;<  mem=cage  bind:m  (got-peek /x/members)
+  =/  jon=json  !<(json q.mem)
   ?>  ?=(%a -.jon)
   ?>  ?=([^ ^ ~] p.jon)
   ;<  =cage  bind:m  (got-peek (weld /x/has-key [(scot %p ~dev)]~))

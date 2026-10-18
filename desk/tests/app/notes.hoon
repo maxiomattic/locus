@@ -2266,19 +2266,6 @@
   ?~  vis
     |+['snapshot missing visibility field']~
   &+[~ s]
-::  +activity-actions: extract the activity actions poked at %activity
-::  from a card list, in emission order.
-::
-++  activity-actions
-  |=  caz=(list card)
-  ^-  (list action:v10:av)
-  %+  murn  caz
-  |=  =card
-  ^-  (unit action:v10:av)
-  ?.  ?=([%pass * %agent * %poke *] card)  ~
-  ?.  =(%activity name.q.card)  ~
-  ?.  =(%activity-action-2 p.cage.task.q.card)  ~
-  `!<(action:v10:av q.cage.task.q.card)
 ::  +edit-timer-wires: extract the %note-edit debounce timer wires from a
 ::  card list, in emission order.
 ::
