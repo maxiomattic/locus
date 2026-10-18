@@ -27,7 +27,7 @@ The near-term goal is a version the author can use day to day: working browser a
   - Movies and Music: views over Files. A movie is a video file in `/Movies`; a track is an audio file in `/Music/<artist>/<album>/`. Play is tested in the browser and on the desktop, with video frames drawn in the app. Pause, seek, volume, next and previous are built but not yet tried.
   - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. Tested with messages to the same ship; not yet between two real ships.
 - Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows (Notes, Files, Contacts, Photos, Movies, Music, Messages). Todo and the calendar agenda still draw every row.
-- Built but not on the server yet: the server still runs an older build. Everything after it needs a deploy, which needs the administrator's sudo.
+- Deployed to the Surface server on 2026-10-18: the browser app, the gateway, and the %locus desk with %messages and folder moves. The desk was snapshotted first (rpool/urbit/pier@locus-desk-deploy-20261018T190032Z). The installed desktop programs still have a GStreamer bug (no movie or track plays) until the fix in aece93a is built and switched in.
 - Next:
   1. Deploy the latest build and check it on the server (needs the administrator's confirmation).
   2. Fix a race in moving a note between notebooks: typing during the move can be lost when the original is deleted.
