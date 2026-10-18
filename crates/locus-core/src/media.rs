@@ -136,12 +136,19 @@ pub fn artist_album(dir: &str) -> (String, String) {
     (artist, album)
 }
 
-/// Movies in the filter, by name.
+/// Whether `dir` is `root` or a folder below it.
+pub fn is_within(dir: &str, root: &str) -> bool {
+    dir.strip_prefix(root)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+/// Movies in the filter, by name: the videos at or below `/Movies`.
 pub fn movies(app: &App) -> Vec<&FileEntry> {
     let mut out: Vec<&FileEntry> = app
         .files
         .files
         .iter()
+        .filter(|f| is_within(&f.dir, MOVIES_DIR))
         .filter(|f| kind_of(&f.name, &f.mime) == Kind::Video)
         .filter(|f| matches_filter(&app.filter, &[&f.name]))
         .collect();
@@ -154,12 +161,14 @@ pub fn movies(app: &App) -> Vec<&FileEntry> {
     out
 }
 
-/// Music in the filter, grouped by folder so an album's tracks sit together.
+/// Music in the filter, grouped by folder so an album's tracks sit together:
+/// the audio files at or below `/Music`.
 pub fn music(app: &App) -> Vec<&FileEntry> {
     let mut out: Vec<&FileEntry> = app
         .files
         .files
         .iter()
+        .filter(|f| is_within(&f.dir, MUSIC_DIR))
         .filter(|f| kind_of(&f.name, &f.mime) == Kind::Audio)
         .filter(|f| matches_filter(&app.filter, &[&f.name, &f.dir]))
         .collect();

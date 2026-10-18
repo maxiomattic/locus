@@ -388,6 +388,12 @@ pub enum Msg {
     MessageDeleted {
         id: u64,
     },
+    /// The ship did not take the message: the text goes back to the draft.
+    SendFailed {
+        peer: String,
+        body: String,
+        error: String,
+    },
     /// A folder moved from `from` to `to` (a rename is a move too).
     DirMoved {
         from: String,
@@ -598,7 +604,7 @@ pub enum Effect {
     LoadThread {
         peer: String,
     },
-    /// Send `body` to the ship `to`. Answered by [`Msg::MessageSent`] or [`Msg::WriteFailed`].
+    /// Send `body` to the ship `to`. Answered by [`Msg::MessageSent`] or [`Msg::SendFailed`].
     SendMessage {
         to: String,
         body: String,

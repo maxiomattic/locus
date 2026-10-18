@@ -27,7 +27,9 @@ pub fn conversation<'a>(app: &'a App, peer: &str) -> Option<&'a Conversation> {
     app.messages.conversations.iter().find(|c| c.peer == peer)
 }
 
-pub fn conversations_loaded(app: &mut App, conversations: Vec<Conversation>) {
+/// The list arrived. A conversation open on screen is being read, so messages
+/// that came into it since are marked read at once.
+pub fn conversations_loaded(app: &mut App, fx: &mut Vec<Effect>, conversations: Vec<Conversation>) {
     app.messages.conversations = conversations;
     app.messages.listed = true;
     let i = Section::Messages.index();
@@ -44,6 +46,17 @@ pub fn conversations_loaded(app: &mut App, conversations: Vec<Conversation>) {
         app.messages.sel = pos;
     }
     app.messages.sel = clamp_sel(app.messages.sel, app.messages.conversations.len());
+    if app.section == Section::Messages
+        && let Some(open) = app.messages.open.clone()
+        && let Some(c) = app
+            .messages
+            .conversations
+            .iter_mut()
+            .find(|c| c.peer == open && c.unread > 0)
+    {
+        c.unread = 0;
+        fx.push(Effect::MarkRead { peer: open });
+    }
 }
 
 pub fn thread_loaded(app: &mut App, peer: String, messages: Vec<Message>) {
@@ -178,6 +191,27 @@ pub fn message_sent(app: &mut App, fx: &mut Vec<Effect>, peer: String) {
         fx.push(Effect::LoadThread { peer });
     }
     fx.push(Effect::LoadConversations);
+}
+
+/// The ship refused the message or could not be reached. The "sending" row
+/// goes, and its text returns to the draft unless a new one was started.
+pub fn send_failed(app: &mut App, peer: String, body: String, error: String) {
+    if app.messages.open.as_deref() == Some(peer.as_str()) {
+        if let Some(i) = app
+            .messages
+            .thread
+            .iter()
+            .rposition(|m| m.id == 0 && m.outgoing && m.body == body)
+        {
+            app.messages.thread.remove(i);
+            app.messages.thread_sel =
+                clamp_sel(app.messages.thread_sel, app.messages.thread.len());
+        }
+        if app.messages.draft.trim().is_empty() {
+            app.messages.draft = body;
+        }
+    }
+    app.error(format!("Message not sent: {error}"));
 }
 
 /// Quiet re-read of the list and the open thread, for the shell's timer.

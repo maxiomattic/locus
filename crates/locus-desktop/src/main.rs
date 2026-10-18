@@ -269,7 +269,9 @@ impl App {
         match &msg {
             Msg::LoggedIn => self.logged_in(),
             Msg::LoginFailed { .. } => self.login_pending = false,
-            Msg::LoadFailed { error, .. } | Msg::WriteFailed { error, .. }
+            Msg::LoadFailed { error, .. }
+            | Msg::WriteFailed { error, .. }
+            | Msg::SendFailed { error, .. }
                 if error.contains("HTTP 401") || error.contains("HTTP 403") =>
             {
                 // The session expired or was revoked: back to the login form.

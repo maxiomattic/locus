@@ -33,6 +33,19 @@
       # Set locus.server.diskDevice to the server's /dev/disk/by-id/...
       # before Disko format.
       serverDiskPlaceholder = "/dev/disk/by-id/REPLACE-ME-server-disk";
+
+      # GStreamer plugin directories for the desktop player's decoders. The
+      # core package's default output holds only the tools; its plugins
+      # (typefind and the other core elements) are in `out`.
+      gstPluginPathFor =
+        pkgs:
+        pkgs.lib.makeSearchPath "lib/gstreamer-1.0" [
+          pkgs.gst_all_1.gstreamer.out
+          pkgs.gst_all_1.gst-plugins-base
+          pkgs.gst_all_1.gst-plugins-good
+          pkgs.gst_all_1.gst-plugins-bad
+          pkgs.gst_all_1.gst-libav
+        ];
     in
     {
       # Clan machines import these. CalDAV, Attic, and operator
@@ -142,14 +155,7 @@
             rustc = rustToolchain;
           };
 
-          # GStreamer plugin directories for the desktop player's decoders.
-          gstPluginPath = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" [
-            pkgs.gst_all_1.gstreamer.out
-            pkgs.gst_all_1.gst-plugins-base
-            pkgs.gst_all_1.gst-plugins-good
-            pkgs.gst_all_1.gst-plugins-bad
-            pkgs.gst_all_1.gst-libav
-          ];
+          gstPluginPath = gstPluginPathFor pkgs;
 
           # One vendored dependency set for every crate in the workspace.
           # Update the hash whenever Cargo.lock changes.
@@ -361,13 +367,7 @@
               pkgs.adwaita-icon-theme
             ];
             LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
-            GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" [
-              pkgs.gst_all_1.gstreamer.out
-              pkgs.gst_all_1.gst-plugins-base
-              pkgs.gst_all_1.gst-plugins-good
-              pkgs.gst_all_1.gst-plugins-bad
-              pkgs.gst_all_1.gst-libav
-            ];
+            GST_PLUGIN_SYSTEM_PATH_1_0 = gstPluginPathFor pkgs;
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
               pkgs.wayland
               pkgs.libxkbcommon

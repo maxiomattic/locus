@@ -383,3 +383,61 @@ fn a_folder_that_moves_while_open_is_followed() {
     );
     assert_eq!(app.files.cwd, "/archive/school");
 }
+
+#[test]
+fn a_failed_send_puts_the_text_back_in_the_draft() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    send(&mut app, Msg::BeginDraft);
+    type_str(&mut app, "on my way");
+    send(&mut app, Msg::Submit);
+    send(
+        &mut app,
+        Msg::SendFailed {
+            peer: "~dev".into(),
+            body: "on my way".into(),
+            error: "server returned HTTP 500".into(),
+        },
+    );
+    let view = view_model::messages_view(&app);
+    assert_eq!(view.draft, "on my way");
+    assert!(view.thread.iter().all(|m| m.status != "Sending"));
+    assert!(app.status.text.contains("not sent"));
+}
+
+#[test]
+fn new_messages_in_the_open_conversation_are_marked_read() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    let fx = send(
+        &mut app,
+        Msg::ConversationsLoaded {
+            conversations: vec![conv(
+                "~dev",
+                1,
+                msg(10, "~dev", false, "are you there?", Status::Received),
+            )],
+        },
+    );
+    assert!(fx
+        .iter()
+        .any(|e| matches!(e, Effect::MarkRead { peer } if peer == "~dev")));
+    assert_eq!(locus_core::messages::unread_total(&app), 0);
+}
+
+#[test]
+fn a_closed_conversation_keeps_its_unread_count() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    let fx = send(
+        &mut app,
+        Msg::ConversationsLoaded {
+            conversations: vec![
+                conv("~dev", 0, msg(3, "~dev", false, "see you at six", Status::Received)),
+                conv("~tyr", 3, msg(11, "~tyr", false, "and more", Status::Received)),
+            ],
+        },
+    );
+    assert!(!fx.iter().any(|e| matches!(e, Effect::MarkRead { .. })));
+    assert_eq!(locus_core::messages::unread_total(&app), 3);
+}

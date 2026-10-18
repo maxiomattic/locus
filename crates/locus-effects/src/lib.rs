@@ -136,7 +136,11 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
         },
         Effect::SendMessage { to, body } => match client.send_message(&to, &body).await {
             Ok(_) => vec![Msg::MessageSent { peer: to }],
-            Err(e) => vec![write_failed(Section::Messages, &e)],
+            Err(e) => vec![Msg::SendFailed {
+                peer: to,
+                body,
+                error: describe(&e),
+            }],
         },
         // A missed read mark is not worth interrupting the user; the next read
         // of the list will show the unread count again.

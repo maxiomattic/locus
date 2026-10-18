@@ -308,3 +308,25 @@ fn a_video_photo_plays_in_the_viewer_and_an_image_does_not() {
     let detail = view_model::photo_detail(&app).unwrap();
     assert!(detail.is_video);
 }
+
+#[test]
+fn only_files_under_movies_and_music_are_listed() {
+    let mut app = App::new();
+    send(&mut app, Msg::Switch(Section::Movies));
+    send(
+        &mut app,
+        Msg::FilesLoaded {
+            files: vec![
+                media_file(1, "/Movies", "Heat.mp4", "video/mp4"),
+                media_file(2, "/Movies/Classics", "Metropolis.mp4", "video/mp4"),
+                media_file(3, "/Phone/2026", "clip.mp4", "video/mp4"),
+                media_file(4, "/Movies Extra", "Not a movie.mp4", "video/mp4"),
+                media_file(5, "/Music/Bach/Goldberg", "01 - Aria.flac", "audio/flac"),
+                media_file(6, "/Voice memos", "memo.m4a", "audio/mp4"),
+            ],
+        },
+    );
+    assert_eq!(movie_names(&app), vec!["Heat.mp4", "Metropolis.mp4"]);
+    assert_eq!(track_names(&app), vec!["01 - Aria.flac"]);
+}
+

@@ -132,7 +132,7 @@ fn big_library() -> App {
                 count: 60,
                 unread: c % 3,
                 last: Some(message(
-                    60 * c as u64 + 59,
+                    60 * c + 59,
                     &peer,
                     false,
                     "the last message in this conversation",
@@ -484,7 +484,7 @@ fn every_operation_fits_one_frame() {
 
 fn report(t: &[Timing]) {
     let mut sorted: Vec<&Timing> = t.iter().collect();
-    sorted.sort_by(|a, b| b.elapsed.cmp(&a.elapsed));
+    sorted.sort_by_key(|t| std::cmp::Reverse(t.elapsed));
     let max = sorted.first().map(|x| x.elapsed).unwrap_or_default();
     eprintln!("\n{} operations; slowest {:?}", t.len(), max);
     for x in sorted.iter().take(12) {

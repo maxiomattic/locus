@@ -125,11 +125,12 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::SendDraft => messages::send(app, fx),
         Msg::Poll => messages::poll(app, fx),
         Msg::ConversationsLoaded { conversations } => {
-            messages::conversations_loaded(app, conversations);
+            messages::conversations_loaded(app, fx, conversations);
         }
         Msg::ThreadLoaded { peer, messages } => messages::thread_loaded(app, peer, messages),
         Msg::MessageSent { peer } => messages::message_sent(app, fx, peer),
         Msg::MessageDeleted { id } => messages::message_deleted(app, fx, id),
+        Msg::SendFailed { peer, body, error } => messages::send_failed(app, peer, body, error),
         Msg::ExecuteDeleteMessage { id } => messages::execute_delete(app, fx, id),
         Msg::DirMoved { from, to } => {
             files::dir_moved(app, &from, &to);

@@ -168,7 +168,7 @@ pub(crate) fn transport(p: &PlayerView) -> Element<'static, Message> {
         .push(maybe_icon(
             "media-skip-backward-symbolic",
             "Previous",
-            p.can_prev.then(|| Msg::PrevTrack),
+            p.can_prev.then_some(Msg::PrevTrack),
         ))
         .push(icon_button_plain(
             play_icon,
@@ -178,7 +178,7 @@ pub(crate) fn transport(p: &PlayerView) -> Element<'static, Message> {
         .push(maybe_icon(
             "media-skip-forward-symbolic",
             "Next",
-            p.can_next.then(|| Msg::NextTrack),
+            p.can_next.then_some(Msg::NextTrack),
         ))
         .push(icon_button_plain(
             "media-playback-stop-symbolic",

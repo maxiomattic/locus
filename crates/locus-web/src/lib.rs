@@ -197,7 +197,8 @@ impl Shell {
         if shell.app.player.is_some() {
             subs.push(Subscription::run_with(PLAYER_POLL_MS, platform::ticks).map(|_| Message::PlayerPoll));
         }
-        if shell.player.is_video() {
+        // Frames only while the picture moves; a paused video keeps its last.
+        if shell.player.is_video() && shell.app.player.as_ref().is_some_and(|p| p.playing) {
             subs.push(Subscription::run_with(FRAME_MS, platform::ticks).map(|_| Message::PlayerFrame));
         }
         if shell.logged_in && shell.app.section == Section::Messages {
@@ -272,6 +273,10 @@ impl Shell {
             }
             Message::PlayerPoll => {
                 let report = self.player.poll();
+                // A paused video gets no frame timer, so a seek shows here.
+                if !report.playing && let Some(frame) = self.player.frame() {
+                    self.frame = Some(frame);
+                }
                 let mut msgs = vec![Msg::PlayerTick {
                     position_ms: report.position_ms,
                     duration_ms: report.duration_ms,
@@ -313,7 +318,9 @@ impl Shell {
         if matches!(msg, Msg::LoggedIn) {
             self.logged_in = true;
         }
-        if let Msg::LoadFailed { error, .. } | Msg::WriteFailed { error, .. } = &msg
+        if let Msg::LoadFailed { error, .. }
+        | Msg::WriteFailed { error, .. }
+        | Msg::SendFailed { error, .. } = &msg
             && (error.contains("HTTP 401") || error.contains("HTTP 403"))
         {
             // The session expired: show the login card again.
