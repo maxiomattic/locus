@@ -10,7 +10,7 @@ use cosmic::widget::{self, Id};
 use cosmic::{Element, theme};
 use locus_core::state::{CalMode, Focus, InputKind, Level, Section};
 use locus_core::view_model::{self, EditorView, FormView, HistoryView};
-use locus_core::{Msg, Nav, TextEdit};
+use locus_core::{Date, Msg, Nav, TextEdit};
 
 use crate::{App, Message, Screen, THUMB_GRID, THUMB_VIEW, thumb_key, view_media, view_messages};
 
@@ -299,6 +299,40 @@ pub(crate) fn virtual_list<'a>(
 /// An empty block of `h` pixels, for the rows a virtual list is not drawing.
 pub(crate) fn spacer<'a>(h: f32) -> Element<'a, Message> {
     widget::Space::new().width(Length::Fill).height(Length::Fixed(h.max(0.0))).into()
+}
+
+/// A stack of pieces of mixed heights scrolled inside `id`, where `heights[i]`
+/// is the height of the piece `build(i)`. As in [`virtual_list`], only the
+/// pieces near the viewport are built, and spacers stand in for the rest. Pieces
+/// must have exactly the heights given.
+pub(crate) fn virtual_column<'a>(
+    app: &App,
+    id: &'static str,
+    heights: &[f32],
+    build: impl Fn(usize) -> Element<'a, Message>,
+) -> Element<'a, Message> {
+    let (offset, height) = app
+        .viewports
+        .get(id)
+        .map(|&(offset, height, _)| (offset, height))
+        .unwrap_or((0.0, app.default_view_height()));
+    let w = view_model::row_window(heights, offset, height, OVERSCAN);
+    let mut col = widget::column::with_capacity(w.last - w.first + 2);
+    col = col.push(spacer(w.above));
+    for i in w.first..w.last {
+        col = col.push(build(i));
+    }
+    col = col.push(spacer(w.below));
+    scroll(id, col)
+}
+
+/// `el` with a `gap`-pixel spacer under it, for a piece that ends a group.
+fn with_gap<'a>(el: Element<'a, Message>, gap: f32) -> Element<'a, Message> {
+    widget::column::with_capacity(2)
+        .width(Length::Fill)
+        .push(el)
+        .push(spacer(gap))
+        .into()
 }
 
 // ----- chrome -----
@@ -698,58 +732,82 @@ pub(crate) fn todo_groups(app: &App) -> Vec<view_model::Group> {
         .collect()
 }
 
-pub(crate) fn todo(app: &App) -> Element<'_, Message> {
-    let s = theme::spacing();
-    let groups = todo_groups(app);
-    if groups.is_empty() {
-        return empty(
-            "No tasks",
-            empty_hint(app, "Click Add task, or write - [ ] lines in a note."),
-        );
-    }
-    let mut col = widget::column::with_capacity(groups.len() * 2).spacing(s.space_xs);
+/// One row of the Todo list, flattened out of its group so that each row can
+/// be placed by height. `i` is the task's index across all shown groups.
+enum TodoPiece {
+    Header { title: &'static str, count: usize },
+    Hidden,
+    Task { i: usize, task: view_model::TaskRow, last: bool },
+}
+
+/// The Todo list as pieces with their heights, in order. A heading and a
+/// hidden note carry the gap under them, and the last task of a group carries
+/// the gap after the group.
+fn todo_pieces(app: &App) -> Vec<(TodoPiece, f32)> {
+    let sp = f32::from(theme::spacing().space_xs);
+    let mut pieces = Vec::new();
     let mut index = 0usize;
-    for group in groups {
-        let title: Element<'_, Message> = if group.title.eq_ignore_ascii_case("overdue") {
-            caption_colored(group.title, danger())
-        } else {
-            widget::text::heading(group.title).into()
-        };
-        col = col.push(
-            widget::container(
+    for group in todo_groups(app) {
+        pieces.push((TodoPiece::Header { title: group.title, count: group.count }, HEADER_H + sp));
+        if group.collapsed {
+            pieces.push((TodoPiece::Hidden, NOTE_H + sp));
+            continue;
+        }
+        let n = group.items.len();
+        for (k, task) in group.items.into_iter().enumerate() {
+            let last = k + 1 == n;
+            let h = ROW2_H + if last { sp } else { 0.0 };
+            pieces.push((TodoPiece::Task { i: index, task, last }, h));
+            index += 1;
+        }
+    }
+    pieces
+}
+
+fn todo_piece<'a>(piece: &TodoPiece) -> Element<'a, Message> {
+    let s = theme::spacing();
+    let sp = f32::from(s.space_xs);
+    match piece {
+        TodoPiece::Header { title, count } => {
+            let heading: Element<'a, Message> = if title.eq_ignore_ascii_case("overdue") {
+                caption_colored(*title, danger())
+            } else {
+                widget::text::heading(*title).into()
+            };
+            let head: Element<'a, Message> = widget::container(
                 widget::row::with_capacity(2)
                     .spacing(s.space_xs)
                     .align_y(Alignment::Center)
-                    .push(title)
-                    .push(widget::text::caption(group.count.to_string())),
+                    .push(heading)
+                    .push(widget::text::caption(count.to_string())),
             )
             .height(Length::Fixed(HEADER_H))
-            .align_y(Alignment::Center),
-        );
-        if group.collapsed {
-            col = col.push(
-                widget::container(widget::text::caption("Hidden. Click Show done to see them."))
-                    .height(Length::Fixed(NOTE_H)),
-            );
-            continue;
+            .align_y(Alignment::Center)
+            .into();
+            with_gap(head, sp)
         }
-        let mut list = widget::list_column();
-        for task in group.items {
-            let i = index;
-            index += 1;
+        TodoPiece::Hidden => {
+            let note: Element<'a, Message> =
+                widget::container(widget::text::caption("Hidden. Click Show done to see them."))
+                    .height(Length::Fixed(NOTE_H))
+                    .into();
+            with_gap(note, sp)
+        }
+        TodoPiece::Task { i, task, last } => {
+            let i = *i;
             let check = widget::checkbox(task.done)
                 .on_toggle(move |_| core(Msg::Batch(vec![Msg::Select(i), Msg::ToggleTask])));
-            let text: Element<'_, Message> = if task.done {
-                widget::text::body(task.text)
+            let text: Element<'a, Message> = if task.done {
+                widget::text::body(task.text.clone())
                     .class(theme::Text::Color(dim()))
                     .into()
             } else {
-                widget::text::body(task.text).into()
+                widget::text::body(task.text.clone()).into()
             };
-            let due: Element<'_, Message> = if task.overdue {
-                caption_colored(task.due_label, danger())
+            let due: Element<'a, Message> = if task.overdue {
+                caption_colored(task.due_label.clone(), danger())
             } else {
-                widget::text::caption(task.due_label).into()
+                widget::text::caption(task.due_label.clone()).into()
             };
             let content = widget::row::with_capacity(3)
                 .spacing(s.space_s)
@@ -759,14 +817,25 @@ pub(crate) fn todo(app: &App) -> Element<'_, Message> {
                     widget::column::with_capacity(2)
                         .width(Length::Fill)
                         .push(text)
-                        .push(widget::text::caption(task.source_note_title)),
+                        .push(widget::text::caption(task.source_note_title.clone())),
                 )
                 .push(due);
-            list = list.add(row_area(content, ROW2_H, task.selected, Msg::Select(i), Msg::Activate));
+            let row = row_area(content, ROW2_H, task.selected, Msg::Select(i), Msg::Activate);
+            if *last { with_gap(row, sp) } else { row }
         }
-        col = col.push(list);
     }
-    scroll(TODO_SCROLL, col)
+}
+
+pub(crate) fn todo(app: &App) -> Element<'_, Message> {
+    let pieces = todo_pieces(app);
+    if pieces.is_empty() {
+        return empty(
+            "No tasks",
+            empty_hint(app, "Click Add task, or write - [ ] lines in a note."),
+        );
+    }
+    let heights: Vec<f32> = pieces.iter().map(|&(_, h)| h).collect();
+    virtual_column(app, TODO_SCROLL, &heights, move |i| todo_piece(&pieces[i].0))
 }
 
 pub(crate) fn dim() -> Color {
@@ -839,51 +908,83 @@ pub(crate) fn s_s() -> u16 {
     theme::spacing().space_s
 }
 
+/// One row of the agenda, flattened out of its day so that each row can be
+/// placed by height.
+enum AgendaPiece {
+    Day { label: String, selected: bool },
+    /// `j` is the event's index in its day. `date` is the day a click must
+    /// select first, or `None` when the day is already selected.
+    Event { time: String, title: String, selected: bool, j: usize, date: Option<Date>, last: bool },
+}
+
+/// The agenda as pieces with their heights, in order. A day heading carries
+/// the gap under it, and the last event of a day carries the gap after the day.
+fn agenda_pieces(app: &App) -> Vec<(AgendaPiece, f32)> {
+    let sp = f32::from(theme::spacing().space_xs);
+    let mut pieces = Vec::new();
+    for day in view_model::agenda(&app.ui) {
+        let mut label = day.label.clone();
+        if day.is_today {
+            label.push_str(" · Today");
+        }
+        pieces.push((AgendaPiece::Day { label, selected: day.is_selected }, HEADER_H + sp));
+        let n = day.events.len();
+        let date = if day.is_selected { None } else { Some(day.date) };
+        for (j, ev) in day.events.into_iter().enumerate() {
+            let last = j + 1 == n;
+            let h = ROW1_H + if last { sp } else { 0.0 };
+            let piece = AgendaPiece::Event {
+                time: ev.time_label,
+                title: ev.title,
+                selected: ev.selected,
+                j,
+                date,
+                last,
+            };
+            pieces.push((piece, h));
+        }
+    }
+    pieces
+}
+
+fn agenda_piece<'a>(piece: &AgendaPiece) -> Element<'a, Message> {
+    let sp = f32::from(theme::spacing().space_xs);
+    match piece {
+        AgendaPiece::Day { label, selected } => {
+            let heading: Element<'a, Message> = if *selected {
+                widget::text::heading(label.clone())
+                    .class(theme::Text::Color(accent()))
+                    .into()
+            } else {
+                widget::text::heading(label.clone()).into()
+            };
+            let head: Element<'a, Message> = widget::container(heading)
+                .height(Length::Fixed(HEADER_H))
+                .align_y(Alignment::Center)
+                .into();
+            with_gap(head, sp)
+        }
+        AgendaPiece::Event { time, title, selected, j, date, last } => {
+            let select = match *date {
+                Some(date) => Msg::Batch(vec![Msg::SelectDay(date), Msg::Select(*j)]),
+                None => Msg::Select(*j),
+            };
+            let row = row_area(event_row(time.clone(), title.clone()), ROW1_H, *selected, select, Msg::Edit);
+            if *last { with_gap(row, sp) } else { row }
+        }
+    }
+}
+
 pub(crate) fn agenda(app: &App) -> Element<'_, Message> {
-    let s = theme::spacing();
-    let days = view_model::agenda(&app.ui);
-    if days.is_empty() {
+    let pieces = agenda_pieces(app);
+    if pieces.is_empty() {
         return empty(
             "No events",
             empty_hint(app, "Nothing in the next 30 days. Click New event to add one."),
         );
     }
-    let mut col = widget::column::with_capacity(days.len() * 2).spacing(s.space_xs);
-    for day in days {
-        let mut label = day.label.clone();
-        if day.is_today {
-            label.push_str(" · Today");
-        }
-        let heading: Element<'_, Message> = if day.is_selected {
-            widget::text::heading(label)
-                .class(theme::Text::Color(accent()))
-                .into()
-        } else {
-            widget::text::heading(label).into()
-        };
-        col = col.push(
-            widget::container(heading)
-                .height(Length::Fixed(HEADER_H))
-                .align_y(Alignment::Center),
-        );
-        let mut list = widget::list_column();
-        for (j, ev) in day.events.into_iter().enumerate() {
-            let select = if day.is_selected {
-                Msg::Select(j)
-            } else {
-                Msg::Batch(vec![Msg::SelectDay(day.date), Msg::Select(j)])
-            };
-            list = list.add(row_area(
-                event_row(ev.time_label, ev.title),
-                ROW1_H,
-                ev.selected,
-                select,
-                Msg::Edit,
-            ));
-        }
-        col = col.push(list);
-    }
-    scroll(AGENDA_SCROLL, col)
+    let heights: Vec<f32> = pieces.iter().map(|&(_, h)| h).collect();
+    virtual_column(app, AGENDA_SCROLL, &heights, move |i| agenda_piece(&pieces[i].0))
 }
 
 /// The selected day's events under the month grid, so Edit and Delete have
@@ -1422,7 +1523,6 @@ pub(crate) fn capitalize(s: &str) -> String {
 /// mirroring the layout above.
 pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
     let ui = &app.ui;
-    let sp = f32::from(theme::spacing().space_xs);
     let rect = |id, i: usize, h: f32| Some((id, i as f32 * row_pitch(h), row_pitch(h)));
     if ui.focus == Focus::Palette {
         let i = view_model::palette_rows(ui).iter().position(|r| r.selected)?;
@@ -1454,18 +1554,12 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
             rect(CONVERSATIONS_SCROLL, i, CONVERSATION_H)
         }
         Section::Todo => {
-            let pitch = row_pitch(ROW2_H);
             let mut y = 0.0;
-            for group in todo_groups(app) {
-                y += HEADER_H + sp;
-                if group.collapsed {
-                    y += NOTE_H + sp;
-                    continue;
+            for (piece, h) in todo_pieces(app) {
+                if matches!(&piece, TodoPiece::Task { task, .. } if task.selected) {
+                    return Some((TODO_SCROLL, y, ROW2_H));
                 }
-                if let Some(k) = group.items.iter().position(|t| t.selected) {
-                    return Some((TODO_SCROLL, y + k as f32 * pitch, pitch));
-                }
-                y += group.items.len() as f32 * pitch - 1.0 + sp;
+                y += h;
             }
             None
         }
@@ -1475,12 +1569,11 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
                 return Some((AGENDA_SCROLL, ui.calendar.sel as f32 * pitch, pitch));
             }
             let mut y = 0.0;
-            for day in view_model::agenda(ui) {
-                y += HEADER_H + sp;
-                if let Some(k) = day.events.iter().position(|e| e.selected) {
-                    return Some((AGENDA_SCROLL, y + k as f32 * pitch, pitch));
+            for (piece, h) in agenda_pieces(app) {
+                if matches!(&piece, AgendaPiece::Event { selected: true, .. }) {
+                    return Some((AGENDA_SCROLL, y, ROW1_H));
                 }
-                y += day.events.len() as f32 * pitch - 1.0 + sp;
+                y += h;
             }
             None
         }

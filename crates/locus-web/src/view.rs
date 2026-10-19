@@ -9,7 +9,7 @@ use iced::widget::{
 };
 use iced::{Border, Center, ContentFit, Element, Fill, Length, Shadow};
 use locus_core::view_model::{self, EditorView, FormView, HistoryView};
-use locus_core::{Focus, InputKind, Level, Msg, Section, TextEdit};
+use locus_core::{Date, Focus, InputKind, Level, Msg, Section, TextEdit};
 
 use crate::style::{self, Colors};
 use crate::{
@@ -379,6 +379,27 @@ pub(crate) fn virtual_rows<'a>(
         .into()
 }
 
+/// Rows of mixed fixed heights (headings and items, say), built only where
+/// they are on screen like `virtual_rows`. `heights` are the rows' heights,
+/// stacked with no gap, and `build(i)` makes row `i`. Returns the column for
+/// the caller's scrollable. The rows must have exactly the heights given.
+pub(crate) fn virtual_column<'a>(
+    s: &Shell,
+    id: &'static str,
+    heights: &[f32],
+    build: impl Fn(usize) -> Element<'a, Message> + 'a,
+) -> Column<'a, Message> {
+    let (offset, height) = s.viewport(id);
+    let w = view_model::row_window(heights, offset, height, OVERSCAN);
+    let mut col = Column::new();
+    col = col.push(space::vertical().height(Length::Fixed(w.above)));
+    for i in w.first..w.last {
+        col = col.push(build(i));
+    }
+    col = col.push(space::vertical().height(Length::Fixed(w.below)));
+    col
+}
+
 /// `row` with `gap` pixels of space below it, so virtual rows keep the spacing
 /// a plain column would have given them.
 pub(crate) fn gapped<'a>(row: Element<'a, Message>, gap: f32) -> Element<'a, Message> {
@@ -632,9 +653,17 @@ fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
 
 // ----- todo -----
 
+/// One line of the todo list: a group heading, or a task with its index among
+/// all the tasks (the index that `Select` and `ToggleTask` count).
+enum TodoLine {
+    Header { title: String, count: usize },
+    Task { task: view_model::TaskRow, index: usize },
+}
+
 fn todo_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
-    let mut col = Column::new();
+    let mut lines = Vec::new();
+    let mut heights = Vec::new();
     let mut index = 0usize;
     let groups = view_model::todo_groups(&s.app);
     if groups.iter().all(|g| g.count == 0) {
@@ -653,22 +682,30 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
         } else {
             group.title.to_string()
         };
-        col = col.push(
-            container(
-                row![
-                    text(title).size(12).color(c.muted),
-                    space::horizontal(),
-                    muted_text(c, group.count.to_string()),
-                ]
-                .align_y(Center),
-            )
-            .height(HEADER_H)
-            .padding([0, 8])
-            .align_y(Center)
-            .width(Fill),
-        );
-        for task in &group.items {
-            let i = index;
+        lines.push(TodoLine::Header { title, count: group.count });
+        heights.push(HEADER_H);
+        for task in group.items {
+            lines.push(TodoLine::Task { task, index });
+            heights.push(TODO_ROW_H);
+            index += 1;
+        }
+    }
+    let col = virtual_column(s, "todo", &heights, move |i| match &lines[i] {
+        TodoLine::Header { title, count } => container(
+            row![
+                text(title.clone()).size(12).color(c.muted),
+                space::horizontal(),
+                muted_text(c, count.to_string()),
+            ]
+            .align_y(Center),
+        )
+        .height(HEADER_H)
+        .padding([0, 8])
+        .align_y(Center)
+        .width(Fill)
+        .into(),
+        TodoLine::Task { task, index } => {
+            let i = *index;
             let mark = checkbox(task.done)
                 .on_toggle(move |_| core(Msg::Batch(vec![Msg::Select(i), Msg::ToggleTask])))
                 .size(16);
@@ -685,10 +722,9 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
             ]
             .spacing(12)
             .align_y(Center);
-            col = col.push(click_row(c, content, TODO_ROW_H, task.selected, Msg::Select(index), Msg::Activate));
-            index += 1;
+            click_row(c, content, TODO_ROW_H, task.selected, Msg::Select(i), Msg::Activate)
         }
-    }
+    });
     scrollable(col)
         .id("todo")
         .spacing(4)
@@ -745,36 +781,57 @@ fn calendar_pane(s: &Shell) -> Element<'_, Message> {
     col.into()
 }
 
+/// One line of the agenda: a day's heading, or an event with its index among
+/// that day's events and the day it is on.
+enum AgendaLine {
+    Header { label: String, is_today: bool },
+    Event { event: view_model::EventRow, date: Date, index: usize },
+}
+
 fn agenda_list(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let days = view_model::agenda(&s.app);
-    let mut col = Column::new();
-    if days.is_empty() {
-        col = col.push(muted_text(c, "No events in the next 30 days. Click New event to add one."));
-    }
+    let mut lines = Vec::new();
+    let mut heights = Vec::new();
     for day in days {
-        let label_color = if day.is_today { c.accent } else { c.muted };
-        let mut label = day.label.clone();
+        let mut label = day.label;
         if day.is_today {
             label.push_str("  · today");
         }
-        col = col.push(
-            container(text(label).size(12).color(label_color))
-                .height(HEADER_H)
-                .align_y(Center)
-                .padding([0, 8]),
-        );
-        for (i, ev) in day.events.iter().enumerate() {
-            let select = Msg::Batch(vec![Msg::SelectDay(day.date), Msg::Select(i)]);
-            let content = row![
-                text(ev.time_label.clone()).size(12).color(c.muted).width(110),
-                text(ev.title.clone()).size(14).color(c.text).width(Fill),
-            ]
-            .spacing(8)
-            .align_y(Center);
-            col = col.push(click_row(c, content, ROW_H, ev.selected, select, Msg::Edit));
+        lines.push(AgendaLine::Header { label, is_today: day.is_today });
+        heights.push(HEADER_H);
+        for (index, event) in day.events.into_iter().enumerate() {
+            lines.push(AgendaLine::Event { event, date: day.date, index });
+            heights.push(ROW_H);
         }
     }
+    let col = if lines.is_empty() {
+        Column::new().push(muted_text(
+            c,
+            "No events in the next 30 days. Click New event to add one.",
+        ))
+    } else {
+        virtual_column(s, "agenda", &heights, move |i| match &lines[i] {
+            AgendaLine::Header { label, is_today } => {
+                let label_color = if *is_today { c.accent } else { c.muted };
+                container(text(label.clone()).size(12).color(label_color))
+                    .height(HEADER_H)
+                    .align_y(Center)
+                    .padding([0, 8])
+                    .into()
+            }
+            AgendaLine::Event { event, date, index } => {
+                let select = Msg::Batch(vec![Msg::SelectDay(*date), Msg::Select(*index)]);
+                let content = row![
+                    text(event.time_label.clone()).size(12).color(c.muted).width(110),
+                    text(event.title.clone()).size(14).color(c.text).width(Fill),
+                ]
+                .spacing(8)
+                .align_y(Center);
+                click_row(c, content, ROW_H, event.selected, select, Msg::Edit)
+            }
+        })
+    };
     scrollable(col)
         .id("agenda")
         .spacing(4)
