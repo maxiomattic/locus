@@ -20,7 +20,10 @@ fn reference(heights: &[f32], offset: f32, view_h: f32) -> (usize, usize) {
         top += h;
     }
     let (a, b) = seen.expect("some row is on screen");
-    (a.saturating_sub(OVERSCAN), (b + OVERSCAN).min(heights.len()))
+    (
+        a.saturating_sub(OVERSCAN),
+        (b + OVERSCAN).min(heights.len()),
+    )
 }
 
 fn tops(heights: &[f32]) -> Vec<f32> {
@@ -37,11 +40,19 @@ fn tops(heights: &[f32]) -> Vec<f32> {
 
 fn check(heights: &[f32], offset: f32, view_h: f32) -> RowWindow {
     let w = row_window(heights, offset, view_h, OVERSCAN);
-    assert_eq!((w.first, w.last), reference(heights, offset, view_h), "offset {offset}");
+    assert_eq!(
+        (w.first, w.last),
+        reference(heights, offset, view_h),
+        "offset {offset}"
+    );
     let drawn: f32 = heights[w.first..w.last].iter().sum();
     let total: f32 = heights.iter().sum();
     assert_eq!(w.above, heights[..w.first].iter().sum::<f32>());
-    assert_eq!(w.above + drawn + w.below, total, "spacers keep the list's height");
+    assert_eq!(
+        w.above + drawn + w.below,
+        total,
+        "spacers keep the list's height"
+    );
     w
 }
 
@@ -74,10 +85,16 @@ fn one_height_matches_the_fixed_height_lists() {
         let mut offset = 0.0;
         while offset + view_h <= count as f32 * row_h {
             // The formula `virtual_list` and `virtual_rows` use.
-            let first = ((offset / row_h).floor() as usize).saturating_sub(OVERSCAN).min(count);
+            let first = ((offset / row_h).floor() as usize)
+                .saturating_sub(OVERSCAN)
+                .min(count);
             let last = (((offset + view_h) / row_h).ceil() as usize + OVERSCAN).min(count);
             let w = row_window(&heights, offset, view_h, OVERSCAN);
-            assert_eq!((w.first, w.last), (first, last), "row_h {row_h} offset {offset}");
+            assert_eq!(
+                (w.first, w.last),
+                (first, last),
+                "row_h {row_h} offset {offset}"
+            );
             assert_eq!(w.above, first as f32 * row_h);
             assert_eq!(w.below, (count - last) as f32 * row_h);
             offset += 37.0;
@@ -94,7 +111,11 @@ fn long_todo_draws_only_the_screenful() {
     while offset + view_h <= total {
         let w = check(&heights, offset, view_h);
         let screen = (view_h / 24.0).ceil() as usize + 2;
-        assert!(w.last - w.first <= screen + 2 * OVERSCAN, "{} rows drawn", w.last - w.first);
+        assert!(
+            w.last - w.first <= screen + 2 * OVERSCAN,
+            "{} rows drawn",
+            w.last - w.first
+        );
         offset += 911.0;
     }
     let w = check(&heights, 0.0, view_h);
@@ -128,16 +149,35 @@ fn a_row_scrolled_to_is_drawn() {
     let view_h = 640.0;
     for i in [1usize, 4, 405, 1800, 2905, heights.len() - 1] {
         let at_top = row_window(&heights, tops[i], view_h, OVERSCAN);
-        assert!((at_top.first..at_top.last).contains(&i), "row {i} at the top");
-        let at_bottom = row_window(&heights, (tops[i] + heights[i] - view_h).max(0.0), view_h, OVERSCAN);
-        assert!((at_bottom.first..at_bottom.last).contains(&i), "row {i} at the bottom");
+        assert!(
+            (at_top.first..at_top.last).contains(&i),
+            "row {i} at the top"
+        );
+        let at_bottom = row_window(
+            &heights,
+            (tops[i] + heights[i] - view_h).max(0.0),
+            view_h,
+            OVERSCAN,
+        );
+        assert!(
+            (at_bottom.first..at_bottom.last).contains(&i),
+            "row {i} at the bottom"
+        );
     }
 }
 
 #[test]
 fn edges() {
     let none = row_window(&[], 120.0, 600.0, OVERSCAN);
-    assert_eq!(none, RowWindow { first: 0, last: 0, above: 0.0, below: 0.0 });
+    assert_eq!(
+        none,
+        RowWindow {
+            first: 0,
+            last: 0,
+            above: 0.0,
+            below: 0.0
+        }
+    );
 
     let heights = long_agenda(28.0, 32.0);
     let total: f32 = heights.iter().sum();
@@ -157,5 +197,13 @@ fn edges() {
     assert_eq!((flat.first, flat.last), (0, OVERSCAN));
     // Fewer rows than the screen holds: all are drawn.
     let short = row_window(&[24.0, 52.0, 52.0], 0.0, 600.0, OVERSCAN);
-    assert_eq!(short, RowWindow { first: 0, last: 3, above: 0.0, below: 0.0 });
+    assert_eq!(
+        short,
+        RowWindow {
+            first: 0,
+            last: 3,
+            above: 0.0,
+            below: 0.0
+        }
+    );
 }

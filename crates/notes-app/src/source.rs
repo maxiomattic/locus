@@ -1,30 +1,28 @@
 //! Source editor: markdown characters stay visible and are styled in place.
 //! WYSIWYG is the same buffer with markers omitted from the paint.
 
+use cosmic::Element;
 use cosmic::font;
-use cosmic::iced::core::text::{self, Paragraph, Span, Text};
-use cosmic::iced::core::widget::{tree, Tree, Widget};
-use cosmic::iced::core::time::{Duration, Instant};
-use cosmic::iced::core::window;
-use cosmic::iced::core::{
-    alignment, clipboard, layout, mouse, renderer, Clipboard, Event, Layout, Length, Pixels,
-    Rectangle, Shell, Size,
-};
 use cosmic::iced::core::renderer::Renderer as _;
 use cosmic::iced::core::text::Renderer as _;
-use cosmic::iced::keyboard;
-use cosmic::iced::widget::text_editor::{
-    self, Action, Binding, Content, Edit, KeyPress, Status,
+use cosmic::iced::core::text::{self, Paragraph, Span, Text};
+use cosmic::iced::core::time::{Duration, Instant};
+use cosmic::iced::core::widget::{Tree, Widget, tree};
+use cosmic::iced::core::window;
+use cosmic::iced::core::{
+    Clipboard, Event, Layout, Length, Pixels, Rectangle, Shell, Size, alignment, clipboard, layout,
+    mouse, renderer,
 };
+use cosmic::iced::keyboard;
+use cosmic::iced::widget::text_editor::{self, Action, Binding, Content, Edit, KeyPress, Status};
 use cosmic::iced::{Color, Font};
-use cosmic::Element;
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::Message;
 use crate::highlight::{self, MdKind};
 use crate::smooth_scroll;
 use crate::vim;
-use crate::Message;
 
 pub fn view<'a>(content: &'a Content, vim: &'a vim::State) -> Element<'a, Message> {
     view_mode(content, false, vim)
@@ -34,7 +32,11 @@ pub fn view_write<'a>(content: &'a Content, vim: &'a vim::State) -> Element<'a, 
     view_mode(content, true, vim)
 }
 
-fn view_mode<'a>(content: &'a Content, formatted: bool, vim: &'a vim::State) -> Element<'a, Message> {
+fn view_mode<'a>(
+    content: &'a Content,
+    formatted: bool,
+    vim: &'a vim::State,
+) -> Element<'a, Message> {
     smooth_scroll::vertical(
         Element::new(SourceEditor {
             content,
@@ -139,7 +141,9 @@ impl<P: Paragraph> State<P> {
                 .now
                 .checked_duration_since(self.blink_at)
                 .unwrap_or_default()
-                .as_millis() / Self::BLINK_MS).is_multiple_of(2)
+                .as_millis()
+                / Self::BLINK_MS)
+                .is_multiple_of(2)
     }
 
     fn schedule_blink(&self, shell: &mut Shell<'_, Message>) {
@@ -242,12 +246,13 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                         state.formatted,
                     ) {
                         if state.command
-                            && let Some(target) = wiki {
-                                shell.publish((self.on_wiki)(target));
-                                shell.capture_event();
-                                shell.request_redraw();
-                                return;
-                            }
+                            && let Some(target) = wiki
+                        {
+                            shell.publish((self.on_wiki)(target));
+                            shell.capture_event();
+                            shell.request_redraw();
+                            return;
+                        }
                         let now = Instant::now();
                         let count = match state.last_click {
                             Some((at, x, y, n))
@@ -366,12 +371,8 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                         mode: self.vim_mode,
                         pending: std::mem::take(&mut state.vim_pending),
                     };
-                    let effects = vim::handle(
-                        &mut vs,
-                        key,
-                        *modifiers,
-                        text.as_ref().map(|s| s.as_str()),
-                    );
+                    let effects =
+                        vim::handle(&mut vs, key, *modifiers, text.as_ref().map(|s| s.as_str()));
                     let swallow = self.vim_mode != vim::Mode::Insert || !effects.is_empty();
                     if swallow {
                         apply_vim(self, clipboard, shell, effects, &vs);
@@ -388,8 +389,7 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                 if modifiers.command() {
                     match key.as_ref() {
                         keyboard::Key::Character(c)
-                            if matches!(c, "c" | "x" | "v" | "a" | "C" | "X" | "V" | "A") =>
-                        {}
+                            if matches!(c, "c" | "x" | "v" | "a" | "C" | "X" | "V" | "A") => {}
                         _ => return,
                     }
                 }
@@ -494,7 +494,8 @@ impl<'a> Widget<Message, cosmic::Theme, cosmic::Renderer> for SourceEditor<'a> {
                     let col = if state.formatted {
                         let line = text.split('\n').nth(i).unwrap_or("");
                         let kinds = state.kinds.get(i).map(Vec::as_slice).unwrap_or(&[]);
-                        let visual = highlight::source_to_visual(line, kinds, caret.position.column);
+                        let visual =
+                            highlight::source_to_visual(line, kinds, caret.position.column);
                         visual.min(highlight::source_to_visual(line, kinds, line.len()))
                     } else {
                         caret.position.column
@@ -635,15 +636,22 @@ fn paint_sel_rects(
 
 fn visual_col(formatted: bool, line: &str, kinds: &[(Range<usize>, MdKind)], col: usize) -> usize {
     if formatted {
-        highlight::source_to_visual(line, kinds, col)
-            .min(highlight::source_to_visual(line, kinds, line.len()))
+        highlight::source_to_visual(line, kinds, col).min(highlight::source_to_visual(
+            line,
+            kinds,
+            line.len(),
+        ))
     } else {
         col.min(line.len())
     }
 }
 
 fn line_highlights<P: Paragraph>(para: &P, start: usize, end: usize) -> Vec<Rectangle> {
-    let (a, b) = if start <= end { (start, end) } else { (end, start) };
+    let (a, b) = if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    };
     let mut rects = para.highlight(0, (a, text::Affinity::After), (b, text::Affinity::After));
     if rects.is_empty() {
         let p0 = para
@@ -693,7 +701,11 @@ fn draw_selection<P: Paragraph>(
     let lines: Vec<&str> = text.split('\n').collect();
     let start_vis = {
         let line = lines.get(start.line).copied().unwrap_or("");
-        let kinds = state.kinds.get(start.line).map(Vec::as_slice).unwrap_or(&[]);
+        let kinds = state
+            .kinds
+            .get(start.line)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
         visual_col(state.formatted, line, kinds, start.column)
     };
     let end_vis = {
@@ -715,7 +727,11 @@ fn draw_selection<P: Paragraph>(
             } else if full_line {
                 (0, len)
             } else {
-                let sc = if i == start.line { start_vis.min(len) } else { 0 };
+                let sc = if i == start.line {
+                    start_vis.min(len)
+                } else {
+                    0
+                };
                 let ec = if i == end.line { end_vis.min(len) } else { len };
                 (sc, ec)
             };
@@ -867,7 +883,9 @@ fn line_spans(
 
 fn pointer_in(cursor: mouse::Cursor, inner: Rectangle) -> Option<cosmic::iced::Point> {
     cursor.position_in(inner).or_else(|| {
-        cursor.position().map(|p| cosmic::iced::Point::new(p.x - inner.x, p.y - inner.y))
+        cursor
+            .position()
+            .map(|p| cosmic::iced::Point::new(p.x - inner.x, p.y - inner.y))
     })
 }
 
@@ -925,19 +943,21 @@ fn wiki_at(line: &str, col: usize) -> Option<String> {
     let bytes = line.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'[' && bytes.get(i + 1) == Some(&b'[')
-            && let Some(rel) = line[i + 2..].find("]]") {
-                let close = i + 2 + rel + 2;
-                if col >= i && col <= close {
-                    let inner = &line[i + 2..close - 2];
-                    let target = inner.split('|').next().unwrap_or(inner).trim();
-                    if !target.is_empty() {
-                        return Some(target.to_string());
-                    }
+        if bytes[i] == b'['
+            && bytes.get(i + 1) == Some(&b'[')
+            && let Some(rel) = line[i + 2..].find("]]")
+        {
+            let close = i + 2 + rel + 2;
+            if col >= i && col <= close {
+                let inner = &line[i + 2..close - 2];
+                let target = inner.split('|').next().unwrap_or(inner).trim();
+                if !target.is_empty() {
+                    return Some(target.to_string());
                 }
-                i = close;
-                continue;
             }
+            i = close;
+            continue;
+        }
         i += 1;
     }
     None

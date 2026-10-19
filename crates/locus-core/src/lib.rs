@@ -33,9 +33,9 @@ pub use date::Date;
 pub use keymap::{Key, Mods, bindings, keymap};
 pub use locus_client;
 pub use msg::{Effect, FileEntry, FilePatch, Msg, Nav, Now, PlayerCmd, TextEdit};
+pub use notes::left_in_both;
 pub use state::{
     App, CalMode, Focus, InputKind, Level, NbKey, NoteRef, NotesLoc, Playback, Section, Target,
 };
-pub use notes::left_in_both;
 pub use todo::is_inbox_title;
 pub use update::update;

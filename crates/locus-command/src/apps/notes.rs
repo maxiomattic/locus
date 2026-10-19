@@ -298,7 +298,11 @@ pub fn contents(notes: usize, folders: usize) -> String {
     match (notes, folders) {
         (_, 0) => plural(notes, "note"),
         (0, _) => plural(folders, "folder"),
-        _ => format!("{} and {}", plural(notes, "note"), plural(folders, "folder")),
+        _ => format!(
+            "{} and {}",
+            plural(notes, "note"),
+            plural(folders, "folder")
+        ),
     }
 }
 
@@ -629,13 +633,19 @@ async fn restore(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .await
         .map_err(client_error)?;
     if !revs.iter().any(|v| v.rev == rev) {
-        return Err(format!("{} has no revision {rev}; see locus notes history", note_ref(&nb, id)));
+        return Err(format!(
+            "{} has no revision {rev}; see locus notes history",
+            note_ref(&nb, id)
+        ));
     }
     client
         .restore_note(&nb.host, &nb.flag_name, id, rev)
         .await
         .map_err(client_error)?;
-    emit(&format!("restored {} to revision {rev}\n", note_ref(&nb, id)));
+    emit(&format!(
+        "restored {} to revision {rev}\n",
+        note_ref(&nb, id)
+    ));
     Ok(())
 }
 
@@ -795,7 +805,12 @@ pub fn is_inside(folders: &[Folder], id: u64, dest: u64) -> bool {
     for _ in 0..=folders.len() {
         match cur {
             Some(c) if c == id => return true,
-            Some(c) => cur = folders.iter().find(|f| f.id == c).and_then(|f| f.parent_folder_id),
+            Some(c) => {
+                cur = folders
+                    .iter()
+                    .find(|f| f.id == c)
+                    .and_then(|f| f.parent_folder_id)
+            }
             None => return false,
         }
     }
@@ -804,7 +819,12 @@ pub fn is_inside(folders: &[Folder], id: u64, dest: u64) -> bool {
 
 /// Refuse a name that would make paths ambiguous: empty, with `/`, or
 /// already used by another folder under `parent`.
-fn check_folder_name(folders: &[Folder], parent: u64, name: &str, except: u64) -> Result<(), String> {
+fn check_folder_name(
+    folders: &[Folder],
+    parent: u64,
+    name: &str,
+    except: u64,
+) -> Result<(), String> {
     if name.is_empty() || name.contains('/') {
         return Err(format!("not a folder name: {name:?}"));
     }
@@ -876,7 +896,10 @@ async fn folder_mv(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         Dest::Here(names) => names,
         Dest::In(to, names) if same_notebook(nb, to) => names,
         Dest::In(..) => {
-            return Err("folders cannot move to another notebook; move their notes with locus notes mv".into());
+            return Err(
+                "folders cannot move to another notebook; move their notes with locus notes mv"
+                    .into(),
+            );
         }
     };
     let dest = resolve_folder(&folders, root, &dest_names)?;
@@ -928,7 +951,11 @@ mod tests {
 
     #[test]
     fn a_folder_is_inside_itself_and_its_subfolders_only() {
-        let folders = [folder(11, 10, "a"), folder(12, 11, "b"), folder(13, 10, "c")];
+        let folders = [
+            folder(11, 10, "a"),
+            folder(12, 11, "b"),
+            folder(13, 10, "c"),
+        ];
         assert!(is_inside(&folders, 11, 11));
         assert!(is_inside(&folders, 11, 12));
         assert!(!is_inside(&folders, 11, 13));

@@ -1,14 +1,14 @@
 //! COSMIC Text–style chrome: menus, header icons, keybinds.
 
 use cosmic::cosmic_theme::palette::Srgb;
-use cosmic::cosmic_theme::{ThemeBuilder, DARK_PALETTE, LIGHT_PALETTE};
-use cosmic::iced::keyboard::key::Named;
+use cosmic::cosmic_theme::{DARK_PALETTE, LIGHT_PALETTE, ThemeBuilder};
 use cosmic::iced::keyboard::Key;
+use cosmic::iced::keyboard::key::Named;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::menu::key_bind::Modifier;
 use cosmic::widget::menu::{self, ItemHeight, ItemWidth, KeyBind};
-use cosmic::widget::{self, nav_bar, RcElementWrapper};
-use cosmic::{theme, Element};
+use cosmic::widget::{self, RcElementWrapper, nav_bar};
+use cosmic::{Element, theme};
 use notes_sync::Note;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
@@ -17,12 +17,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::markdown;
 use crate::{Message, Pane};
 
-pub static SEARCH_ID: LazyLock<widget::Id> =
-    LazyLock::new(|| widget::Id::new("notes-search"));
+pub static SEARCH_ID: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("notes-search"));
 
 pub static FIND_ID: LazyLock<widget::Id> = LazyLock::new(|| widget::Id::new("notes-find"));
 
-const GRAPH_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+const GRAPH_SVG: &[u8] =
+    br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
   <g fill="currentColor">
     <circle cx="8" cy="3.5" r="2.15"/>
     <circle cx="3.2" cy="12.2" r="2.15"/>
@@ -443,7 +443,11 @@ pub fn menu_bar<'a>(
     let mut note_items = vec![
         item("New note", Some("document-new-symbolic"), MenuAct::NewNote),
         item("Duplicate", None, MenuAct::Duplicate),
-        item("Delete note", Some("user-trash-symbolic"), MenuAct::DeleteNote),
+        item(
+            "Delete note",
+            Some("user-trash-symbolic"),
+            MenuAct::DeleteNote,
+        ),
         menu::Item::Divider,
         item("Save & sync now", None, MenuAct::SaveSync),
         item("Copy note as Markdown", None, MenuAct::CopyMd),
@@ -540,8 +544,7 @@ pub fn menu_bar<'a>(
         ),
     ];
 
-    let tree = |label: &'static str,
-                items: Vec<menu::Item<MenuAct, String>>| {
+    let tree = |label: &'static str, items: Vec<menu::Item<MenuAct, String>>| {
         menu::Tree::with_children(
             RcElementWrapper::new(Element::from(menu::root(label))),
             menu::items(key_binds, items),
@@ -584,33 +587,38 @@ fn truncate_text(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()
     } else {
-        format!("{}…", s.chars().take(n.saturating_sub(1)).collect::<String>())
+        format!(
+            "{}…",
+            s.chars().take(n.saturating_sub(1)).collect::<String>()
+        )
     }
 }
 
 pub fn header_end<'a>(pane: &Pane) -> Vec<Element<'a, Message>> {
-    vec![widget::row::with_capacity(3)
-        .spacing(0)
-        .align_y(Alignment::Center)
-        .push(header_icon(
-            widget::icon::from_name("accessories-text-editor-symbolic").into(),
-            "Markdown",
-            matches!(pane, Pane::Page),
-            Some(Message::SetPane(Pane::Page)),
-        ))
-        .push(header_icon(
-            widget::icon::from_name("format-text-bold-symbolic").into(),
-            "Rich text",
-            matches!(pane, Pane::Write),
-            Some(Message::SetPane(Pane::Write)),
-        ))
-        .push(header_icon(
-            graph_handle(),
-            "Graph",
-            matches!(pane, Pane::Graph),
-            Some(Message::SetPane(Pane::Graph)),
-        ))
-        .into()]
+    vec![
+        widget::row::with_capacity(3)
+            .spacing(0)
+            .align_y(Alignment::Center)
+            .push(header_icon(
+                widget::icon::from_name("accessories-text-editor-symbolic").into(),
+                "Markdown",
+                matches!(pane, Pane::Page),
+                Some(Message::SetPane(Pane::Page)),
+            ))
+            .push(header_icon(
+                widget::icon::from_name("format-text-bold-symbolic").into(),
+                "Rich text",
+                matches!(pane, Pane::Write),
+                Some(Message::SetPane(Pane::Write)),
+            ))
+            .push(header_icon(
+                graph_handle(),
+                "Graph",
+                matches!(pane, Pane::Graph),
+                Some(Message::SetPane(Pane::Graph)),
+            ))
+            .into(),
+    ]
 }
 
 const BOLD_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="m 4 3 v 2 h 5 c 0.429688 0 1 0.613281 1 1 v 1 h -5 c -0.917969 0 -1.734375 0.378906 -2.25 0.964844 c -0.515625 0.585937 -0.742188 1.324218 -0.738281 2.046875 c 0.007812 0.71875 0.246093 1.445312 0.757812 2.027343 c 0.515625 0.578126 1.320313 0.960938 2.230469 0.960938 h 9 v -7 c 0 -1.632812 -1.320312 -3 -3 -3 z m 3 6 h 3 v 2 h -3 c -0.398438 0 -0.578125 -0.117188 -0.730469 -0.289062 c -0.152343 -0.167969 -0.253906 -0.441407 -0.257812 -0.722657 c 0 -0.277343 0.09375 -0.539062 0.238281 -0.703125 c 0.148438 -0.164062 0.328125 -0.285156 0.75 -0.285156 z"/></svg>"#;
@@ -631,7 +639,8 @@ const CODE_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" h
   <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.2 4.2 L2.8 8 L6.2 11.8 M9.8 4.2 L13.2 8 L9.8 11.8"/>
 </svg>"#;
 
-const BULLET_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+const BULLET_SVG: &[u8] =
+    br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
   <g fill="currentColor">
     <circle cx="3.4" cy="4" r="1.15"/>
     <circle cx="3.4" cy="8" r="1.15"/>
@@ -744,9 +753,8 @@ pub fn nav_tools<'a>(
 ) -> Element<'a, cosmic::Action<Message>> {
     let space = theme::spacing();
     let sync = widget::tooltip(
-        widget::button::icon(svg_handle(REFRESH_SVG)).on_press_maybe(
-            (!busy).then_some(cosmic::Action::App(Message::SyncNow)),
-        ),
+        widget::button::icon(svg_handle(REFRESH_SVG))
+            .on_press_maybe((!busy).then_some(cosmic::Action::App(Message::SyncNow))),
         widget::text("Sync now"),
         widget::tooltip::Position::Bottom,
     );
@@ -892,10 +900,14 @@ pub fn note_nav<'a>(
         let menu = menu::items(&empty_binds, items);
         col = col.push(widget::context_menu(row, Some(menu)));
     }
-    widget::scrollable(widget::container(col).padding(space.space_xxs).width(Length::Fill))
-        .height(Length::Fill)
-        .width(Length::Fill)
-        .into()
+    widget::scrollable(
+        widget::container(col)
+            .padding(space.space_xxs)
+            .width(Length::Fill),
+    )
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .into()
 }
 
 fn is_vault_note(notes: &[notes_sync::Note], index: usize) -> bool {
@@ -938,7 +950,9 @@ pub fn footer<'a>(
         if mins > 0 {
             right = right.push(widget::text::caption(format!("~{mins} min read")));
         }
-        right = right.push(widget::text::caption(format!("{words} words · {chars} chars")));
+        right = right.push(widget::text::caption(format!(
+            "{words} words · {chars} chars"
+        )));
     }
     let mut row = widget::row::with_capacity(4)
         .spacing(space.space_s)
@@ -977,10 +991,18 @@ pub fn find_bar<'a>(query: &'a str, found: Option<(usize, usize)>) -> Element<'a
     });
     let prev = widget::button::icon(svg_handle(FINDUP_SVG))
         .extra_small()
-        .on_press_maybe(found.filter(|(_, n)| *n > 0).map(|_| Message::FindNext(false)));
+        .on_press_maybe(
+            found
+                .filter(|(_, n)| *n > 0)
+                .map(|_| Message::FindNext(false)),
+        );
     let next = widget::button::icon(svg_handle(FINDDOWN_SVG))
         .extra_small()
-        .on_press_maybe(found.filter(|(_, n)| *n > 0).map(|_| Message::FindNext(true)));
+        .on_press_maybe(
+            found
+                .filter(|(_, n)| *n > 0)
+                .map(|_| Message::FindNext(true)),
+        );
     let close = widget::button::icon(widget::icon::from_name("window-close-symbolic"))
         .extra_small()
         .on_press(Message::FindClose);
@@ -988,7 +1010,11 @@ pub fn find_bar<'a>(query: &'a str, found: Option<(usize, usize)>) -> Element<'a
         .spacing(space.space_xs)
         .align_y(Alignment::Center)
         .push(input)
-        .push(counter.width(Length::Fixed(64.0)).align_x(Alignment::Center))
+        .push(
+            counter
+                .width(Length::Fixed(64.0))
+                .align_x(Alignment::Center),
+        )
         .push(prev)
         .push(next)
         .push(close)
@@ -1025,9 +1051,7 @@ pub fn welcome_panel<'a>() -> Element<'a, Message> {
         .push(widget::text::caption(
             "Markdown keeps its markers here; Daily note, graph, and history are in the Go menu.",
         ))
-        .push(
-            widget::button::suggested("New note").on_press(Message::NewNote),
-        );
+        .push(widget::button::suggested("New note").on_press(Message::NewNote));
     widget::container(
         widget::container(body)
             .class(theme::Container::Card)
@@ -1077,9 +1101,7 @@ impl menu::Action for EditMenuAction {
 }
 
 /// Right-click menu over the editor surface.
-pub fn editor_context_menu<'a>(
-    content: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
+pub fn editor_context_menu<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     let empty = HashMap::<KeyBind, EditMenuAction>::new();
     let items = vec![
         menu::Item::Button("Undo".to_string(), None, EditMenuAction::Undo),
@@ -1300,29 +1322,39 @@ pub fn version_history_dialog<'a>(
         let changes = compact_changes(line_changes(&prev.body, &snap.body));
         let mut lines = widget::column::with_capacity(changes.len().max(1));
         if changes.iter().all(|c| matches!(c, LineChg::Same(_))) {
-            lines = lines.push(widget::text::caption("The words on the page did not change."));
+            lines = lines.push(widget::text::caption(
+                "The words on the page did not change.",
+            ));
         } else {
             for chg in &changes {
                 lines = lines.push(match chg {
-                    LineChg::Same(s) => widget::text::caption(if s.is_empty() {
-                        " ".into()
-                    } else {
-                        s.clone()
-                    }),
+                    LineChg::Same(s) => {
+                        widget::text::caption(if s.is_empty() { " ".into() } else { s.clone() })
+                    }
                     LineChg::Added(s) => widget::text::body(format!(
                         "Added: {}",
-                        if s.is_empty() { "(blank line)".into() } else { s.clone() }
+                        if s.is_empty() {
+                            "(blank line)".into()
+                        } else {
+                            s.clone()
+                        }
                     )),
                     LineChg::Removed(s) => widget::text::body(format!(
                         "Removed: {}",
-                        if s.is_empty() { "(blank line)".into() } else { s.clone() }
+                        if s.is_empty() {
+                            "(blank line)".into()
+                        } else {
+                            s.clone()
+                        }
                     )),
                 });
             }
         }
         body = body.push(crate::smooth_scroll::vertical(lines, Length::Fixed(240.0)));
     } else {
-        body = body.push(widget::text::caption("This is the first saved copy of the note."));
+        body = body.push(widget::text::caption(
+            "This is the first saved copy of the note.",
+        ));
     }
     dialog
         .control(body)
@@ -1335,7 +1367,7 @@ pub fn version_history_dialog<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{body_delta, change_caption, line_changes, LineChg};
+    use super::{LineChg, body_delta, change_caption, line_changes};
     use notes_sync::Snapshot;
 
     fn snap(seq: u64, title: &str, body: &str) -> Snapshot {
@@ -1351,15 +1383,24 @@ mod tests {
 
     #[test]
     fn first_version_is_created() {
-        assert_eq!(change_caption(None, &snap(1, "A", "hi")), "Started this note");
+        assert_eq!(
+            change_caption(None, &snap(1, "A", "hi")),
+            "Started this note"
+        );
     }
 
     #[test]
     fn added_line_shows_plus() {
         assert_eq!(body_delta("hi", "hi\n# Interesting"), "Added: Interesting");
         let chg = line_changes("hi", "hi\nthere");
-        assert!(chg.iter().any(|c| matches!(c, LineChg::Added(s) if s == "there")));
-        assert!(chg.iter().any(|c| matches!(c, LineChg::Same(s) if s == "hi")));
+        assert!(
+            chg.iter()
+                .any(|c| matches!(c, LineChg::Added(s) if s == "there"))
+        );
+        assert!(
+            chg.iter()
+                .any(|c| matches!(c, LineChg::Same(s) if s == "hi"))
+        );
     }
 
     #[test]

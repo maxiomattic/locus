@@ -313,7 +313,10 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             }
         }
         Effect::RenameNotebook { nb, title } => {
-            match client.rename_notebook(&nb.host, &nb.flag_name, &title).await {
+            match client
+                .rename_notebook(&nb.host, &nb.flag_name, &title)
+                .await
+            {
                 Ok(()) => vec![Msg::NotebookRenamed { nb, title }],
                 Err(e) => vec![write_failed(Section::Notes, &e)],
             }

@@ -148,7 +148,12 @@ fn mint_request_id() -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(1, |d| d.as_nanos() as u64);
-        let _ = REQUEST_SEED.compare_exchange(0, nanos ^ u64::from(std::process::id()) | 1, Ordering::Relaxed, Ordering::Relaxed);
+        let _ = REQUEST_SEED.compare_exchange(
+            0,
+            nanos ^ u64::from(std::process::id()) | 1,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
     }
     let n = REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
     let seed = REQUEST_SEED.load(Ordering::Relaxed);
@@ -285,8 +290,11 @@ impl Client {
     /// Make revision `rev` of a note its current text again. The text it
     /// replaces is kept in the history like any other edit.
     pub async fn restore_note(&self, host: &str, name: &str, id: u64, rev: u64) -> Result<()> {
-        let action = json!({ "type": "note", "id": id, "action": { "type": "restore", "rev": rev } });
-        self.submit_notebook_action(host, name, action).await.map(|_| ())
+        let action =
+            json!({ "type": "note", "id": id, "action": { "type": "restore", "rev": rev } });
+        self.submit_notebook_action(host, name, action)
+            .await
+            .map(|_| ())
     }
 
     /// Rename a folder (`folder_name`), move it under another folder
@@ -351,12 +359,13 @@ impl Client {
         title: &str,
         body: &str,
     ) -> Result<Note> {
-        let reply = self.write(
-            Method::POST,
-            &format!("{}/notes", nb_path(host, name)),
-            Some(json!({ "folder": folder, "title": title, "body": body })),
-        )
-        .await?;
+        let reply = self
+            .write(
+                Method::POST,
+                &format!("{}/notes", nb_path(host, name)),
+                Some(json!({ "folder": folder, "title": title, "body": body })),
+            )
+            .await?;
         if let Some(note) = created_note(&reply) {
             return Ok(note);
         }
@@ -517,7 +526,10 @@ mod tests {
         let raw = r#"{"requestId":"0v1","body":{"type":"ok","response":{"type":"update","host":"~zod","flagName":"n-1","time":1,"update":{"type":"note-update","host":"~zod","flagName":"n-1","noteUpdate":{"type":"note-created","id":308,"note":{"id":308,"notebookId":112,"folderId":113,"title":"Untitled","revision":0,"bodyMd":"","slug":null,"createdBy":"~zod","createdAt":1,"updatedAt":1,"updatedBy":"~zod"}}}}}}"#;
         let reply = check_reply("/p", env(raw)).unwrap();
         let note = created_note(&reply).expect("note in reply");
-        assert_eq!((note.id, note.folder_id, note.title.as_str()), (308, 113, "Untitled"));
+        assert_eq!(
+            (note.id, note.folder_id, note.title.as_str()),
+            (308, 113, "Untitled")
+        );
         let bare = check_reply("/p", env(r#"{"body":{"type":"ok"}}"#)).unwrap();
         assert!(created_note(&bare).is_none());
     }

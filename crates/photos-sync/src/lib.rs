@@ -1,8 +1,8 @@
 //! Thumbnail cache for the photo grid. First paint reads here; the ship
 //! catalog + ZFS bytes fill holes. Not a second photo library.
 
-use photos_protocol::{zfs_rel_path, Result as PathResult};
-use rusqlite::{params, Connection};
+use photos_protocol::{Result as PathResult, zfs_rel_path};
+use rusqlite::{Connection, params};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -94,7 +94,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let cache = ThumbCache::open(&dir.path().join("t.sqlite")).unwrap();
         cache.put(1, "a/b.jpg", b"\xff\xd8fake").unwrap();
-        assert_eq!(grid_jpeg(&cache, 1).unwrap().as_deref(), Some(&b"\xff\xd8fake"[..]));
+        assert_eq!(
+            grid_jpeg(&cache, 1).unwrap().as_deref(),
+            Some(&b"\xff\xd8fake"[..])
+        );
         assert!(grid_jpeg(&cache, 2).unwrap().is_none());
         assert_eq!(cache.len().unwrap(), 1);
     }

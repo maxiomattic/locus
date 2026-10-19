@@ -486,7 +486,9 @@ fn type_and_wait(app: &mut App, body: &str) -> Vec<Effect> {
 
 fn ack_saves_of_the_original(app: &mut App, fx: &[Effect]) {
     for e in fx {
-        if let Effect::SaveNote { nb: n, id: 1, body, .. } = e
+        if let Effect::SaveNote {
+            nb: n, id: 1, body, ..
+        } = e
             && *n == nb()
         {
             send(
@@ -548,7 +550,11 @@ fn a_note_left_during_a_move_keeps_its_typing_for_the_copy() {
     press(&mut app, Key::Up);
     assert_eq!(selected_title(&app), "Newer top");
     let fx = press(&mut app, Key::Enter);
-    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 4)));
+    assert!(
+        app.editor
+            .as_ref()
+            .is_some_and(|e| e.is(&NbKey::of(&nb()), 4))
+    );
     assert_eq!(saves_of_the_original(&fx), 0);
 
     let fx = send(&mut app, moved_across(Ok(())));
@@ -559,7 +565,11 @@ fn a_note_left_during_a_move_keeps_its_typing_for_the_copy() {
         expected_revision: 1,
     }));
     // The note being edited stays open.
-    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 4)));
+    assert!(
+        app.editor
+            .as_ref()
+            .is_some_and(|e| e.is(&NbKey::of(&nb()), 4))
+    );
 }
 
 #[test]
@@ -580,7 +590,11 @@ fn a_failed_move_saves_the_held_typing_into_the_original() {
         Effect::SaveNote { nb: n, id: 1, body, .. } if *n == nb() && body == "typed while moving"
     )));
     assert_eq!(app.status.text, "Move failed: not found. Nothing changed.");
-    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 1)));
+    assert!(
+        app.editor
+            .as_ref()
+            .is_some_and(|e| e.is(&NbKey::of(&nb()), 1))
+    );
 }
 
 #[test]

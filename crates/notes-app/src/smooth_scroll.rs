@@ -1,16 +1,16 @@
 //! Vertical scroller with browser-like wheel motion: short smooth catch-up,
 //! not an inertial coast.
 
+use cosmic::Element;
 use cosmic::iced::core::renderer::Renderer as _;
 use cosmic::iced::core::time::{Duration, Instant};
-use cosmic::iced::core::widget::{tree, Tree, Widget};
+use cosmic::iced::core::widget::{Tree, Widget, tree};
 use cosmic::iced::core::window;
 use cosmic::iced::core::{
-    layout, mouse, renderer, Clipboard, Color, Event, Layout, Length, Rectangle, Shell, Size,
-    Vector,
+    Clipboard, Color, Event, Layout, Length, Rectangle, Shell, Size, Vector, layout, mouse,
+    renderer,
 };
 use cosmic::iced::{Background, Border};
-use cosmic::Element;
 
 const LINE_PX: f32 = 112.0;
 const PIXEL_GAIN: f32 = 1.55;
@@ -95,7 +95,12 @@ fn thumb_rect(bounds: Rectangle, offset: f32, content_h: f32) -> Option<Rectangl
     let track_h = bounds.height;
     let thumb_h = (bounds.height / content_h * track_h).clamp(24.0, track_h);
     let travel = (track_h - thumb_h).max(0.0);
-    let y = bounds.y + if max > 0.0 { offset / max * travel } else { 0.0 };
+    let y = bounds.y
+        + if max > 0.0 {
+            offset / max * travel
+        } else {
+            0.0
+        };
     Some(Rectangle {
         x: bounds.x + bounds.width - RAIL_W - RAIL_PAD,
         y,
@@ -361,7 +366,7 @@ impl<'a, Message> Widget<Message, cosmic::Theme, cosmic::Renderer> for SmoothScr
 
 #[cfg(test)]
 mod tests {
-    use super::{follow, LINE_PX, MAX_LAG};
+    use super::{LINE_PX, MAX_LAG, follow};
 
     #[test]
     fn follow_stays_between_offset_and_target() {

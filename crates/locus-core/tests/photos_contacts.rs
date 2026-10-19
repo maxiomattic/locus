@@ -265,7 +265,10 @@ fn delete_asks_then_removes_the_selected_photo() {
         view_model::confirm_prompt(&app).as_deref(),
         Some("Delete photo \"Dunes\"?")
     );
-    assert_eq!(press(&mut app, Key::Enter), vec![Effect::DeletePhoto { id: 2 }]);
+    assert_eq!(
+        press(&mut app, Key::Enter),
+        vec![Effect::DeletePhoto { id: 2 }]
+    );
     send(&mut app, Msg::PhotoDeleted { id: 2 });
     assert_eq!(app.photos.items.len(), 4);
     assert!(app.photos.items.iter().all(|p| p.id != 2));
@@ -316,5 +319,8 @@ fn rename_and_move_patch_the_selected_photo() {
     // The viewer names the album; a catalog path that is not a hash shows too.
     send(&mut app, Msg::Activate);
     let detail = view_model::photo_detail(&app).unwrap();
-    assert_eq!(detail.meta, "Album: /Holidays/2026  ·  holidays/dunes.jpg  ·  sun");
+    assert_eq!(
+        detail.meta,
+        "Album: /Holidays/2026  ·  holidays/dunes.jpg  ·  sun"
+    );
 }

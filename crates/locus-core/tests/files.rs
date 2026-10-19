@@ -230,7 +230,11 @@ fn delete_file_confirms_and_only_empty_folders_can_be_deleted() {
     let mut app = files_app();
     assert!(!view_model::can_delete(&app), "Docs holds a file");
     press(&mut app, Key::Delete);
-    assert_eq!(app.focus, Focus::List, "non-empty folders are not deletable");
+    assert_eq!(
+        app.focus,
+        Focus::List,
+        "non-empty folders are not deletable"
+    );
     assert_eq!(app.status.text, "Folder \"Docs\" is not empty");
 
     press(&mut app, Key::Down);

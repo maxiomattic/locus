@@ -1,8 +1,8 @@
 //! Agent/CLI surface for the same functions as the notes window.
 
 use notes_sync::{
-    keep_both, load_saved, push_dirty, search_local, store_path, vault_root, vault_sync, Session,
-    Store,
+    Session, Store, keep_both, load_saved, push_dirty, search_local, store_path, vault_root,
+    vault_sync,
 };
 use std::env;
 use std::io::{self, IsTerminal, Read, Write};

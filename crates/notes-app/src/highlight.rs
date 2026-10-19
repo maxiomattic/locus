@@ -177,7 +177,13 @@ pub fn snap_hidden_column(
             .find(|(range, kind)| {
                 run_hidden(line, range, *kind) && col > range.start && col < range.end
             })
-            .map(|(range, _)| if prefer_end { range.end.min(line.len()) } else { range.start });
+            .map(|(range, _)| {
+                if prefer_end {
+                    range.end.min(line.len())
+                } else {
+                    range.start
+                }
+            });
         match next {
             Some(n) if n != col => col = n,
             _ => return col,
@@ -197,7 +203,11 @@ pub fn skip_hidden_before_backspace(
     col
 }
 
-pub fn skip_hidden_before_delete(line: &str, kinds: &[(Range<usize>, MdKind)], col: usize) -> usize {
+pub fn skip_hidden_before_delete(
+    line: &str,
+    kinds: &[(Range<usize>, MdKind)],
+    col: usize,
+) -> usize {
     let mut col = col.min(line.len());
     while col < line.len() && byte_hidden(line, kinds, col) {
         col += 1;
@@ -254,7 +264,11 @@ pub fn styled_document(text: &str) -> Vec<Vec<(Range<usize>, MdKind)>> {
 /// Obsidian-style YAML at the start of a note: `---` … `---` on its own lines.
 pub fn yaml_frontmatter(text: &str) -> Option<Range<usize>> {
     let bom = text.starts_with('\u{feff}');
-    let body = if bom { &text['\u{feff}'.len_utf8()..] } else { text };
+    let body = if bom {
+        &text['\u{feff}'.len_utf8()..]
+    } else {
+        text
+    };
     let open = if body.starts_with("---\r\n") {
         5
     } else if body.starts_with("---\n") {
@@ -436,7 +450,10 @@ mod tests {
         assert!(lines[2].iter().all(|(_, k)| *k == MdKind::Frontmatter));
         assert!(lines[3].iter().all(|(_, k)| *k == MdKind::Frontmatter));
         assert!(
-            lines.iter().flatten().any(|(_, k)| *k == MdKind::Heading(1)),
+            lines
+                .iter()
+                .flatten()
+                .any(|(_, k)| *k == MdKind::Heading(1)),
             "{lines:?}"
         );
         assert!(yaml_frontmatter("# Hello\n\n---\n\nnext\n").is_none());
@@ -468,7 +485,9 @@ mod tests {
             .iter()
             .zip(src.split('\n'))
             .flat_map(|(spans, line)| {
-                spans.iter().map(|(r, _)| &line[r.start.min(line.len())..r.end.min(line.len())])
+                spans
+                    .iter()
+                    .map(|(r, _)| &line[r.start.min(line.len())..r.end.min(line.len())])
             })
             .collect();
         assert_eq!(painted, src);
@@ -515,7 +534,10 @@ mod tests {
         let src = "hello **bold**";
         let kinds = &styled_document(src)[0];
         let bold = src.find("bold").unwrap();
-        assert_eq!(skip_hidden_before_backspace(src, kinds, bold), "hello ".len());
+        assert_eq!(
+            skip_hidden_before_backspace(src, kinds, bold),
+            "hello ".len()
+        );
         assert_eq!(
             skip_hidden_before_delete(src, kinds, src.find("**").unwrap()),
             bold

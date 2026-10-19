@@ -420,9 +420,10 @@ fn new_messages_in_the_open_conversation_are_marked_read() {
             )],
         },
     );
-    assert!(fx
-        .iter()
-        .any(|e| matches!(e, Effect::MarkRead { peer } if peer == "~dev")));
+    assert!(
+        fx.iter()
+            .any(|e| matches!(e, Effect::MarkRead { peer } if peer == "~dev"))
+    );
     assert_eq!(locus_core::messages::unread_total(&app), 0);
 }
 
@@ -434,8 +435,16 @@ fn a_closed_conversation_keeps_its_unread_count() {
         &mut app,
         Msg::ConversationsLoaded {
             conversations: vec![
-                conv("~dev", 0, msg(3, "~dev", false, "see you at six", Status::Received)),
-                conv("~tyr", 3, msg(11, "~tyr", false, "and more", Status::Received)),
+                conv(
+                    "~dev",
+                    0,
+                    msg(3, "~dev", false, "see you at six", Status::Received),
+                ),
+                conv(
+                    "~tyr",
+                    3,
+                    msg(11, "~tyr", false, "and more", Status::Received),
+                ),
             ],
         },
     );
@@ -548,7 +557,10 @@ fn a_failed_send_still_returns_the_text_to_the_draft_when_blocked() {
     );
     app.messages.draft = "hello".into();
     let fx = send(&mut app, Msg::SendDraft);
-    assert_eq!(sent_to(&fx), vec![("~dev".to_string(), "hello".to_string())]);
+    assert_eq!(
+        sent_to(&fx),
+        vec![("~dev".to_string(), "hello".to_string())]
+    );
     send(
         &mut app,
         Msg::SendFailed {

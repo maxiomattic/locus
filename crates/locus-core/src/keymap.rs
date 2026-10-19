@@ -100,7 +100,9 @@ fn command(app: &App, key: Key, mods: Mods) -> Option<Msg> {
         (Key::F(5), false, false, _) => Msg::Reload,
         (Key::Char('n' | 'N'), true, false, _) | (Key::Char('n' | 'N'), false, true, _) => Msg::New,
         (Key::Char('f' | 'F'), true, false, _) => Msg::FocusFilter,
-        (Key::Char('k' | 'K'), true, false, _) | (Key::Char('p' | 'P'), true, false, true) => Msg::OpenPalette,
+        (Key::Char('k' | 'K'), true, false, _) | (Key::Char('p' | 'P'), true, false, true) => {
+            Msg::OpenPalette
+        }
         (Key::Char('r' | 'R'), true, false, _) => Msg::Reload,
         (Key::Char('s' | 'S'), true, false, _) => Msg::SaveNow,
         (Key::Char('o' | 'O'), true, false, _) if upload => Msg::Upload,
@@ -156,7 +158,9 @@ fn list_key(app: &App, key: Key) -> Option<Msg> {
         Key::F(2) => Msg::Rename,
         Key::Char(' ') if section == Section::Todo => Msg::ToggleTask,
         Key::Char(' ') if matches!(section, Section::Movies | Section::Music) => Msg::TogglePlay,
-        Key::Char(' ') if section == Section::Photos && app.focus == Focus::Detail => Msg::TogglePlay,
+        Key::Char(' ') if section == Section::Photos && app.focus == Focus::Detail => {
+            Msg::TogglePlay
+        }
         // Type-to-filter: the first letter opens the filter with that letter.
         Key::Char(c) if !c.is_whitespace() => Msg::Batch(vec![
             Msg::FocusFilter,

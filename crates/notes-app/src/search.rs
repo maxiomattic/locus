@@ -43,7 +43,11 @@ fn score_one(haystack: &str, needle: &str) -> Option<i32> {
     }
     if let Some(at) = hay.find(&ned) {
         let mut score = 1200 - (at.min(400) as i32);
-        if at == 0 || hay.as_bytes().get(at.saturating_sub(1)).is_some_and(|b| !b.is_ascii_alphanumeric())
+        if at == 0
+            || hay
+                .as_bytes()
+                .get(at.saturating_sub(1))
+                .is_some_and(|b| !b.is_ascii_alphanumeric())
         {
             score += 60;
         }
@@ -108,7 +112,10 @@ mod tests {
     fn find_offsets_handles_case_and_overlap() {
         let text = "Ab ab AB\nZab";
         // "ab ab ab\nzab" lowercased; matches at 0..2, 3..5, 6..8, 10..12
-        assert_eq!(find_offsets(text, "ab"), vec![(0, 2), (3, 5), (6, 8), (10, 12)]);
+        assert_eq!(
+            find_offsets(text, "ab"),
+            vec![(0, 2), (3, 5), (6, 8), (10, 12)]
+        );
         assert_eq!(find_offsets(text, "Zab"), vec![(9, 12)]);
         assert!(find_offsets(text, "").is_empty());
         assert!(find_offsets(text, "nope").is_empty());

@@ -638,7 +638,10 @@ fn history_lists_the_selected_notes_revisions_and_escape_closes_it() {
     let h = view_model::note_history(&app).unwrap();
     assert_eq!(h.title, "Top note");
     assert_eq!(h.rows.len(), 2);
-    assert_eq!((h.rows[0].label.as_str(), h.body.as_str()), ("Revision 1", "second"));
+    assert_eq!(
+        (h.rows[0].label.as_str(), h.body.as_str()),
+        ("Revision 1", "second")
+    );
     assert!(h.rows[0].detail.ends_with("· ~zod"));
     assert_eq!(
         view_model::short_ship("~firdex-mipmex-modsul-malfer--lopwyx-togled-mormex-binzod"),
@@ -728,7 +731,6 @@ fn folders_rename_with_checks() {
         }]
     );
     assert_eq!(app.focus, Focus::List);
-
 }
 
 #[test]
@@ -783,7 +785,14 @@ fn restoring_a_revision_asks_then_shows_the_note_again() {
     let dialog = view_model::confirm_view(&app).unwrap();
     assert_eq!((dialog.button, dialog.destructive), ("Restore", false));
     let fx = send(&mut app, Msg::ConfirmAnswer(true));
-    assert_eq!(fx, vec![Effect::RestoreNote { nb: nb(), id: 1, rev: 0 }]);
+    assert_eq!(
+        fx,
+        vec![Effect::RestoreNote {
+            nb: nb(),
+            id: 1,
+            rev: 0
+        }]
+    );
     send(
         &mut app,
         Msg::NoteRestored {
@@ -842,7 +851,10 @@ fn history_closes_when_another_row_is_clicked_and_cancel_keeps_its_focus() {
     assert_eq!(app.focus, Focus::Detail);
     assert!(view_model::note_history(&app).is_some());
     // Clicking the same note keeps it; another row closes it.
-    let same = view_model::notes_list(&app).iter().position(|r| r.selected).unwrap();
+    let same = view_model::notes_list(&app)
+        .iter()
+        .position(|r| r.selected)
+        .unwrap();
     send(&mut app, Msg::Select(same));
     assert!(view_model::note_history(&app).is_some());
     send(&mut app, Msg::Select(0));
@@ -860,7 +872,13 @@ fn restore_waits_for_an_unsaved_editor() {
     send(
         &mut app,
         Msg::ExecuteRestore {
-            note: locus_core::NoteRef { nb: locus_core::NbKey { host: nb().host, flag_name: nb().flag_name }, id: 1 },
+            note: locus_core::NoteRef {
+                nb: locus_core::NbKey {
+                    host: nb().host,
+                    flag_name: nb().flag_name,
+                },
+                id: 1,
+            },
             rev: 0,
         },
     )

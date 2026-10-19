@@ -1,6 +1,6 @@
 //! Modal editing for the notes source and rich-text panes.
 
-use cosmic::iced::keyboard::{key::Named, Key, Modifiers};
+use cosmic::iced::keyboard::{Key, Modifiers, key::Named};
 use cosmic::iced::widget::text_editor::{Action, Edit, Motion};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -115,9 +115,10 @@ pub fn handle(
         && !modifiers.shift()
         && !modifiers.alt()
         && let Key::Character(c) = key
-            && c.as_str().eq_ignore_ascii_case("v") {
-                return mode(state, Mode::VisualBlock);
-            }
+        && c.as_str().eq_ignore_ascii_case("v")
+    {
+        return mode(state, Mode::VisualBlock);
+    }
     if modifiers.command() || modifiers.alt() {
         return Vec::new();
     }
@@ -163,12 +164,7 @@ fn command(state: &mut State, key: &Key, text: Option<&str>) -> Vec<Effect> {
     }
 }
 
-fn normal(
-    state: &mut State,
-    key: &Key,
-    modifiers: Modifiers,
-    text: Option<&str>,
-) -> Vec<Effect> {
+fn normal(state: &mut State, key: &Key, modifiers: Modifiers, text: Option<&str>) -> Vec<Effect> {
     if matches!(key, Key::Named(Named::Escape)) {
         state.pending.clear();
         return vec![Effect::Mode(Mode::Normal), Effect::Keys];
@@ -181,13 +177,15 @@ fn normal(
     let Some(ch) = ch else {
         return Vec::new();
     };
-    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty())
-        && state.pending.chars().all(|c| c.is_ascii_digit()) {
-            if state.pending.len() < 3 {
-                state.pending.push(ch);
-            }
-            return vec![Effect::Keys];
+    if ch.is_ascii_digit()
+        && (ch != '0' || !state.pending.is_empty())
+        && state.pending.chars().all(|c| c.is_ascii_digit())
+    {
+        if state.pending.len() < 3 {
+            state.pending.push(ch);
         }
+        return vec![Effect::Keys];
+    }
     if ch == ':' && state.pending.is_empty() {
         state.mode = Mode::Command;
         state.pending.clear();
@@ -296,11 +294,14 @@ fn visual(state: &mut State, key: &Key, text: Option<&str>) -> Vec<Effect> {
     let Some(ch) = ch else {
         return Vec::new();
     };
-    if ch.is_ascii_digit() && (ch != '0' || !state.pending.is_empty())
-        && state.pending.chars().all(|c| c.is_ascii_digit()) && state.pending.len() < 3 {
-            state.pending.push(ch);
-            return vec![Effect::Keys];
-        }
+    if ch.is_ascii_digit()
+        && (ch != '0' || !state.pending.is_empty())
+        && state.pending.chars().all(|c| c.is_ascii_digit())
+        && state.pending.len() < 3
+    {
+        state.pending.push(ch);
+        return vec![Effect::Keys];
+    }
     let (count, _) = split_count(&state.pending);
     state.pending.clear();
     let count = count.clamp(1, 99);
@@ -368,7 +369,10 @@ fn chord(state: &mut State) -> Vec<Effect> {
 }
 
 fn split_count(s: &str) -> (usize, &str) {
-    let i = s.bytes().position(|b| !b.is_ascii_digit()).unwrap_or(s.len());
+    let i = s
+        .bytes()
+        .position(|b| !b.is_ascii_digit())
+        .unwrap_or(s.len());
     if i == 0 {
         (1, s)
     } else {
@@ -401,7 +405,12 @@ mod tests {
             enabled: true,
             ..State::default()
         };
-        let out = handle(&mut s, &Key::Character("i".into()), Modifiers::empty(), Some("i"));
+        let out = handle(
+            &mut s,
+            &Key::Character("i".into()),
+            Modifiers::empty(),
+            Some("i"),
+        );
         assert!(matches!(s.mode, Mode::Insert));
         assert!(out.iter().any(|e| matches!(e, Effect::Mode(Mode::Insert))));
     }
@@ -423,10 +432,25 @@ mod tests {
             enabled: true,
             ..State::default()
         };
-        handle(&mut s, &Key::Character("1".into()), Modifiers::empty(), Some("1"));
-        handle(&mut s, &Key::Character("2".into()), Modifiers::empty(), Some("2"));
+        handle(
+            &mut s,
+            &Key::Character("1".into()),
+            Modifiers::empty(),
+            Some("1"),
+        );
+        handle(
+            &mut s,
+            &Key::Character("2".into()),
+            Modifiers::empty(),
+            Some("2"),
+        );
         assert_eq!(s.keys(), "12");
-        let out = handle(&mut s, &Key::Character("j".into()), Modifiers::empty(), Some("j"));
+        let out = handle(
+            &mut s,
+            &Key::Character("j".into()),
+            Modifiers::empty(),
+            Some("j"),
+        );
         assert_eq!(
             out.iter()
                 .filter(|e| matches!(e, Effect::Action(Action::Move(Motion::Down))))
@@ -442,9 +466,19 @@ mod tests {
             enabled: true,
             ..State::default()
         };
-        handle(&mut s, &Key::Character(":".into()), Modifiers::empty(), Some(":"));
+        handle(
+            &mut s,
+            &Key::Character(":".into()),
+            Modifiers::empty(),
+            Some(":"),
+        );
         assert!(matches!(s.mode, Mode::Command));
-        handle(&mut s, &Key::Character("w".into()), Modifiers::empty(), Some("w"));
+        handle(
+            &mut s,
+            &Key::Character("w".into()),
+            Modifiers::empty(),
+            Some("w"),
+        );
         assert_eq!(s.keys(), ":w");
         let out = handle(&mut s, &Key::Named(Named::Enter), Modifiers::empty(), None);
         assert!(out.iter().any(|e| matches!(e, Effect::Run(c) if c == "w")));

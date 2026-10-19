@@ -429,7 +429,10 @@ pub fn ask_delete(app: &mut App) {
 /// True when no file and no other folder lies under `path`.
 pub fn dir_is_empty(app: &App, path: &str) -> bool {
     let below = |p: &str| p.starts_with(&format!("{}/", path.trim_end_matches('/')));
-    !app.files.files.iter().any(|f| f.dir == path || below(&f.dir))
+    !app.files
+        .files
+        .iter()
+        .any(|f| f.dir == path || below(&f.dir))
         && !folders(app).iter().any(|d| below(d))
 }
 
@@ -439,7 +442,9 @@ pub fn execute_delete_dir(app: &mut App, fx: &mut Vec<Effect>, path: String) {
 }
 
 pub fn dir_deleted(app: &mut App, path: &str) {
-    app.files.dirs.retain(|d| normalize_dir(d).as_deref() != Ok(path));
+    app.files
+        .dirs
+        .retain(|d| normalize_dir(d).as_deref() != Ok(path));
     app.files.sel = clamp_sel(app.files.sel, rows(app).len());
     app.info("Folder deleted");
 }

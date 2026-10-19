@@ -193,9 +193,7 @@ impl Client {
     }
 
     pub fn get_note(&self, host: &str, name: &str, id: u64) -> Result<Note> {
-        self.get_json(&format!(
-            "/notes/~/v1/notebooks/{host}/{name}/notes/{id}"
-        ))
+        self.get_json(&format!("/notes/~/v1/notebooks/{host}/{name}/notes/{id}"))
     }
 
     pub fn create_note(
@@ -411,10 +409,9 @@ mod tests {
 
     #[test]
     fn pending_and_conflict_envelopes() {
-        let pending: Envelope = serde_json::from_str(
-            r#"{"requestId":"0v1","body":{"type":"pending","status":{}}}"#,
-        )
-        .unwrap();
+        let pending: Envelope =
+            serde_json::from_str(r#"{"requestId":"0v1","body":{"type":"pending","status":{}}}"#)
+                .unwrap();
         assert!(matches!(pending.body, EnvelopeBody::Pending { .. }));
 
         let conflict: Envelope = serde_json::from_str(
@@ -474,13 +471,7 @@ mod tests {
         )
         .expect("save");
         let err = c
-            .save_note(
-                &book.host,
-                &book.flag_name,
-                note.id,
-                "stale",
-                note.revision,
-            )
+            .save_note(&book.host, &book.flag_name, note.id, "stale", note.revision)
             .unwrap_err();
         assert!(matches!(err, Error::Conflict), "{err}");
     }

@@ -193,7 +193,11 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         }
         Msg::NoteFolderUpdated { nb, folders, moved } => {
             notes::folders_loaded(app, nb, folders);
-            app.info(if moved { "Moved folder" } else { "Renamed folder" });
+            app.info(if moved {
+                "Moved folder"
+            } else {
+                "Renamed folder"
+            });
         }
         Msg::NoteLoaded { nb, note } => notes::note_loaded(app, fx, nb, note),
         Msg::NoteCreated { nb, note } => notes::note_created(app, fx, nb, note),

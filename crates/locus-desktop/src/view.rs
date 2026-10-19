@@ -59,7 +59,9 @@ pub(crate) const NOTE_H: f32 = 20.0;
 pub(crate) const TILE: f32 = 168.0;
 pub(crate) const GAP: f32 = 8.0;
 
-pub(crate) fn scroll_msg(id: &'static str) -> impl Fn(cosmic::iced::widget::scrollable::Viewport) -> Message {
+pub(crate) fn scroll_msg(
+    id: &'static str,
+) -> impl Fn(cosmic::iced::widget::scrollable::Viewport) -> Message {
     move |vp| Message::Scrolled(id, vp)
 }
 
@@ -159,14 +161,23 @@ pub(crate) fn tool_class() -> theme::Button {
 
 /// A labelled toolbar button with a tooltip naming its shortcut; `None`
 /// draws it disabled.
-pub(crate) fn tool(label: &'static str, tip: &'static str, msg: Option<Msg>) -> Element<'static, Message> {
+pub(crate) fn tool(
+    label: &'static str,
+    tip: &'static str,
+    msg: Option<Msg>,
+) -> Element<'static, Message> {
     let b = widget::button::standard(label)
         .class(tool_class())
         .on_press_maybe(msg.map(core));
     if tip.is_empty() {
         return b.into();
     }
-    widget::tooltip(b, widget::text::caption(tip), widget::tooltip::Position::Bottom).into()
+    widget::tooltip(
+        b,
+        widget::text::caption(tip),
+        widget::tooltip::Position::Bottom,
+    )
+    .into()
 }
 
 /// A list row: a click sends `select`, a double click also `open`.
@@ -204,7 +215,11 @@ pub(crate) fn row_area<'a>(
         .into()
 }
 
-pub(crate) fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> Element<'static, Message> {
+pub(crate) fn icon_button(
+    icon: &'static str,
+    tip: &'static str,
+    msg: Msg,
+) -> Element<'static, Message> {
     widget::tooltip(
         widget::button::icon(widget::icon::from_name(icon)).on_press(core(msg)),
         widget::text::caption(tip),
@@ -213,7 +228,9 @@ pub(crate) fn icon_button(icon: &'static str, tip: &'static str, msg: Msg) -> El
     .into()
 }
 
-pub(crate) fn card<'a>(content: impl Into<Element<'a, Message>>) -> widget::Container<'a, Message, cosmic::Theme> {
+pub(crate) fn card<'a>(
+    content: impl Into<Element<'a, Message>>,
+) -> widget::Container<'a, Message, cosmic::Theme> {
     widget::container(content)
         .padding(theme::spacing().space_m)
         .class(theme::Container::Card)
@@ -254,7 +271,10 @@ pub(crate) fn two_lines<'a>(title: String, subtitle: String) -> Element<'a, Mess
         .into()
 }
 
-pub(crate) fn scroll<'a>(id: &'static str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub(crate) fn scroll<'a>(
+    id: &'static str,
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
     widget::scrollable(content)
         .id(Id::new(id))
         .on_scroll(scroll_msg(id))
@@ -298,7 +318,10 @@ pub(crate) fn virtual_list<'a>(
 
 /// An empty block of `h` pixels, for the rows a virtual list is not drawing.
 pub(crate) fn spacer<'a>(h: f32) -> Element<'a, Message> {
-    widget::Space::new().width(Length::Fill).height(Length::Fixed(h.max(0.0))).into()
+    widget::Space::new()
+        .width(Length::Fill)
+        .height(Length::Fixed(h.max(0.0)))
+        .into()
 }
 
 /// A stack of pieces of mixed heights scrolled inside `id`, where `heights[i]`
@@ -339,9 +362,21 @@ fn with_gap<'a>(el: Element<'a, Message>, gap: f32) -> Element<'a, Message> {
 
 pub fn header_end() -> Vec<Element<'static, Message>> {
     vec![
-        icon_button("view-refresh-symbolic", "Reload (Ctrl+R or F5)", Msg::Reload),
-        icon_button("system-search-symbolic", "Command palette (Ctrl+K)", Msg::OpenPalette),
-        icon_button("help-browser-symbolic", "Keyboard shortcuts (F1)", Msg::ToggleHelp),
+        icon_button(
+            "view-refresh-symbolic",
+            "Reload (Ctrl+R or F5)",
+            Msg::Reload,
+        ),
+        icon_button(
+            "system-search-symbolic",
+            "Command palette (Ctrl+K)",
+            Msg::OpenPalette,
+        ),
+        icon_button(
+            "help-browser-symbolic",
+            "Keyboard shortcuts (F1)",
+            Msg::ToggleHelp,
+        ),
     ]
 }
 
@@ -369,24 +404,31 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
         .spacing(s.space_xxs)
         .align_y(Alignment::Center);
     if matches!(ui.section, Section::Notes | Section::Files) {
-        bar = bar.push(
-            widget::tooltip(
-                widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
-                    .on_press_maybe(view_model::can_go_up(ui).then(|| core(Msg::Nav(Nav::Left)))),
-                widget::text::caption("Up one level (Backspace)"),
-                widget::tooltip::Position::Bottom,
-            ),
-        );
+        bar = bar.push(widget::tooltip(
+            widget::button::icon(widget::icon::from_name("go-previous-symbolic"))
+                .on_press_maybe(view_model::can_go_up(ui).then(|| core(Msg::Nav(Nav::Left)))),
+            widget::text::caption("Up one level (Backspace)"),
+            widget::tooltip::Position::Bottom,
+        ));
     }
     match ui.section {
         Section::Notes => {
-            bar = bar.push(widget::text::title4(view_model::notes_breadcrumb(ui)).width(Length::Fill));
+            bar = bar
+                .push(widget::text::title4(view_model::notes_breadcrumb(ui)).width(Length::Fill));
         }
         Section::Files => bar = bar.push(files_path(app)),
         // The Calendar app's two tabs sit where its title would be.
         Section::Calendar | Section::Todo => {
-            bar = bar.push(tool_tab("Calendar", ui.section == Section::Calendar, Msg::Switch(Section::Calendar)));
-            bar = bar.push(tool_tab("Todo", ui.section == Section::Todo, Msg::Switch(Section::Todo)));
+            bar = bar.push(tool_tab(
+                "Calendar",
+                ui.section == Section::Calendar,
+                Msg::Switch(Section::Calendar),
+            ));
+            bar = bar.push(tool_tab(
+                "Todo",
+                ui.section == Section::Todo,
+                Msg::Switch(Section::Todo),
+            ));
             bar = bar.push(widget::space::horizontal().width(Length::Fill));
         }
         other => bar = bar.push(widget::text::title4(other.label()).width(Length::Fill)),
@@ -394,7 +436,12 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
     bar = bar.push(
         widget::search_input("Search", ui.filter.as_str())
             .id(Id::new(FILTER_ID))
-            .on_input(|value| core(Msg::Batch(vec![Msg::FocusFilter, Msg::Text(TextEdit::Set(value))])))
+            .on_input(|value| {
+                core(Msg::Batch(vec![
+                    Msg::FocusFilter,
+                    Msg::Text(TextEdit::Set(value)),
+                ]))
+            })
             .on_clear(core(Msg::Batch(vec![
                 Msg::FocusFilter,
                 Msg::Text(TextEdit::Set(String::new())),
@@ -405,15 +452,27 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(ui) => vec![
             tool("New notebook", "", Some(Msg::NewNotebook)),
             tool("New note", "Ctrl+N", Some(Msg::New)),
-            tool("Rename", "F2", when(view_model::can_rename(ui), Msg::Rename)),
+            tool(
+                "Rename",
+                "F2",
+                when(view_model::can_rename(ui), Msg::Rename),
+            ),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool("New note", "Ctrl+N", Some(Msg::New)),
             tool("New folder", "", Some(Msg::NewFolder)),
-            tool("Rename", "F2", when(view_model::can_rename(ui), Msg::Rename)),
+            tool(
+                "Rename",
+                "F2",
+                when(view_model::can_rename(ui), Msg::Rename),
+            ),
             tool("Move", "", when(view_model::can_move(ui), Msg::Move)),
-            tool(history_label(ui), "", when(view_model::can_show_history(ui), Msg::History)),
+            tool(
+                history_label(ui),
+                "",
+                when(view_model::can_show_history(ui), Msg::History),
+            ),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Movies => vec![
@@ -439,7 +498,11 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("Add task", "Ctrl+N", Some(Msg::New)),
             tool("Open note", "Enter", when(item, Msg::Activate)),
             tool(
-                if ui.todo.show_done { "Hide done" } else { "Show done" },
+                if ui.todo.show_done {
+                    "Hide done"
+                } else {
+                    "Show done"
+                },
                 "",
                 Some(Msg::ToggleDoneTasks),
             ),
@@ -451,7 +514,11 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
         ],
         Section::Photos => vec![
             tool("Upload", "Ctrl+O", Some(Msg::Upload)),
-            tool("Open", "Enter", when(item && ui.focus != Focus::Detail, Msg::Activate)),
+            tool(
+                "Open",
+                "Enter",
+                when(item && ui.focus != Focus::Detail, Msg::Activate),
+            ),
             tool("Rename", "F2", when(item, Msg::Rename)),
             tool("Move", "", when(item, Msg::Move)),
             tool("Delete", "Delete", when(item, Msg::Delete)),
@@ -461,7 +528,11 @@ pub(crate) fn app_toolbar(app: &App) -> Element<'_, Message> {
             tool("New folder", "Ctrl+N", Some(Msg::New)),
             tool("Rename", "F2", when(item, Msg::Rename)),
             tool("Move", "", when(item, Msg::Move)),
-            tool("Copy path", "Ctrl+C", when(view_model::has_file_row_selected(ui), Msg::Yank)),
+            tool(
+                "Copy path",
+                "Ctrl+C",
+                when(view_model::has_file_row_selected(ui), Msg::Yank),
+            ),
             tool("Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Contacts => vec![
@@ -514,8 +585,11 @@ pub fn content(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     match app.screen {
         Screen::Connecting => widget::container(
-            card(widget::text::body(format!("Connecting to {}...", app.server)))
-                .max_width(420.0),
+            card(widget::text::body(format!(
+                "Connecting to {}...",
+                app.server
+            )))
+            .max_width(420.0),
         )
         .center(Length::Fill)
         .into(),
@@ -556,35 +630,32 @@ pub(crate) fn login(app: &App) -> Element<'_, Message> {
         .push(widget::text::caption(
             "The Locus gateway address (or the ship's own URL), and the ship's web code.",
         ))
-        .push(
-            widget::settings::item_row(vec![
-                widget::text::body("Server").width(Length::Fixed(96.0)).into(),
-                widget::text_input("http://surface:8090", app.server.as_str())
-                    .on_input(Message::ServerEdit)
-                    .on_submit(|_| core(Msg::Submit))
-                    .width(Length::Fill)
-                    .into(),
-            ]),
-        )
-        .push(
-            widget::settings::item_row(vec![
-                widget::text::body("Web code").width(Length::Fixed(96.0)).into(),
-                widget::secure_input("sampel-ticlyt-migfun-falmel", code, None, true)
-                    .id(Id::new(INPUT_ID))
-                    .on_input(set_text)
-                    .width(Length::Fill)
-                    .into(),
-            ]),
-        )
+        .push(widget::settings::item_row(vec![
+            widget::text::body("Server")
+                .width(Length::Fixed(96.0))
+                .into(),
+            widget::text_input("http://surface:8090", app.server.as_str())
+                .on_input(Message::ServerEdit)
+                .on_submit(|_| core(Msg::Submit))
+                .width(Length::Fill)
+                .into(),
+        ]))
+        .push(widget::settings::item_row(vec![
+            widget::text::body("Web code")
+                .width(Length::Fixed(96.0))
+                .into(),
+            widget::secure_input("sampel-ticlyt-migfun-falmel", code, None, true)
+                .id(Id::new(INPUT_ID))
+                .on_input(set_text)
+                .width(Length::Fill)
+                .into(),
+        ]))
         .push(
             widget::row::with_capacity(2)
                 .align_y(Alignment::Center)
                 .push(
-                    widget::container(level_text(
-                        app.ui.status.text.clone(),
-                        app.ui.status.level,
-                    ))
-                    .width(Length::Fill),
+                    widget::container(level_text(app.ui.status.text.clone(), app.ui.status.level))
+                        .width(Length::Fill),
                 )
                 .push(widget::button::suggested("Connect").on_press(core(Msg::Submit))),
         );
@@ -599,7 +670,10 @@ pub(crate) fn login(app: &App) -> Element<'_, Message> {
 fn note_row<'a>(row: &view_model::Row, i: usize) -> Element<'a, Message> {
     let content = widget::row::with_capacity(2)
         .align_y(Alignment::Center)
-        .push(widget::container(two_lines(row.title.clone(), row.subtitle.clone())).width(Length::Fill));
+        .push(
+            widget::container(two_lines(row.title.clone(), row.subtitle.clone()))
+                .width(Length::Fill),
+        );
     let content = if row.is_dir {
         content.push(widget::icon::from_name("go-next-symbolic").size(16).icon())
     } else {
@@ -615,12 +689,17 @@ pub(crate) fn notes(app: &App) -> Element<'_, Message> {
         empty("No notes", empty_hint(app, "Click New note to write one."))
     } else {
         let count = rows.len();
-        virtual_list(app, NOTES_SCROLL, count, ROW2_H, move |i| note_row(&rows[i], i))
+        virtual_list(app, NOTES_SCROLL, count, ROW2_H, move |i| {
+            note_row(&rows[i], i)
+        })
     };
     let left = widget::container(list)
         .width(Length::Fixed(LIST_W))
         .height(Length::Fill);
-    let right: Element<'_, Message> = match (view_model::note_history(&app.ui), view_model::editor(&app.ui)) {
+    let right: Element<'_, Message> = match (
+        view_model::note_history(&app.ui),
+        view_model::editor(&app.ui),
+    ) {
         (Some(history), _) => history_pane(history),
         (None, Some(editor)) => editor_pane(app, editor),
         (None, None) => empty("No note open", "Double-click a note to open it.".into()),
@@ -628,7 +707,11 @@ pub(crate) fn notes(app: &App) -> Element<'_, Message> {
     widget::row::with_capacity(2)
         .spacing(s.space_s)
         .push(left)
-        .push(widget::container(right).width(Length::Fill).height(Length::Fill))
+        .push(
+            widget::container(right)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
         .into()
 }
 
@@ -681,12 +764,19 @@ pub(crate) fn history_pane(history: HistoryView) -> Element<'static, Message> {
         .spacing(s.space_xs)
         .align_y(Alignment::Center)
         .push(widget::text::title4(format!("History of {}", history.title)).width(Length::Fill))
-        .push(tool("Restore this version", "", history.can_restore.then_some(Msg::RestoreRevision)))
+        .push(tool(
+            "Restore this version",
+            "",
+            history.can_restore.then_some(Msg::RestoreRevision),
+        ))
         .push(tool("Close", "Escape", Some(Msg::History)));
     let body: Element<'static, Message> = if history.loading {
         empty("History", "Loading...".into())
     } else if history.rows.is_empty() {
-        empty("No saved revisions", "Earlier versions of this note appear here.".into())
+        empty(
+            "No saved revisions",
+            "Earlier versions of this note appear here.".into(),
+        )
     } else {
         let mut list = widget::list_column();
         for (i, row) in history.rows.into_iter().enumerate() {
@@ -710,7 +800,10 @@ pub(crate) fn history_pane(history: HistoryView) -> Element<'static, Message> {
                     .width(Length::Fixed(LIST_W))
                     .height(Length::Fill),
             )
-            .push(scroll(REVISION_SCROLL, widget::container(text).padding(s.space_s)))
+            .push(scroll(
+                REVISION_SCROLL,
+                widget::container(text).padding(s.space_s),
+            ))
             .into()
     };
     widget::column::with_capacity(2)
@@ -735,9 +828,16 @@ pub(crate) fn todo_groups(app: &App) -> Vec<view_model::Group> {
 /// One row of the Todo list, flattened out of its group so that each row can
 /// be placed by height. `i` is the task's index across all shown groups.
 enum TodoPiece {
-    Header { title: &'static str, count: usize },
+    Header {
+        title: &'static str,
+        count: usize,
+    },
     Hidden,
-    Task { i: usize, task: view_model::TaskRow, last: bool },
+    Task {
+        i: usize,
+        task: view_model::TaskRow,
+        last: bool,
+    },
 }
 
 /// The Todo list as pieces with their heights, in order. A heading and a
@@ -748,7 +848,13 @@ fn todo_pieces(app: &App) -> Vec<(TodoPiece, f32)> {
     let mut pieces = Vec::new();
     let mut index = 0usize;
     for group in todo_groups(app) {
-        pieces.push((TodoPiece::Header { title: group.title, count: group.count }, HEADER_H + sp));
+        pieces.push((
+            TodoPiece::Header {
+                title: group.title,
+                count: group.count,
+            },
+            HEADER_H + sp,
+        ));
         if group.collapsed {
             pieces.push((TodoPiece::Hidden, NOTE_H + sp));
             continue;
@@ -757,7 +863,14 @@ fn todo_pieces(app: &App) -> Vec<(TodoPiece, f32)> {
         for (k, task) in group.items.into_iter().enumerate() {
             let last = k + 1 == n;
             let h = ROW2_H + if last { sp } else { 0.0 };
-            pieces.push((TodoPiece::Task { i: index, task, last }, h));
+            pieces.push((
+                TodoPiece::Task {
+                    i: index,
+                    task,
+                    last,
+                },
+                h,
+            ));
             index += 1;
         }
     }
@@ -787,10 +900,11 @@ fn todo_piece<'a>(piece: &TodoPiece) -> Element<'a, Message> {
             with_gap(head, sp)
         }
         TodoPiece::Hidden => {
-            let note: Element<'a, Message> =
-                widget::container(widget::text::caption("Hidden. Click Show done to see them."))
-                    .height(Length::Fixed(NOTE_H))
-                    .into();
+            let note: Element<'a, Message> = widget::container(widget::text::caption(
+                "Hidden. Click Show done to see them.",
+            ))
+            .height(Length::Fixed(NOTE_H))
+            .into();
             with_gap(note, sp)
         }
         TodoPiece::Task { i, task, last } => {
@@ -820,7 +934,13 @@ fn todo_piece<'a>(piece: &TodoPiece) -> Element<'a, Message> {
                         .push(widget::text::caption(task.source_note_title.clone())),
                 )
                 .push(due);
-            let row = row_area(content, ROW2_H, task.selected, Msg::Select(i), Msg::Activate);
+            let row = row_area(
+                content,
+                ROW2_H,
+                task.selected,
+                Msg::Select(i),
+                Msg::Activate,
+            );
             if *last { with_gap(row, sp) } else { row }
         }
     }
@@ -835,7 +955,9 @@ pub(crate) fn todo(app: &App) -> Element<'_, Message> {
         );
     }
     let heights: Vec<f32> = pieces.iter().map(|&(_, h)| h).collect();
-    virtual_column(app, TODO_SCROLL, &heights, move |i| todo_piece(&pieces[i].0))
+    virtual_column(app, TODO_SCROLL, &heights, move |i| {
+        todo_piece(&pieces[i].0)
+    })
 }
 
 pub(crate) fn dim() -> Color {
@@ -862,13 +984,21 @@ pub(crate) fn calendar(app: &App) -> Element<'_, Message> {
     let header = widget::row::with_capacity(8)
         .spacing(s.space_xxs)
         .align_y(Alignment::Center)
-        .push(icon_button("go-previous-symbolic", "Previous month (Page Up)", Msg::ShiftMonth(-1)))
+        .push(icon_button(
+            "go-previous-symbolic",
+            "Previous month (Page Up)",
+            Msg::ShiftMonth(-1),
+        ))
         .push(
             widget::container(widget::text::title4(month.title.clone()))
                 .width(Length::Fixed(180.0))
                 .align_x(Alignment::Center),
         )
-        .push(icon_button("go-next-symbolic", "Next month (Page Down)", Msg::ShiftMonth(1)))
+        .push(icon_button(
+            "go-next-symbolic",
+            "Next month (Page Down)",
+            Msg::ShiftMonth(1),
+        ))
         .push(text_button("Today", Msg::Today))
         .push(widget::space::horizontal())
         .push(mode_button("Agenda", CalMode::Agenda))
@@ -911,10 +1041,20 @@ pub(crate) fn s_s() -> u16 {
 /// One row of the agenda, flattened out of its day so that each row can be
 /// placed by height.
 enum AgendaPiece {
-    Day { label: String, selected: bool },
+    Day {
+        label: String,
+        selected: bool,
+    },
     /// `j` is the event's index in its day. `date` is the day a click must
     /// select first, or `None` when the day is already selected.
-    Event { time: String, title: String, selected: bool, j: usize, date: Option<Date>, last: bool },
+    Event {
+        time: String,
+        title: String,
+        selected: bool,
+        j: usize,
+        date: Option<Date>,
+        last: bool,
+    },
 }
 
 /// The agenda as pieces with their heights, in order. A day heading carries
@@ -927,9 +1067,19 @@ fn agenda_pieces(app: &App) -> Vec<(AgendaPiece, f32)> {
         if day.is_today {
             label.push_str(" · Today");
         }
-        pieces.push((AgendaPiece::Day { label, selected: day.is_selected }, HEADER_H + sp));
+        pieces.push((
+            AgendaPiece::Day {
+                label,
+                selected: day.is_selected,
+            },
+            HEADER_H + sp,
+        ));
         let n = day.events.len();
-        let date = if day.is_selected { None } else { Some(day.date) };
+        let date = if day.is_selected {
+            None
+        } else {
+            Some(day.date)
+        };
         for (j, ev) in day.events.into_iter().enumerate() {
             let last = j + 1 == n;
             let h = ROW1_H + if last { sp } else { 0.0 };
@@ -964,12 +1114,25 @@ fn agenda_piece<'a>(piece: &AgendaPiece) -> Element<'a, Message> {
                 .into();
             with_gap(head, sp)
         }
-        AgendaPiece::Event { time, title, selected, j, date, last } => {
+        AgendaPiece::Event {
+            time,
+            title,
+            selected,
+            j,
+            date,
+            last,
+        } => {
             let select = match *date {
                 Some(date) => Msg::Batch(vec![Msg::SelectDay(date), Msg::Select(*j)]),
                 None => Msg::Select(*j),
             };
-            let row = row_area(event_row(time.clone(), title.clone()), ROW1_H, *selected, select, Msg::Edit);
+            let row = row_area(
+                event_row(time.clone(), title.clone()),
+                ROW1_H,
+                *selected,
+                select,
+                Msg::Edit,
+            );
             if *last { with_gap(row, sp) } else { row }
         }
     }
@@ -980,26 +1143,38 @@ pub(crate) fn agenda(app: &App) -> Element<'_, Message> {
     if pieces.is_empty() {
         return empty(
             "No events",
-            empty_hint(app, "Nothing in the next 30 days. Click New event to add one."),
+            empty_hint(
+                app,
+                "Nothing in the next 30 days. Click New event to add one.",
+            ),
         );
     }
     let heights: Vec<f32> = pieces.iter().map(|&(_, h)| h).collect();
-    virtual_column(app, AGENDA_SCROLL, &heights, move |i| agenda_piece(&pieces[i].0))
+    virtual_column(app, AGENDA_SCROLL, &heights, move |i| {
+        agenda_piece(&pieces[i].0)
+    })
 }
 
 /// The selected day's events under the month grid, so Edit and Delete have
 /// a visible target.
 pub(crate) fn day_events(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
-    let mut col = widget::column::with_capacity(2)
-        .spacing(s.space_xxs)
-        .push(widget::text::heading(view_model::selected_day_label(&app.ui)));
+    let mut col =
+        widget::column::with_capacity(2)
+            .spacing(s.space_xxs)
+            .push(widget::text::heading(view_model::selected_day_label(
+                &app.ui,
+            )));
     let day = view_model::agenda(&app.ui)
         .into_iter()
         .next()
         .filter(|d| d.is_selected);
     match day {
-        None => col = col.push(widget::text::caption("No events. Click New event to add one.")),
+        None => {
+            col = col.push(widget::text::caption(
+                "No events. Click New event to add one.",
+            ))
+        }
         Some(day) => {
             let mut list = widget::list_column();
             for (j, ev) in day.events.into_iter().enumerate() {
@@ -1126,9 +1301,13 @@ pub(crate) fn photos(app: &App) -> Element<'_, Message> {
     let radius = theme::active().cosmic().radius_s();
     let count = grid.rows.len();
     let rows = grid.rows;
-    virtual_list(app, PHOTOS_SCROLL, count, photo_pitch(app.photo_width(), cols), move |r| {
-        photo_row(app, &rows[r], r, cols, tile, radius)
-    })
+    virtual_list(
+        app,
+        PHOTOS_SCROLL,
+        count,
+        photo_pitch(app.photo_width(), cols),
+        move |r| photo_row(app, &rows[r], r, cols, tile, radius),
+    )
 }
 
 /// One row of the photo grid: `cols` tiles, then the gap below them.
@@ -1205,7 +1384,12 @@ pub(crate) fn viewer(app: &App) -> Element<'_, Message> {
             .get(&thumb_key(sha, THUMB_VIEW))
             .cloned()
             .flatten()
-            .or_else(|| app.thumbs.get(&thumb_key(sha, THUMB_GRID)).cloned().flatten())
+            .or_else(|| {
+                app.thumbs
+                    .get(&thumb_key(sha, THUMB_GRID))
+                    .cloned()
+                    .flatten()
+            })
     });
     let picture: Element<'_, Message> = match handle {
         Some(handle) => widget::image(handle)
@@ -1213,14 +1397,18 @@ pub(crate) fn viewer(app: &App) -> Element<'_, Message> {
             .width(Length::Fill)
             .height(Length::Fill)
             .into(),
-        None if detail.hash.is_none() => empty("No preview", "This photo has no stored image.".into()),
+        None if detail.hash.is_none() => {
+            empty("No preview", "This photo has no stored image.".into())
+        }
         // A failed fetch is stored as `None`.
-        None if detail
-            .hash
-            .as_deref()
-            .is_some_and(|sha| matches!(app.thumbs.get(&thumb_key(sha, THUMB_VIEW)), Some(None))) =>
+        None if detail.hash.as_deref().is_some_and(|sha| {
+            matches!(app.thumbs.get(&thumb_key(sha, THUMB_VIEW)), Some(None))
+        }) =>
         {
-            empty("Could not load the photo", "The server did not send it.".into())
+            empty(
+                "Could not load the photo",
+                "The server did not send it.".into(),
+            )
         }
         None => empty("Loading", "Fetching the photo.".into()),
     };
@@ -1252,7 +1440,11 @@ fn file_row<'a>(row: &view_model::FileRow, i: usize) -> Element<'a, Message> {
     } else {
         "text-x-generic-symbolic"
     };
-    let size = if row.is_dir { "Folder".to_string() } else { row.size_label.clone() };
+    let size = if row.is_dir {
+        "Folder".to_string()
+    } else {
+        row.size_label.clone()
+    };
     let content = widget::row::with_capacity(4)
         .spacing(s.space_s)
         .align_y(Alignment::Center)
@@ -1282,7 +1474,9 @@ pub(crate) fn files(app: &App) -> Element<'_, Message> {
         widget::column::with_capacity(2)
             .spacing(s.space_xxs)
             .push(header)
-            .push(virtual_list(app, FILES_SCROLL, count, ROW1_H, move |i| file_row(&rows[i], i)))
+            .push(virtual_list(app, FILES_SCROLL, count, ROW1_H, move |i| {
+                file_row(&rows[i], i)
+            }))
             .into()
     };
     body
@@ -1294,7 +1488,10 @@ pub(crate) fn contacts(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::contact_rows(&app.ui);
     let list: Element<'_, Message> = if rows.is_empty() {
-        empty("No contacts", empty_hint(app, "Click New contact to add one."))
+        empty(
+            "No contacts",
+            empty_hint(app, "Click New contact to add one."),
+        )
     } else {
         let count = rows.len();
         virtual_list(app, CONTACTS_SCROLL, count, ROW2_H, move |i| {
@@ -1335,7 +1532,10 @@ pub(crate) fn contacts(app: &App) -> Element<'_, Message> {
                 )
                 .into()
         } else {
-            empty("No contact selected", "Pick a contact to see its details.".into())
+            empty(
+                "No contact selected",
+                "Pick a contact to see its details.".into(),
+            )
         };
     widget::row::with_capacity(2)
         .spacing(s.space_s)
@@ -1368,7 +1568,8 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
                     .body(confirm.detail)
                     .primary_action(yes.on_press(core(Msg::ConfirmAnswer(true))))
                     .secondary_action(
-                        widget::button::standard("Cancel").on_press(core(Msg::ConfirmAnswer(false))),
+                        widget::button::standard("Cancel")
+                            .on_press(core(Msg::ConfirmAnswer(false))),
                     )
                     .into(),
             )
@@ -1488,7 +1689,12 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
             )
         }
         // The message draft is a field in the thread, not a dialog.
-        Focus::Input(kind) if !matches!(kind, InputKind::Filter | InputKind::Login | InputKind::MessageDraft) => {
+        Focus::Input(kind)
+            if !matches!(
+                kind,
+                InputKind::Filter | InputKind::Login | InputKind::MessageDraft
+            ) =>
+        {
             let prompt = view_model::input_prompt(ui)?;
             let control = widget::text_input(prompt.label, prompt.text)
                 .id(Id::new(INPUT_ID))
@@ -1525,7 +1731,9 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
     let ui = &app.ui;
     let rect = |id, i: usize, h: f32| Some((id, i as f32 * row_pitch(h), row_pitch(h)));
     if ui.focus == Focus::Palette {
-        let i = view_model::palette_rows(ui).iter().position(|r| r.selected)?;
+        let i = view_model::palette_rows(ui)
+            .iter()
+            .position(|r| r.selected)?;
         return rect(PALETTE_SCROLL, i, ROW1_H);
     }
     if let Some(picker) = view_model::move_picker(ui) {
@@ -1542,12 +1750,24 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
             rect(FILES_SCROLL, i, ROW1_H)
         }
         Section::Contacts => {
-            let i = view_model::contact_rows(ui).iter().position(|r| r.selected)?;
+            let i = view_model::contact_rows(ui)
+                .iter()
+                .position(|r| r.selected)?;
             rect(CONTACTS_SCROLL, i, ROW2_H)
         }
         Section::Movies | Section::Music => {
-            let i = view_model::media_rows(ui, ui.section).iter().position(|r| r.selected)?;
-            rect(if ui.section == Section::Music { MUSIC_SCROLL } else { MOVIES_SCROLL }, i, ROW2_H)
+            let i = view_model::media_rows(ui, ui.section)
+                .iter()
+                .position(|r| r.selected)?;
+            rect(
+                if ui.section == Section::Music {
+                    MUSIC_SCROLL
+                } else {
+                    MOVIES_SCROLL
+                },
+                i,
+                ROW2_H,
+            )
         }
         Section::Messages => {
             let i = ui.messages.sel;

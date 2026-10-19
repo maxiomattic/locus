@@ -230,9 +230,7 @@ impl Client {
         if let Some(key) = &self.api_key {
             req = req.set("X-Api-Key", key);
         }
-        let resp = req
-            .send_json(body)
-            .map_err(|e| http_err(path, e))?;
+        let resp = req.send_json(body).map_err(|e| http_err(path, e))?;
         read_json(path, resp)
     }
 }

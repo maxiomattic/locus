@@ -200,7 +200,10 @@ fn ctrl_k_opens_palette_and_escape_closes_it() {
 
 #[test]
 fn letters_filter_the_list_and_never_run_commands() {
-    let mut app = loaded_notes(vec![note(1, "Milk run", "", 1, 5), note(2, "Taxes", "", 1, 4)]);
+    let mut app = loaded_notes(vec![
+        note(1, "Milk run", "", 1, 5),
+        note(2, "Taxes", "", 1, 4),
+    ]);
     for c in ['n', 'd', 'j', 'q'] {
         assert_eq!(
             keymap(&app, Key::Char(c), Mods::NONE),
@@ -232,7 +235,11 @@ fn ctrl_and_alt_combos_without_a_meaning_are_unbound() {
         alt: true,
         ..Mods::default()
     };
-    assert_eq!(keymap(&app, Key::Char('n'), alt), Some(Msg::New), "browsers keep Ctrl+N");
+    assert_eq!(
+        keymap(&app, Key::Char('n'), alt),
+        Some(Msg::New),
+        "browsers keep Ctrl+N"
+    );
 }
 
 #[test]

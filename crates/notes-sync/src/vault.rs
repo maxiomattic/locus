@@ -4,8 +4,8 @@
 //! skipped by `push_dirty`). A symlink into `files/` would not populate the
 //! sidebar; this maps `.md` paths onto high-range note ids.
 
-use crate::store::{Store, VaultFile};
 use crate::Note;
+use crate::store::{Store, VaultFile};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
@@ -33,11 +33,7 @@ pub fn root() -> Option<PathBuf> {
     }
     let home = dirs::home_dir()?;
     let p = home.join("Documents/new");
-    if p.is_dir() {
-        Some(p)
-    } else {
-        None
-    }
+    if p.is_dir() { Some(p) } else { None }
 }
 
 pub fn sync(store: &Store, root: &Path) -> crate::Result<Report> {
@@ -281,7 +277,9 @@ fn split_frontmatter(body: &str) -> (Option<String>, &str) {
         return (None, body);
     };
     let yaml = &after[..end];
-    let rest = after[end + 4..].strip_prefix('\n').unwrap_or(&after[end + 4..]);
+    let rest = after[end + 4..]
+        .strip_prefix('\n')
+        .unwrap_or(&after[end + 4..]);
     let mut title = None;
     for line in yaml.lines() {
         let line = line.trim();

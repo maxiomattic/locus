@@ -56,7 +56,11 @@ pub fn nav(app: &mut App, fx: &mut Vec<Effect>, nav: Nav) {
         };
         if app.photos.sel != sel {
             // A video does not follow the viewer to the next photo.
-            if app.player.as_ref().is_some_and(|p| p.from == Section::Photos) {
+            if app
+                .player
+                .as_ref()
+                .is_some_and(|p| p.from == Section::Photos)
+            {
                 media::stop(app, fx);
             }
         }

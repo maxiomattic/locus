@@ -107,8 +107,7 @@ pub fn movie_title(name: &str) -> String {
 pub fn track_title(name: &str) -> String {
     let base = stem(name);
     let digits = base.len() - base.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-    let rest =
-        base[digits..].trim_start_matches([' ', '-', '.', '_', ')']);
+    let rest = base[digits..].trim_start_matches([' ', '-', '.', '_', ')']);
     if digits == 0 || rest.is_empty() {
         base.to_string()
     } else {

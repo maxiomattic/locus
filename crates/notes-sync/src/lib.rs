@@ -2,16 +2,16 @@
 //!
 //! Live HTTP to the ship, plus a local copy-on-write snapshot store.
 
-use notes_protocol::{Client, Error as ProtoError, NotebookSummary};
 pub use notes_protocol::Note;
+use notes_protocol::{Client, Error as ProtoError, NotebookSummary};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 mod store;
-pub use store::{Snapshot, Store, VaultFile, VAULT_ID_BASE};
+pub use store::{Snapshot, Store, VAULT_ID_BASE, VaultFile};
 
 mod vault;
-pub use vault::{root as vault_root, sync as vault_sync, Report as VaultReport};
+pub use vault::{Report as VaultReport, root as vault_root, sync as vault_sync};
 
 pub const APP_ID: &str = "org.digital-workspace.notes";
 
@@ -156,10 +156,7 @@ impl Session {
         if books.is_empty() {
             books.push(client.create_notebook("Notes")?);
         }
-        let notebook = books
-            .into_iter()
-            .next()
-            .ok_or(Error::NoNotebook)?;
+        let notebook = books.into_iter().next().ok_or(Error::NoNotebook)?;
         Ok(Self { client, notebook })
     }
 
@@ -210,12 +207,8 @@ impl Session {
         expected_revision: u64,
     ) -> Result<Note> {
         // Two PUTs: body-present writes ignore title on the ship.
-        self.client.rename_note(
-            &self.notebook.host,
-            &self.notebook.flag_name,
-            id,
-            title,
-        )?;
+        self.client
+            .rename_note(&self.notebook.host, &self.notebook.flag_name, id, title)?;
         self.client.save_note(
             &self.notebook.host,
             &self.notebook.flag_name,
@@ -233,11 +226,9 @@ impl Session {
     }
 
     pub fn note_delete(&self, id: u64) -> Result<()> {
-        Ok(self.client.delete_note(
-            &self.notebook.host,
-            &self.notebook.flag_name,
-            id,
-        )?)
+        Ok(self
+            .client
+            .delete_note(&self.notebook.host, &self.notebook.flag_name, id)?)
     }
 }
 

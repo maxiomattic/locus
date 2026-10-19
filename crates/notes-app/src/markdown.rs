@@ -4,16 +4,16 @@
 //! highlighter). Source characters stay in the editor; this pane is the
 //! formatted document, including images.
 
+use cosmic::Element;
 use cosmic::font;
 use cosmic::iced::font::Style;
 use cosmic::iced::{Font, Length};
 use cosmic::widget;
-use cosmic::Element;
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, LinkType, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
-use crate::highlight;
 use crate::Message;
+use crate::highlight;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WikiLink {
@@ -50,9 +50,7 @@ pub fn normalize_target(s: &str) -> String {
         .trim_end_matches(".md")
         .trim_end_matches(".MD")
         .trim_end_matches(".Md");
-    s.replace('\\', "/")
-        .trim_matches('/')
-        .to_lowercase()
+    s.replace('\\', "/").trim_matches('/').to_lowercase()
 }
 
 pub fn basename_of(key: &str) -> &str {
@@ -182,7 +180,11 @@ impl ListItem {
     fn next_prefix(&self) -> String {
         let mut s = self.lead.clone();
         if let Some((n, delim)) = self.ordered {
-            s.push_str(&format!("{}{} ", n.saturating_add(1).min(999_999_999), delim));
+            s.push_str(&format!(
+                "{}{} ",
+                n.saturating_add(1).min(999_999_999),
+                delim
+            ));
         } else if let Some(b) = self.bullet {
             s.push(b);
             s.push(' ');
@@ -416,8 +418,7 @@ pub fn view_visible(body: &str, files_dir: &Path) -> Element<'static, Message> {
     .into()
 }
 
-#[derive(Clone, Copy)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct Inline {
     heading: u8,
     bold: bool,
@@ -426,7 +427,6 @@ struct Inline {
     code: bool,
     quote: bool,
 }
-
 
 enum OpenLink {
     Url(String),
@@ -505,7 +505,8 @@ impl Builder<'_> {
             Event::HardBreak => self.text("\n"),
             Event::Rule => {
                 self.flush_inlines();
-                self.blocks.push(widget::divider::horizontal::default().into());
+                self.blocks
+                    .push(widget::divider::horizontal::default().into());
             }
             Event::TaskListMarker(done) => {
                 let line = line_at(self.body, range.start);
@@ -548,7 +549,12 @@ impl Builder<'_> {
                 dest_url,
                 ..
             } => {
-                let target = dest_url.split('|').next().unwrap_or(&dest_url).trim().to_string();
+                let target = dest_url
+                    .split('|')
+                    .next()
+                    .unwrap_or(&dest_url)
+                    .trim()
+                    .to_string();
                 self.link = Some(OpenLink::Wiki(target));
             }
             Tag::Link { dest_url, .. } => {
@@ -593,12 +599,8 @@ impl Builder<'_> {
             }
             TagEnd::CodeBlock | TagEnd::HtmlBlock => {
                 if let Some(code) = self.code.take() {
-                    self.blocks.push(
-                        widget::text(code)
-                            .size(14.0)
-                            .font(font::mono())
-                            .into(),
-                    );
+                    self.blocks
+                        .push(widget::text(code).size(14.0).font(font::mono()).into());
                 }
             }
             TagEnd::List(_) => {

@@ -84,7 +84,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .client_decorations(true)
         .resizable(Some(8.0))
         .size(Size::new(1200.0, 780.0))
-        .size_limits(cosmic::iced::Limits::NONE.min_width(640.0).min_height(420.0));
+        .size_limits(
+            cosmic::iced::Limits::NONE
+                .min_width(640.0)
+                .min_height(420.0),
+        );
     // One `cosmic::Application` type per app id: libcosmic takes the id from
     // a const. Each app is single-instance per id, so a second
     // `locus-notes` focuses the running one and hands it the target.
@@ -134,7 +138,10 @@ pub(crate) struct Flags {
 }
 
 impl Flags {
-    fn parse(named: Option<Section>, mut args: impl Iterator<Item = String>) -> Result<Flags, String> {
+    fn parse(
+        named: Option<Section>,
+        mut args: impl Iterator<Item = String>,
+    ) -> Result<Flags, String> {
         let mut section = named;
         let mut flags = Flags {
             section: Section::Notes,
@@ -157,7 +164,8 @@ impl Flags {
                 }
                 other if section.is_none() && !other.starts_with('-') => {
                     section = Some(
-                        Section::from_slug(other).ok_or_else(|| format!("unknown app {other:?}"))?,
+                        Section::from_slug(other)
+                            .ok_or_else(|| format!("unknown app {other:?}"))?,
                     );
                 }
                 other => return Err(format!("unexpected argument {other:?}")),
@@ -305,7 +313,9 @@ impl App {
 
     fn effect(&mut self, effect: Effect) -> Task<Message> {
         match effect {
-            Effect::CopyToClipboard(text) => clipboard::write::<Message>(text).map(cosmic::Action::App),
+            Effect::CopyToClipboard(text) => {
+                clipboard::write::<Message>(text).map(cosmic::Action::App)
+            }
             Effect::Login { code } => self.login(code),
             Effect::OpenSection(section, target) => self.open_section(section, target),
             Effect::Playback(cmd) => self.playback(cmd),
@@ -325,7 +335,10 @@ impl App {
         }
         let (uri, cookies) = match (&cmd, self.client.as_ref()) {
             (PlayerCmd::Load { sha256, name, .. }, Some(client)) => (
-                client.blob_url(sha256, Some(name)).ok().map(|u| u.to_string()),
+                client
+                    .blob_url(sha256, Some(name))
+                    .ok()
+                    .map(|u| u.to_string()),
                 client.session_cookies(),
             ),
             _ => (None, Vec::new()),
@@ -350,7 +363,11 @@ impl App {
         if let Some(error) = report.error {
             msgs.push(Msg::PlayerFailed(error));
         }
-        Task::batch(msgs.into_iter().map(|m| self.dispatch(m)).collect::<Vec<_>>())
+        Task::batch(
+            msgs.into_iter()
+                .map(|m| self.dispatch(m))
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// Open or focus `section`'s own window and show `target` there: run
@@ -436,7 +453,8 @@ impl App {
     /// Bring the header, editor widget, keyboard focus, scroll position and
     /// thumbnails in line with the core. Runs after every dispatch.
     fn sync(&mut self) -> Task<Message> {
-        self.core.set_header_title(view_model::window_title(&self.ui));
+        self.core
+            .set_header_title(view_model::window_title(&self.ui));
 
         self.sync_editor();
 
@@ -444,7 +462,9 @@ impl App {
         let want = self.focus_id();
         if want != self.focused {
             tasks.push(match &want {
-                Some(id) if id == view::EDITOR_ID => widget::text_input::focus(self.editor_id.clone()),
+                Some(id) if id == view::EDITOR_ID => {
+                    widget::text_input::focus(self.editor_id.clone())
+                }
                 Some(id) => widget::text_input::focus(widget::Id::new(id.clone())),
                 None => unfocus(),
             });
@@ -479,7 +499,9 @@ impl App {
     fn sync_editor(&mut self) {
         match &self.ui.editor {
             Some(ed) => {
-                if self.synced_note.as_deref() != Some(ed.uid().as_str()) || self.synced_body != ed.body {
+                if self.synced_note.as_deref() != Some(ed.uid().as_str())
+                    || self.synced_body != ed.body
+                {
                     self.content = text_editor::Content::with_text(&ed.body);
                     self.synced_note = Some(ed.uid());
                     self.synced_body = ed.body.clone();
@@ -505,11 +527,11 @@ impl App {
             return Task::none();
         }
         self.last_rect = Some(key);
-        let (offset, view_h, _) = self
-            .viewports
-            .get(id)
-            .copied()
-            .unwrap_or((0.0, self.default_view_height(), 0.0));
+        let (offset, view_h, _) =
+            self.viewports
+                .get(id)
+                .copied()
+                .unwrap_or((0.0, self.default_view_height(), 0.0));
         let y = if top < offset {
             top
         } else if top + height > offset + view_h {
@@ -565,16 +587,24 @@ impl App {
         } else {
             let cols = self.ui.photos.columns.max(1);
             let pitch = view::photo_pitch(self.photo_width(), cols);
-            let (offset, view_h, _) = self
-                .viewports
-                .get(view::PHOTOS_SCROLL)
-                .copied()
-                .unwrap_or((0.0, self.default_view_height() + 200.0, 0.0));
+            let (offset, view_h, _) = self.viewports.get(view::PHOTOS_SCROLL).copied().unwrap_or((
+                0.0,
+                self.default_view_height() + 200.0,
+                0.0,
+            ));
             let first = (offset / pitch).floor().max(0.0) as usize;
             let last = ((offset + view_h) / pitch).ceil() as usize + 1;
             let grid = view_model::photo_grid(&self.ui, cols);
-            for row in grid.rows.iter().skip(first).take(last.saturating_sub(first)) {
-                wanted.extend(row.iter().filter_map(|c| c.hash.clone().map(|h| (h, THUMB_GRID))));
+            for row in grid
+                .rows
+                .iter()
+                .skip(first)
+                .take(last.saturating_sub(first))
+            {
+                wanted.extend(
+                    row.iter()
+                        .filter_map(|c| c.hash.clone().map(|h| (h, THUMB_GRID))),
+                );
             }
         }
         let mut tasks = Vec::new();
@@ -629,7 +659,9 @@ impl App {
         let mut tasks = Vec::new();
         let takes_focus = matches!(
             action,
-            text_editor::Action::Click(_) | text_editor::Action::Drag(_) | text_editor::Action::Edit(_)
+            text_editor::Action::Click(_)
+                | text_editor::Action::Drag(_)
+                | text_editor::Action::Edit(_)
         );
         if takes_focus && self.ui.focus != Focus::Editor {
             // A click into the editor takes focus from the list.
@@ -774,7 +806,9 @@ impl App {
         app.ui.pending_target = flags.target;
         let mut tasks = Vec::new();
 
-        let client = Url::parse(&app.server).ok().and_then(|u| Client::new(u).ok());
+        let client = Url::parse(&app.server)
+            .ok()
+            .and_then(|u| Client::new(u).ok());
         match client {
             Some(client) if !settings.code.is_empty() => {
                 app.screen = Screen::Connecting;
@@ -785,7 +819,8 @@ impl App {
                 }));
             }
             _ => {
-                app.ui.info("Enter the server address and your ship's web code");
+                app.ui
+                    .info("Enter the server address and your ship's web code");
                 tasks.push(app.dispatch(Msg::BeginLogin));
             }
         }
@@ -831,7 +866,12 @@ impl App {
         if self.ui.player.is_some() {
             subs.push(cosmic::iced::time::every(PLAYER_POLL).map(|_| Message::PlayerPoll));
         }
-        if self.ui.player.as_ref().is_some_and(|p| p.is_video && p.playing) {
+        if self
+            .ui
+            .player
+            .as_ref()
+            .is_some_and(|p| p.is_video && p.playing)
+        {
             subs.push(cosmic::iced::time::every(FRAME).map(|_| Message::PlayerFrame));
         }
         if self.screen == Screen::Main && self.ui.section == Section::Messages {

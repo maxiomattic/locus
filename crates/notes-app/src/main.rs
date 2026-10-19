@@ -30,15 +30,15 @@ use cosmic::app::{Core, Settings, Task};
 use cosmic::iced::clipboard;
 use cosmic::iced::keyboard::{self, Key};
 use cosmic::iced::window;
-use cosmic::iced::{event, keyboard::key::Named, Alignment, Event, Length, Size, Subscription};
+use cosmic::iced::{Alignment, Event, Length, Size, Subscription, event, keyboard::key::Named};
 use cosmic::prelude::*;
 use cosmic::widget::menu::KeyBind;
 use cosmic::widget::nav_bar;
 use cosmic::widget::text_editor;
-use cosmic::{executor, widget, Element};
+use cosmic::{Element, executor, widget};
 use notes_sync::{
-    fetch_vm_web_code, keep_both, load_saved, push_dirty, save_session, store_path, vault_root,
-    vault_sync, Note, Session, Snapshot, Store,
+    Note, Session, Snapshot, Store, fetch_vm_web_code, keep_both, load_saved, push_dirty,
+    save_session, store_path, vault_root, vault_sync,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -245,8 +245,9 @@ fn run_blocking<T: Send + 'static>(
     map: impl FnOnce(Result<T, String>) -> Message + Send + 'static,
 ) -> Task<Message> {
     cosmic::task::future(async move {
-        let result =
-            tokio::task::spawn_blocking(work).await.unwrap_or_else(|e| Err(e.to_string()));
+        let result = tokio::task::spawn_blocking(work)
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
         map(result)
     })
 }
@@ -276,10 +277,7 @@ fn position_at(text: &str, byte: usize) -> (usize, usize) {
         }
         start = end + 1;
     }
-    (
-        text.split('\n').count().saturating_sub(1),
-        0,
-    )
+    (text.split('\n').count().saturating_sub(1), 0)
 }
 
 fn note_title(title: &str) -> String {
@@ -331,9 +329,8 @@ impl cosmic::Application for App {
 
     fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
         let saved = load_saved();
-        let store = Store::open(store_path()).unwrap_or_else(|_| {
-            Store::open_memory().expect("in-memory notes store")
-        });
+        let store = Store::open(store_path())
+            .unwrap_or_else(|_| Store::open_memory().expect("in-memory notes store"));
         if let Some(root) = vault_root() {
             let _ = vault_sync(&store, &root);
         }
@@ -437,7 +434,9 @@ impl cosmic::Application for App {
         self.update(Message::Open(note_id))
     }
 
-    fn nav_context_menu(&self) -> Option<Vec<cosmic::widget::menu::Tree<cosmic::Action<Self::Message>>>> {
+    fn nav_context_menu(
+        &self,
+    ) -> Option<Vec<cosmic::widget::menu::Tree<cosmic::Action<Self::Message>>>> {
         Some(chrome::nav_context_menu(&self.nav_model, &self.pinned))
     }
 
@@ -480,7 +479,9 @@ impl cosmic::Application for App {
             widget::container(content)
                 .width(width)
                 .height(Length::Fill)
-                .class(cosmic::theme::Container::custom(widget::nav_bar::nav_bar_style))
+                .class(cosmic::theme::Container::custom(
+                    widget::nav_bar::nav_bar_style,
+                ))
                 .into(),
         )
     }
@@ -563,15 +564,16 @@ impl cosmic::Application for App {
             );
         }
         if self.show_history {
-            return Some(chrome::version_history_dialog(&self.history, self.history_pick));
+            return Some(chrome::version_history_dialog(
+                &self.history,
+                self.history_pick,
+            ));
         }
         self.pending_delete?;
         Some(
             widget::dialog()
                 .title("Delete this note?")
-                .primary_action(
-                    widget::button::destructive("Delete").on_press(Message::Delete),
-                )
+                .primary_action(widget::button::destructive("Delete").on_press(Message::Delete))
                 .secondary_action(
                     widget::button::standard("Cancel").on_press(Message::CancelDelete),
                 )
@@ -700,9 +702,10 @@ impl cosmic::Application for App {
                 self.merge_listed(notes);
                 self.sync_nav_model();
                 if self.selected.is_none()
-                    && let Some(id) = self.notes.first().map(|n| n.id) {
-                        return self.open_note(id);
-                    }
+                    && let Some(id) = self.notes.first().map(|n| n.id)
+                {
+                    return self.open_note(id);
+                }
                 self.refresh_status();
             }
             Message::Listed(Err(e)) => {
@@ -793,10 +796,8 @@ impl cosmic::Application for App {
                 if matches!(self.pane, Pane::Write) {
                     source::prepare_formatted_edit(&mut self.body, &action);
                 }
-                if matches!(
-                    &action,
-                    text_editor::Action::Edit(text_editor::Edit::Enter)
-                ) && self.body.cursor().selection.is_none()
+                if matches!(&action, text_editor::Action::Edit(text_editor::Edit::Enter))
+                    && self.body.cursor().selection.is_none()
                 {
                     let text = self.body.text();
                     let cursor = self.body.cursor();
@@ -838,20 +839,22 @@ impl cosmic::Application for App {
                         return Task::none();
                     }
                 };
-                self.record_undo(if matches!(
-                    &action,
-                    text_editor::Action::Edit(text_editor::Edit::Insert(c)) if !is_boundary(*c)
-                ) {
-                    UndoCoalesce::Insert
-                } else if matches!(
-                    &action,
-                    text_editor::Action::Edit(text_editor::Edit::Backspace)
-                        | text_editor::Action::Edit(text_editor::Edit::Delete)
-                ) {
-                    UndoCoalesce::Delete
-                } else {
-                    UndoCoalesce::None
-                });
+                self.record_undo(
+                    if matches!(
+                        &action,
+                        text_editor::Action::Edit(text_editor::Edit::Insert(c)) if !is_boundary(*c)
+                    ) {
+                        UndoCoalesce::Insert
+                    } else if matches!(
+                        &action,
+                        text_editor::Action::Edit(text_editor::Edit::Backspace)
+                            | text_editor::Action::Edit(text_editor::Edit::Delete)
+                    ) {
+                        UndoCoalesce::Delete
+                    } else {
+                        UndoCoalesce::None
+                    },
+                );
                 self.body.perform(action);
                 if matches!(self.pane, Pane::Write) {
                     source::snap_formatted_caret(&mut self.body, prefer_end);
@@ -1095,8 +1098,7 @@ impl cosmic::Application for App {
                 }
             }
             Message::EditRequestPaste => {
-                return clipboard
-                    ::read()
+                return clipboard::read()
                     .map(|text| Message::EditPasteIn(text.unwrap_or_default()))
                     .map(cosmic::Action::App);
             }
@@ -1130,9 +1132,10 @@ impl cosmic::Application for App {
             Message::NextNote => return self.step_note(1),
             Message::DeleteCurrent => {
                 if let Some(id) = self.selected
-                    && !self.busy {
-                        self.pending_delete = Some(id);
-                    }
+                    && !self.busy
+                {
+                    self.pending_delete = Some(id);
+                }
             }
             Message::SetAccent(accent) => {
                 self.accent = accent;
@@ -1306,10 +1309,7 @@ impl App {
         let notes = self.visible_notes();
         let mut model = nav_bar::Model::default();
         for note in &notes {
-            let item = model
-                .insert()
-                .text(note_title(&note.title))
-                .data(note.id);
+            let item = model.insert().text(note_title(&note.title)).data(note.id);
             if Some(note.id) == self.selected {
                 item.activate();
             }
@@ -1446,8 +1446,7 @@ impl App {
         self.status = match self.selected {
             Some(id) if self.dirty_ids.contains(&id) => "saving…".into(),
             Some(id)
-                if self.store.is_vault(id).unwrap_or(false)
-                    && !self.dirty_ids.contains(&id) =>
+                if self.store.is_vault(id).unwrap_or(false) && !self.dirty_ids.contains(&id) =>
             {
                 "vault · saved on disk".into()
             }
@@ -1481,10 +1480,11 @@ impl App {
             selection: None,
         });
         if let Some(id) = self.selected
-            && let Some(note) = self.cache.get_mut(&id) {
-                note.title = self.title.clone();
-                note.body_md = self.body.text();
-            }
+            && let Some(note) = self.cache.get_mut(&id)
+        {
+            note.title = self.title.clone();
+            note.body_md = self.body.text();
+        }
         self.sync_nav_model();
     }
 
@@ -1542,17 +1542,24 @@ impl App {
             note.title = title.clone();
             note.body_md = body.clone();
         }
-        if self.store.snapshot(id, &title, &body).ok().flatten().is_some() {
+        if self
+            .store
+            .snapshot(id, &title, &body)
+            .ok()
+            .flatten()
+            .is_some()
+        {
             self.reload_history();
         }
     }
 
     fn after_edit(&mut self, boundary: bool) -> Task<Message> {
         if let Some(id) = self.selected
-            && let Some(note) = self.cache.get_mut(&id) {
-                note.title = self.title.clone();
-                note.body_md = self.body.text();
-            }
+            && let Some(note) = self.cache.get_mut(&id)
+        {
+            note.title = self.title.clone();
+            note.body_md = self.body.text();
+        }
         if boundary {
             return self.snapshot_and_sync();
         }
@@ -1578,7 +1585,10 @@ impl App {
         }
         self.flush_local();
         self.refresh_status();
-        if self.selected.is_some_and(|id| self.store.is_vault(id).unwrap_or(false)) {
+        if self
+            .selected
+            .is_some_and(|id| self.store.is_vault(id).unwrap_or(false))
+        {
             self.sync_vault();
             return Task::none();
         }
@@ -1614,18 +1624,17 @@ impl App {
                 self.cache.insert(n.id, n);
             }
         }
-        if refresh_editor
-            && let Some(id) = selected {
-                if let Some(n) = self.cache.get(&id).cloned() {
-                    if n.body_md != editor {
-                        self.apply_note(&n);
-                    }
-                } else {
-                    self.selected = None;
-                    self.title.clear();
-                    self.body = text_editor::Content::new();
+        if refresh_editor && let Some(id) = selected {
+            if let Some(n) = self.cache.get(&id).cloned() {
+                if n.body_md != editor {
+                    self.apply_note(&n);
                 }
+            } else {
+                self.selected = None;
+                self.title.clear();
+                self.body = text_editor::Content::new();
             }
+        }
         self.sync_nav_model();
         self.refresh_status();
     }
@@ -1733,7 +1742,11 @@ impl App {
         };
         self.busy = true;
         run_blocking(
-            move || session.note_create(&title, &body).map_err(|e| e.to_string()),
+            move || {
+                session
+                    .note_create(&title, &body)
+                    .map_err(|e| e.to_string())
+            },
             Message::Created,
         )
     }
@@ -1748,7 +1761,11 @@ impl App {
         };
         self.busy = true;
         run_blocking(
-            move || session.note_create("Untitled", "").map_err(|e| e.to_string()),
+            move || {
+                session
+                    .note_create("Untitled", "")
+                    .map_err(|e| e.to_string())
+            },
             Message::Created,
         )
     }
@@ -1756,13 +1773,15 @@ impl App {
     /// Open history-aware: pushes the current note onto the back stack.
     fn open_note(&mut self, id: u64) -> Task<Message> {
         if let Some(prev) = self.selected
-            && prev != id && self.back.last() != Some(&prev) {
-                self.back.push(prev);
-                if self.back.len() > 64 {
-                    self.back.remove(0);
-                }
-                self.forward.clear();
+            && prev != id
+            && self.back.last() != Some(&prev)
+        {
+            self.back.push(prev);
+            if self.back.len() > 64 {
+                self.back.remove(0);
             }
+            self.forward.clear();
+        }
         self.open_note_silent(id)
     }
 
@@ -1813,7 +1832,11 @@ impl App {
                 self.busy = true;
                 self.status = "Creating today's note…".into();
                 run_blocking(
-                    move || session.note_create(&title, &body).map_err(|e| e.to_string()),
+                    move || {
+                        session
+                            .note_create(&title, &body)
+                            .map_err(|e| e.to_string())
+                    },
                     Message::Created,
                 )
             }
@@ -1839,7 +1862,12 @@ impl App {
             let drain = self.drain_outbox();
             let refresh = self.refresh_list();
             drain.chain(refresh)
-        } else if self.store.dirty_ids().map(|d| !d.is_empty()).unwrap_or(false) {
+        } else if self
+            .store
+            .dirty_ids()
+            .map(|d| !d.is_empty())
+            .unwrap_or(false)
+        {
             self.status = "offline · will retry".into();
             Task::none()
         } else {
@@ -1894,14 +1922,15 @@ impl App {
             }
             let mut note = incoming;
             if note.body_md.is_empty()
-                && let Ok(Some(local)) = self.store.head(note.id) {
-                    if !local.body_md.is_empty() {
-                        note.body_md = local.body_md;
-                    }
-                    if note.title.trim().is_empty() {
-                        note.title = local.title;
-                    }
+                && let Ok(Some(local)) = self.store.head(note.id)
+            {
+                if !local.body_md.is_empty() {
+                    note.body_md = local.body_md;
                 }
+                if note.title.trim().is_empty() {
+                    note.title = local.title;
+                }
+            }
             if self.selected == Some(note.id) {
                 note.title = self.title.clone();
                 note.body_md = self.body.text();
@@ -1967,11 +1996,7 @@ impl App {
             .selection
             .map(|p| byte_offset(&text, p.line, p.column))
             .unwrap_or(a);
-        if a <= b {
-            (a, b)
-        } else {
-            (b, a)
-        }
+        if a <= b { (a, b) } else { (b, a) }
     }
 
     fn splice(&mut self, start: usize, end: usize, insert: &str, caret: usize) {
@@ -1990,9 +2015,10 @@ impl App {
             selection: None,
         });
         if let Some(id) = self.selected
-            && let Some(note) = self.cache.get_mut(&id) {
-                note.body_md = next;
-            }
+            && let Some(note) = self.cache.get_mut(&id)
+        {
+            note.body_md = next;
+        }
         if matches!(self.pane, Pane::Write) {
             source::snap_formatted_caret(&mut self.body, true);
         }
@@ -2033,9 +2059,10 @@ impl App {
             selection: None,
         });
         if let Some(id) = self.selected
-            && let Some(note) = self.cache.get_mut(&id) {
-                note.body_md = next;
-            }
+            && let Some(note) = self.cache.get_mut(&id)
+        {
+            note.body_md = next;
+        }
         if matches!(self.pane, Pane::Write) {
             source::snap_formatted_caret(&mut self.body, true);
         }
@@ -2101,7 +2128,11 @@ impl App {
         let body = format!("Linked from [[{from}]].\n");
         self.busy = true;
         run_blocking(
-            move || session.note_create(&title, &body).map_err(|e| e.to_string()),
+            move || {
+                session
+                    .note_create(&title, &body)
+                    .map_err(|e| e.to_string())
+            },
             Message::Created,
         )
     }
@@ -2115,7 +2146,11 @@ impl App {
         let body = self.body.text();
         self.busy = true;
         run_blocking(
-            move || session.note_create(&title, &body).map_err(|e| e.to_string()),
+            move || {
+                session
+                    .note_create(&title, &body)
+                    .map_err(|e| e.to_string())
+            },
             Message::Created,
         )
     }

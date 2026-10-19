@@ -1218,7 +1218,10 @@ pub fn row_window(heights: &[f32], offset: f32, view_h: f32, overscan: usize) ->
         top += h;
     }
     let last = (last + overscan).min(heights.len());
-    let first = first.unwrap_or(heights.len()).saturating_sub(overscan).min(last);
+    let first = first
+        .unwrap_or(heights.len())
+        .saturating_sub(overscan)
+        .min(last);
     RowWindow {
         first,
         last,

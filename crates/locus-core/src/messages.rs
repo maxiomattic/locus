@@ -204,8 +204,7 @@ pub fn send_failed(app: &mut App, peer: String, body: String, error: String) {
             .rposition(|m| m.id == 0 && m.outgoing && m.body == body)
         {
             app.messages.thread.remove(i);
-            app.messages.thread_sel =
-                clamp_sel(app.messages.thread_sel, app.messages.thread.len());
+            app.messages.thread_sel = clamp_sel(app.messages.thread_sel, app.messages.thread.len());
         }
         if app.messages.draft.trim().is_empty() {
             app.messages.draft = body;

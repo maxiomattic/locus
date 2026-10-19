@@ -1,20 +1,20 @@
 //! Note graph from `[[wikilinks]]`. Click a node to open it; missing targets
 //! are hollow nodes that create the page. Layout is a live force simulation.
 
+use cosmic::Element;
 use cosmic::iced::alignment;
 use cosmic::iced::core::time::Instant;
 use cosmic::iced::mouse;
 use cosmic::iced::widget::canvas::{self, Canvas, Fill, Frame, Geometry, Path, Stroke, Text};
 use cosmic::iced::window;
 use cosmic::iced::{Color, Event, Length, Pixels, Point, Rectangle, Renderer, Size, Vector};
-use cosmic::Element;
 use notes_sync::Note;
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::hash::{Hash, Hasher};
 
-use crate::markdown;
 use crate::Message;
+use crate::markdown;
 
 const CHARGE: f32 = 420.0;
 const LINK_DIST: f32 = 96.0;
@@ -288,9 +288,10 @@ impl canvas::Program<Message, cosmic::Theme> for GraphPlot {
                 let mut redraw = false;
                 if let Some(pos) = over {
                     if let Some(start) = state.press_start
-                        && (pos.x - start.x).hypot(pos.y - start.y) > DRAG_CLICK_PX {
-                            state.dragged = true;
-                        }
+                        && (pos.x - start.x).hypot(pos.y - start.y) > DRAG_CLICK_PX
+                    {
+                        state.dragged = true;
+                    }
                     match state.drag {
                         Drag::Node { index, grab } => {
                             if state.dragged {
@@ -327,10 +328,9 @@ impl canvas::Program<Message, cosmic::Theme> for GraphPlot {
                     return Some(action);
                 }
             }
-            Event::Mouse(mouse::Event::CursorLeft)
-                if state.hover.take().is_some() => {
-                    return Some(canvas::Action::request_redraw());
-                }
+            Event::Mouse(mouse::Event::CursorLeft) if state.hover.take().is_some() => {
+                return Some(canvas::Action::request_redraw());
+            }
             _ => {}
         }
         if !state.settled {
@@ -444,9 +444,9 @@ impl canvas::Program<Message, cosmic::Theme> for GraphPlot {
                 point.y,
             );
             if !must_label(i, state.hover, selected_i)
-                && placed.iter().any(|p| {
-                    (p.x - label_pos.x).abs() < 72.0 && (p.y - label_pos.y).abs() < 13.0
-                })
+                && placed
+                    .iter()
+                    .any(|p| (p.x - label_pos.x).abs() < 72.0 && (p.y - label_pos.y).abs() < 13.0)
             {
                 continue;
             }
@@ -538,8 +538,8 @@ fn sync(state: &mut PlotState, data: &GraphData, size: Size) {
         let cx = old.values().map(|b| b.x).sum::<f32>() / old.len() as f32;
         let cy = old.values().map(|b| b.y).sum::<f32>() / old.len() as f32;
         for (k, &i) in fresh.iter().enumerate() {
-            if let Some(nb) = neighbor_of(i, &state.edges, data.nodes.len())
-                .find(|&j| !fresh.contains(&j))
+            if let Some(nb) =
+                neighbor_of(i, &state.edges, data.nodes.len()).find(|&j| !fresh.contains(&j))
             {
                 let gold = PI * (3.0 - 5.0_f32.sqrt());
                 let t = k as f32 * gold;
@@ -714,7 +714,10 @@ fn zoom_toward(camera: &mut Camera, cursor: Point, factor: f32) -> bool {
 }
 
 fn to_screen(camera: &Camera, x: f32, y: f32) -> Point {
-    Point::new(x * camera.zoom + camera.pan.x, y * camera.zoom + camera.pan.y)
+    Point::new(
+        x * camera.zoom + camera.pan.x,
+        y * camera.zoom + camera.pan.y,
+    )
 }
 
 fn to_world(camera: &Camera, p: Point) -> Point {
@@ -780,11 +783,7 @@ fn topology_fingerprint(data: &GraphData) -> u64 {
     hasher.finish()
 }
 
-fn neighbor_of(
-    i: usize,
-    edges: &[(usize, usize)],
-    n: usize,
-) -> impl Iterator<Item = usize> + '_ {
+fn neighbor_of(i: usize, edges: &[(usize, usize)], n: usize) -> impl Iterator<Item = usize> + '_ {
     edges.iter().filter_map(move |&(a, b)| {
         if a == i && b < n {
             Some(b)
@@ -1031,17 +1030,15 @@ fn truncate(s: &str, max_chars: usize) -> String {
     } else {
         format!(
             "{}…",
-            s.chars().take(max_chars.saturating_sub(1)).collect::<String>()
+            s.chars()
+                .take(max_chars.saturating_sub(1))
+                .collect::<String>()
         )
     }
 }
 
 fn ordered(a: usize, b: usize) -> (usize, usize) {
-    if a < b {
-        (a, b)
-    } else {
-        (b, a)
-    }
+    if a < b { (a, b) } else { (b, a) }
 }
 
 fn normalize(s: &str) -> String {
@@ -1055,11 +1052,7 @@ fn basename(s: &str) -> &str {
 fn resolve<'a>(index: &'a HashMap<String, usize>, key: &str) -> Option<&'a usize> {
     index.get(key).or_else(|| {
         let base = basename(key);
-        if base != key {
-            index.get(base)
-        } else {
-            None
-        }
+        if base != key { index.get(base) } else { None }
     })
 }
 
@@ -1098,10 +1091,11 @@ mod tests {
         notes.insert(1, note(1, "Journal", "see [[No Such Page]]"));
         let g = build(&notes);
         assert_eq!(g.nodes.len(), 2);
-        assert!(g
-            .nodes
-            .iter()
-            .any(|n| matches!(&n.kind, NodeKind::Missing(t) if t == "No Such Page")));
+        assert!(
+            g.nodes
+                .iter()
+                .any(|n| matches!(&n.kind, NodeKind::Missing(t) if t == "No Such Page"))
+        );
         assert_eq!(g.edges.len(), 1);
     }
 
@@ -1195,10 +1189,7 @@ mod tests {
                 None,
             );
         }
-        assert!(
-            max_v < SETTLE_SPEED,
-            "should come to rest (max_v={max_v})"
-        );
+        assert!(max_v < SETTLE_SPEED, "should come to rest (max_v={max_v})");
     }
 
     #[test]

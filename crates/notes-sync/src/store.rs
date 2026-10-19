@@ -4,7 +4,7 @@
 //! a sequence number. Repeating the same title+body does not allocate.
 
 use crate::Note;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -128,7 +128,12 @@ impl Store {
 
     /// Record a version if the content changed. Returns the new snapshot,
     /// or `None` when the hash matches the current head (no write).
-    pub fn snapshot(&self, note_id: u64, title: &str, body: &str) -> crate::Result<Option<Snapshot>> {
+    pub fn snapshot(
+        &self,
+        note_id: u64,
+        title: &str,
+        body: &str,
+    ) -> crate::Result<Option<Snapshot>> {
         let hash = Self::content_hash(title, body);
         let current: Option<String> = self
             .conn
@@ -147,13 +152,11 @@ impl Store {
             params![hash, title, body],
         )?;
 
-        let next_seq: i64 = self
-            .conn
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) + 1 FROM snapshots WHERE note_id = ?1",
-                params![note_id as i64],
-                |row| row.get(0),
-            )?;
+        let next_seq: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM snapshots WHERE note_id = ?1",
+            params![note_id as i64],
+            |row| row.get(0),
+        )?;
         let created_at = now_secs();
         self.conn.execute(
             "INSERT INTO snapshots (note_id, seq, blob_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -250,12 +253,10 @@ impl Store {
     }
 
     pub fn pending_creates(&self) -> crate::Result<Vec<(i64, String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, title, body FROM outbox WHERE op = 'create' ORDER BY id",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, body FROM outbox WHERE op = 'create' ORDER BY id")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row?);
@@ -362,7 +363,9 @@ impl Store {
     }
 
     pub fn blob_count(&self) -> crate::Result<u64> {
-        let n: i64 = self.conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))?;
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get(0))?;
         Ok(n as u64)
     }
 
@@ -465,7 +468,13 @@ impl Store {
                 file_hash = excluded.file_hash,
                 mtime = excluded.mtime,
                 head_hash = excluded.head_hash",
-            params![row.path, row.note_id as i64, row.file_hash, row.mtime, row.head_hash],
+            params![
+                row.path,
+                row.note_id as i64,
+                row.file_hash,
+                row.mtime,
+                row.head_hash
+            ],
         )?;
         Ok(())
     }

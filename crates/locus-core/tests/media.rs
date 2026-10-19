@@ -329,4 +329,3 @@ fn only_files_under_movies_and_music_are_listed() {
     assert_eq!(movie_names(&app), vec!["Heat.mp4", "Metropolis.mp4"]);
     assert_eq!(track_names(&app), vec!["01 - Aria.flac"]);
 }
-

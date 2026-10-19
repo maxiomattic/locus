@@ -731,7 +731,11 @@ fn contents(notes: usize, folders: usize) -> String {
     match (notes, folders) {
         (_, 0) => plural(notes, "note"),
         (0, _) => plural(folders, "folder"),
-        _ => format!("{} and {}", plural(notes, "note"), plural(folders, "folder")),
+        _ => format!(
+            "{} and {}",
+            plural(notes, "note"),
+            plural(folders, "folder")
+        ),
     }
 }
 
@@ -1104,7 +1108,10 @@ pub fn submit_folder_rename(app: &mut App, fx: &mut Vec<Effect>) {
         return;
     };
     let root = book.nb.notebook.root_folder_id;
-    let parent = book.folder(id).and_then(|f| f.parent_folder_id).unwrap_or(root);
+    let parent = book
+        .folder(id)
+        .and_then(|f| f.parent_folder_id)
+        .unwrap_or(root);
     let err = if name.is_empty() || name.contains('/') {
         Some("A folder name cannot be empty or contain /".to_string())
     } else if name_taken(book, parent, &name, id) {
@@ -1604,12 +1611,22 @@ pub fn execute_restore(app: &mut App, fx: &mut Vec<Effect>, note: &NoteRef, rev:
         app.warn("The note is still saving. Try Restore again in a moment.");
         return;
     }
-    fx.push(Effect::RestoreNote { nb, id: note.id, rev });
+    fx.push(Effect::RestoreNote {
+        nb,
+        id: note.id,
+        rev,
+    });
     app.info("Restoring");
 }
 
 /// The server took the old text back: show the note again, not the history.
-pub fn note_restored(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, note: Note, rev: u64) {
+pub fn note_restored(
+    app: &mut App,
+    fx: &mut Vec<Effect>,
+    nb: NotebookSummary,
+    note: Note,
+    rev: u64,
+) {
     let (key, id) = (NbKey::of(&nb), note.id);
     if let Some(ed) = app.editor.as_mut().filter(|e| e.is(&key, id)) {
         // The restore is the newest text; the editor was saved before it.
@@ -1619,7 +1636,12 @@ pub fn note_restored(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, n
         ed.conflict = false;
     }
     note_loaded(app, fx, nb, note);
-    if app.notes.history.as_ref().is_some_and(|h| h.note.nb == key && h.note.id == id) {
+    if app
+        .notes
+        .history
+        .as_ref()
+        .is_some_and(|h| h.note.nb == key && h.note.id == id)
+    {
         close_history(app);
         // Show what the note says now.
         open_editor(app, fx, &key, id);

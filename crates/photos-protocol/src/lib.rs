@@ -201,12 +201,7 @@ impl Client {
         })
     }
 
-    pub fn patch_photo(
-        &self,
-        id: u64,
-        expected_revision: u64,
-        title: &str,
-    ) -> Result<Photo> {
+    pub fn patch_photo(&self, id: u64, expected_revision: u64, title: &str) -> Result<Photo> {
         let env: Envelope = self.put_json(
             &format!("/photos/~/v1/photos/{id}"),
             serde_json::json!({
@@ -240,12 +235,7 @@ impl Client {
         })
     }
 
-    pub fn patch_contact(
-        &self,
-        id: u64,
-        expected_revision: u64,
-        name: &str,
-    ) -> Result<Contact> {
+    pub fn patch_contact(&self, id: u64, expected_revision: u64, name: &str) -> Result<Contact> {
         let env: Envelope = self.put_json(
             &format!("/contacts/~/v1/contacts/{id}"),
             serde_json::json!({
