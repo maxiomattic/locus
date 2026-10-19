@@ -1,6 +1,6 @@
 # Locus: status
 
-Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-17.
+Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-18.
 
 ## Now: stages 1 and 2, a first version to try
 
@@ -24,16 +24,24 @@ The near-term goal is a version the author can use day to day: working browser a
   - Files: upload, folders, rename, move, delete. Folders can be renamed and moved (the `%files` desk has `dir.move`).
   - Photos: albums, viewer, rename, move, delete. A video in the library plays in the viewer, built but not yet tried.
   - Calendar and Contacts: create, edit, delete.
-  - Movies and Music: views over Files. A movie is a video file in `/Movies`; a track is an audio file in `/Music/<artist>/<album>/`. Play is tested in the browser and on the desktop, with video frames drawn in the app. Pause, seek, volume, next and previous are built but not yet tried.
-  - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. Tested with messages to the same ship; not yet between two real ships.
+  - Movies and Music: views over Files. A movie is a video file at or below `/Movies`; a track is an audio file at or below `/Music` (in `/Music/<artist>/<album>/`, for example). Play is tested in the browser and on the desktop, with video frames drawn in the app. Pause, seek, volume, next and previous are built but not yet tried.
+  - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. If the ship refuses it, it shows as failed and the text goes back into the draft. Messages you send to yourself are stored once. Conversations list newest first, and an open conversation clears its unread count. Tested with messages to the same ship (Hoon and Rust tests, including a remote poke that the previous build silently dropped).
+  - Spam protection: a ship's incoming messages are refused when it is blocked (`locus messages block ~ship`, or the Block button in the conversation), and the 21st message from one ship within a minute is refused. A refused message stores nothing, and our own sends to a blocked ship still go. Built and tested; not deployed yet.
+  - Not yet verified between two real ships. The fake-ship test could not get past its setup on 2026-10-18 (a fake ship's own Locus agents were down, and its API key could not be read). Still to run: a message both ways, a send to a ship that is offline (it should stay pending, not fail), and a junk poke (it should be refused and store nothing).
 - Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows (Notes, Files, Contacts, Photos, Movies, Music, Messages). Todo and the calendar agenda still draw every row.
 - Deployed to the Surface server on 2026-10-18: the browser app, the gateway, and the %locus desk with %messages and folder moves. The desk was snapshotted first (rpool/urbit/pier@locus-desk-deploy-20261018T190032Z). The installed desktop programs still have a GStreamer bug (no movie or track plays) until the fix in aece93a is built and switched in.
+- Committed but not deployed (on `main`, after 8c03e3c):
+  - `a6ece4e` and `d28c44f`: remote messages arrive (they were dropped before); a bad poke or upgrade no longer wipes an agent's data (all six agents); ids above 999,999; newest-first conversations; a move from a folder that does not exist answers "not found"; the shell and browser fixes above.
+  - `7d1a114`: the locus and notes Hoon test files compile (one shadowed binding renamed; a dead helper deleted).
+  - `91e56a7` and `77e6bbd`: spam protection (above). The desk changes move `%messages` to state-1 with a migration from state-0, so a server holding the current state must load it on upgrade; the migration is tested on fake ships only.
 - Next:
-  1. Deploy the latest build and check it on the server (needs the administrator's confirmation).
-  2. Fix a race in moving a note between notebooks: typing during the move can be lost when the original is deleted.
-  3. Virtual rows for Todo and the calendar agenda.
-  4. Messages between two real ships, and group conversations (not started).
-  5. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
+  1. Deploy the commits above and check every agent on the server. This needs the administrator's confirmation.
+  2. Run the two-ship checks listed above, on real ships or fixed fake ones.
+  3. Try the transport controls (pause, seek, volume, next, previous) and a video in the Photos viewer, in the desktop and browser apps.
+  4. Fix a race in moving a note between notebooks: typing during the move can be lost when the original is deleted.
+  5. Virtual rows for Todo and the calendar agenda.
+  6. Group conversations (not started).
+  7. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
 
 ## Later stages
 
