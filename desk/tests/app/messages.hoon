@@ -1,4 +1,6 @@
 ::  Messenger — receive from a peer, read, summarise, and reject empty sends.
+::  Spam protection: blocked peers and the per-peer rate limit, and the
+::  upgrade of a state-0 save.
 ::
 /-  msg=messages
 /+  *test-agent
@@ -127,5 +129,213 @@
   =/  dev=(unit @ud)  (find (trip '"peer":"~dev"') txt)
   =/  nec=(unit @ud)  (find (trip '"peer":"~nec"') txt)
   ?>  &(?=(^ dev) ?=(^ nec) (lth u.dev u.nec))
+  (pure:m ~)
+::
+::  a JSON call about one peer, like peer.block or peer.unblock
+++  about
+  |=  [fn=@t who=@t]
+  %-  pairs:enjs:format
+  :~  fn+s+fn
+      args+(pairs:enjs:format ~[peer+s+who])
+  ==
+::
+::  the conversation list, as text
+++  listing
+  =/  m  (mare ,tape)
+  ^-  form:m
+  ;<  =cage  bind:m  (got-peek /x/messages)
+  (pure:m (trip (en:json:html !<(json q.cage))))
+::
+++  has
+  |=  [txt=tape pat=@t]
+  ^-  ?
+  ?=(^ (find (trip pat) txt))
+::
+::  `n` messages from the current src, all accepted
+++  remote-n
+  |=  n=@ud
+  =/  m  (mare ,~)
+  ^-  form:m
+  ?:  =(0 n)  (pure:m ~)
+  ;<  *  bind:m  (remote 'hi' ~2026.10.16)
+  (remote-n (dec n))
+::
+++  test-blocked-peer-is-nacked-and-not-stored
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'before' ~2026.10.16)
+  ;<  ~  bind:m  (set-src ~zod)
+  ;<  *  bind:m  (call (about 'peer.block' '~dev'))
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (ex-fail (remote 'spam' ~2026.10.16))
+  ;<  txt=tape  bind:m  listing
+  ?<  (has txt '"body":"spam"')
+  ?>  (has txt '"count":1')
+  ?>  (has txt '"blocked":true')
+  (pure:m ~)
+::
+++  test-block-survives-reload
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call (about 'peer.block' '~dev'))
+  ;<  *  bind:m  (do-load messages-agent ~)
+  ;<  ~  bind:m  (set-src ~dev)
+  (ex-fail (remote 'spam' ~2026.10.16))
+::
+++  test-block-does-not-stop-our-sends
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call (about 'peer.block' '~dev'))
+  ;<  *  bind:m
+    %-  call
+    %-  pairs:enjs:format
+    :~  fn+s+'message.send'
+        args+(pairs:enjs:format ~[to+s+'~dev' body+s+'still mine'])
+    ==
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"still mine"')
+  (pure:m ~)
+::
+++  test-unblock-lets-messages-in
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call (about 'peer.block' '~dev'))
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (ex-fail (remote 'spam' ~2026.10.16))
+  ;<  ~  bind:m  (set-src ~zod)
+  ;<  *  bind:m  (call (about 'peer.unblock' '~dev'))
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'welcome back' ~2026.10.16)
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"welcome back"')
+  ?>  (has txt '"blocked":false')
+  (pure:m ~)
+::
+::  only our own ship may block
+++  test-peer-cannot-block
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  (ex-fail (call (about 'peer.block' '~nec')))
+::
+++  test-bad-block-args-are-an-error
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call (about 'peer.block' 'not-a-ship'))
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'still fine' ~2026.10.16)
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"still fine"')
+  (pure:m ~)
+::
+++  test-twenty-first-in-a-minute-is-nacked
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (remote-n 20)
+  ;<  ~  bind:m  (ex-fail (remote 'one too many' ~2026.10.16))
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"count":20')
+  ?<  (has txt '"body":"one too many"')
+  (pure:m ~)
+::
+::  the window is a rolling 60 seconds: a message 59s after a full minute's
+::  worth is refused, and one 60s after is taken
+++  test-accepted-again-after-the-minute
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (wait ~d1)
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (remote-n 20)
+  ;<  ~  bind:m  (wait ~s59)
+  ;<  ~  bind:m  (ex-fail (remote 'too soon' ~2026.10.16))
+  ;<  ~  bind:m  (wait ~s1)
+  ;<  *  bind:m  (remote 'later' ~2026.10.16)
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"later"')
+  ?>  (has txt '"count":21')
+  (pure:m ~)
+::
+::  the window rolls: messages spread over time leave room as the old ones age
+++  test-window-rolls
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (wait ~d1)
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (remote-n 10)
+  ;<  ~  bind:m  (wait ~s30)
+  ;<  ~  bind:m  (remote-n 10)
+  ;<  ~  bind:m  (ex-fail (remote 'full' ~2026.10.16))
+  ;<  ~  bind:m  (wait ~s30)
+  ;<  ~  bind:m  (remote-n 10)
+  ;<  ~  bind:m  (ex-fail (remote 'full again' ~2026.10.16))
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"count":30')
+  (pure:m ~)
+::
+++  test-rate-limit-is-per-peer
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (remote-n 20)
+  ;<  ~  bind:m  (set-src ~nec)
+  ;<  *  bind:m  (remote 'from nec' ~2026.10.16)
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"from nec"')
+  (pure:m ~)
+::
+::  a save from before blocking existed loads, keeps its data, and starts
+::  with nobody blocked and no rate history
+++  test-state-0-loads
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  =/  old=state-0:msg
+    :*  %0
+        (~(put by *(map @ud message:msg)) 7 [7 ~dev %.n 'kept' ~2026.10.16 %received])
+        8
+        (~(put by *(map @p @ud)) ~dev 7)
+        `'old-key'
+    ==
+  ;<  *  bind:m  (do-load messages-agent `!>(old))
+  ;<  sav=vase  bind:m  get-save
+  =/  new=state-1:msg  !<(state-1:msg sav)
+  ?>  =(%1 -.new)
+  ?>  =(~ blocked.new)
+  ?>  =(~ recent.new)
+  ?>  =(8 next-id.new)
+  ?>  =(`'old-key' api-key.new)
+  ?>  =(`7 (~(get by read.new) ~dev))
+  ;<  txt=tape  bind:m  listing
+  ?>  (has txt '"body":"kept"')
+  ?>  (has txt '"blocked":false')
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (remote 'after upgrade' ~2026.10.16)
+  ;<  sav=vase  bind:m  get-save
+  =/  newer=state-1:msg  !<(state-1:msg sav)
+  ?>  (~(has by messages.newer) 8)
+  ?>  =(9 next-id.newer)
   (pure:m ~)
 --

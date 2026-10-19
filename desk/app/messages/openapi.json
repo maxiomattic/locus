@@ -18,11 +18,31 @@
     "/messages/~/v1/conversations/{ship}/read": {
       "post": { "summary": "Mark messages from this peer as read, through the newest" }
     },
+    "/messages/~/v1/conversations/{ship}/block": {
+      "post": { "summary": "Refuse incoming messages from this peer (our sends still go)" }
+    },
+    "/messages/~/v1/conversations/{ship}/unblock": {
+      "post": { "summary": "Accept incoming messages from this peer again" }
+    },
     "/messages/~/v1/messages": {
       "post": { "summary": "Send: body {to, body}; returns the new message id" }
     },
     "/messages/~/v1/messages/{id}": {
       "delete": { "summary": "Delete this ship's copy of a message (the peer keeps theirs)" }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "peer": { "type": "string" },
+          "count": { "type": "integer" },
+          "unread": { "type": "integer" },
+          "last": { "type": ["object", "null"], "description": "The newest message, or null" },
+          "blocked": { "type": "boolean", "description": "Incoming messages from this peer are refused" }
+        }
+      }
     }
   }
 }

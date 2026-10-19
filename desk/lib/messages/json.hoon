@@ -33,19 +33,20 @@
     a+(turn l message)
   ::
   ++  conversation
-    |=  [peer=@p count=@ud unread=@ud last=(unit message:msg)]
+    |=  [peer=@p count=@ud unread=@ud last=(unit message:msg) blocked=?]
     ^-  json
     %-  pairs
     :~  peer+s+(scot %p peer)
         count+(numb count)
         unread+(numb unread)
         last+?~(last ~ (message u.last))
+        blocked+b+blocked
     ==
   ::
   ++  conversations
-    |=  l=(list [peer=@p count=@ud unread=@ud last=(unit message:msg)])
+    |=  l=(list [peer=@p count=@ud unread=@ud last=(unit message:msg) blocked=?])
     ^-  json
-    a+(turn l |=([peer=@p count=@ud unread=@ud last=(unit message:msg)] (conversation peer count unread last)))
+    a+(turn l |=([peer=@p count=@ud unread=@ud last=(unit message:msg) blocked=?] (conversation peer count unread last blocked)))
   ::
   ++  ok
     |=  extra=(list [@t json])

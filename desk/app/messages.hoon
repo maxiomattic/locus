@@ -9,9 +9,13 @@
 ::
 |%
 +$  card  card:agent:gall
-+$  current-state  state-0:msg
++$  current-state  state-1:msg
 ::  longest message body, in bytes, sent or accepted
 ++  max-body  8.192
+::  most messages accepted from one peer within rate-window
+++  rate-max  20
+::  the rolling window the per-peer rate limit counts over
+++  rate-window  ~s60
 --
 =|  current-state
 =*  state  -
@@ -93,9 +97,14 @@
 ++  load
   |=  =vase
   ^+  cor
-  ::  a state that does not fit crashes the upgrade, so Gall keeps the old
-  ::  agent and its data, rather than starting over empty
-  =.  state  !<(state-0:msg vase)
+  ::  a state that fits no known version crashes the upgrade, so Gall keeps the
+  ::  old agent and its data, rather than starting over empty
+  =/  old  !<(versioned-state:msg vase)
+  =.  state
+    ?-  -.old
+      %1  old
+      %0  [%1 messages.old next-id.old read.old api-key.old ~ ~]
+    ==
   (emit [%pass /eyre/messages %arvo %e %connect [~ /messages] %messages])
 ::
 ++  poke
@@ -116,7 +125,8 @@
 ::  arrives as a vase of type *, so the noun is molded, not cast with !<.
 ::  Anything unreadable, empty or too long crashes, which nacks the poke
 ::  and the sender shows %failed. A message to ourselves is already stored
-::  as outgoing, so its received copy is dropped.
+::  as outgoing, so its received copy is dropped. A blocked peer, or one past
+::  rate-max messages in rate-window, is nacked the same way and stores nothing.
 ++  receive
   |=  =vase
   ^+  cor
@@ -124,6 +134,14 @@
   ?<  =('' body)
   ?>  (lte (met 3 body) max-body)
   ?:  =(our.bowl src.bowl)  cor
+  ?<  (~(has in blocked) src.bowl)
+  ::  arrivals less than rate-window old still count toward the limit
+  =/  window=(list @da)
+    %+  skim  (~(gut by recent) src.bowl ~)
+    |=  t=@da
+    ?|((gth t now.bowl) (lth (sub now.bowl t) rate-window))
+  ?>  (lth (lent window) rate-max)
+  =.  recent  (~(put by recent) src.bowl [now.bowl window])
   =/  id=@ud  next-id
   =.  next-id  +(next-id)
   =.  messages  (~(put by messages) id [id src.bowl %.n body sent %received])
@@ -169,6 +187,20 @@
     ?.  =(%'POST' method)
       (http-error eyre-id 405 'method not allowed')
     =^  out=json  cor  (dispatch 'conversation.read' (pairs:enjs:format ~[peer+s+(scot %p u.who)]))
+    (give-json-status eyre-id out)
+  ?:  ?=([%messages %~.~ %v1 %conversations @ %block ~] site)
+    ?~  who=(slaw %p i.t.t.t.t.site)
+      (http-error eyre-id 400 'bad ship name')
+    ?.  =(%'POST' method)
+      (http-error eyre-id 405 'method not allowed')
+    =^  out=json  cor  (dispatch 'peer.block' (pairs:enjs:format ~[peer+s+(scot %p u.who)]))
+    (give-json-status eyre-id out)
+  ?:  ?=([%messages %~.~ %v1 %conversations @ %unblock ~] site)
+    ?~  who=(slaw %p i.t.t.t.t.site)
+      (http-error eyre-id 400 'bad ship name')
+    ?.  =(%'POST' method)
+      (http-error eyre-id 405 'method not allowed')
+    =^  out=json  cor  (dispatch 'peer.unblock' (pairs:enjs:format ~[peer+s+(scot %p u.who)]))
     (give-json-status eyre-id out)
   ?:  ?=([%messages %~.~ %v1 %messages ~] site)
     ?.  =(%'POST' method)
@@ -264,6 +296,8 @@
   ?:  =(fn 'message.send')          (send-message args)
   ?:  =(fn 'message.delete')        (delete-message args)
   ?:  =(fn 'conversation.read')     (read-conversation args)
+  ?:  =(fn 'peer.block')            (set-block args %.y)
+  ?:  =(fn 'peer.unblock')          (set-block args %.n)
   [(err:enjs:messages-json 'unknown-function' fn) cor]
 ::
 ::  all messages with one ship, oldest first
@@ -284,7 +318,7 @@
   |=  [a=summary b=summary]
   (gth ?~(last.a 0 id.u.last.a) ?~(last.b 0 id.u.last.b))
 ::
-+$  summary  [peer=@p count=@ud unread=@ud last=(unit message:msg)]
++$  summary  [peer=@p count=@ud unread=@ud last=(unit message:msg) blocked=?]
 ++  summary-of
   |=  who=@p
   ^-  summary
@@ -292,7 +326,7 @@
   =/  seen=@ud  (~(gut by read) who 0)
   =/  unread=@ud
     (lent (skim mine |=(m=message:msg &(!outgoing.m (gth id.m seen)))))
-  [who (lent mine) unread ?~(mine ~ `(rear mine))]
+  [who (lent mine) unread ?~(mine ~ `(rear mine)) (~(has in blocked) who)]
 ::
 ++  parse-send
   |=  args=json
@@ -351,4 +385,17 @@
   =/  cur=@ud  (~(gut by read) p.parsed 0)
   =.  read  ?:((gth id.last cur) (~(put by read) p.parsed id.last) read)
   [(ok:enjs:messages-json ~) cor]
+::
+::  refuse incoming messages from `peer` (block), or accept them again
+::  (unblock). Idempotent; stored messages and the rate history are kept.
+++  set-block
+  |=  [args=json block=?]
+  ^-  [json _cor]
+  =/  parsed=(each @p tang)  (mule |.((parse-peer args)))
+  ?:  ?=(%| -.parsed)
+    (bad 'need peer, a ship like ~zod')
+  =.  blocked
+    ?:  block  (~(put in blocked) p.parsed)
+    (~(del in blocked) p.parsed)
+  [(ok:enjs:messages-json ~[peer+s+(scot %p p.parsed) blocked+b+block]) cor]
 --
