@@ -10,8 +10,8 @@ use locus_client::notes::{Folder, Note, NoteRevision, NotebookSummary};
 
 use crate::msg::{Effect, Msg, Nav};
 use crate::state::{
-    App, Book, Editor, Focus, Input, InputKind, NbKey, NoteHistory, NoteRef, NotesLoc, Section,
-    clamp_sel, matches_filter,
+    App, Book, Editor, Focus, Input, InputKind, NbKey, NoteHistory, NoteMove, NoteRef, NotesLoc,
+    Section, clamp_sel, matches_filter,
 };
 use crate::update::step;
 
@@ -340,9 +340,14 @@ pub fn goto_note(app: &mut App, fx: &mut Vec<Effect>, nb: &NbKey, id: u64) {
 
 /// Send a save for the editor if it has unsaved text. While a save is in
 /// flight the request is queued and sent when that save is acknowledged.
+/// A note being moved is not saved at all: its text waits for the copy.
 fn request_save(ed: &mut Editor, fx: &mut Vec<Effect>) {
     if !ed.dirty() {
         ed.save_queued = false;
+        return;
+    }
+    if ed.moving {
+        ed.save_queued = true;
         return;
     }
     if ed.in_flight {
@@ -395,14 +400,21 @@ pub fn save_timer(app: &mut App, token: u64, fx: &mut Vec<Effect>) {
 
 /// Take the open editor out of the way before another note opens. Unsaved
 /// text is sent right away: a queued save would be lost with the editor.
+/// Text of a note being moved is kept for its copy instead.
 fn retire_editor(app: &mut App, fx: &mut Vec<Effect>) {
     if let Some(old) = app.editor.take().filter(Editor::dirty) {
-        fx.push(Effect::SaveNote {
-            nb: old.nb,
-            id: old.note_id,
-            body: old.body,
-            expected_revision: old.base_revision,
-        });
+        if old.moving {
+            if let Some(m) = app.notes.moving.as_mut() {
+                m.held = Some(old);
+            }
+        } else {
+            fx.push(Effect::SaveNote {
+                nb: old.nb,
+                id: old.note_id,
+                body: old.body,
+                expected_revision: old.base_revision,
+            });
+        }
     }
 }
 
@@ -425,7 +437,15 @@ pub fn open_editor(app: &mut App, fx: &mut Vec<Effect>, key: &NbKey, id: u64) {
     if !loaded {
         fx.push(Effect::LoadNote { nb: nb.clone(), id });
     }
-    app.editor = Some(Editor {
+    // A note still moving: the text held when it was closed comes back.
+    let moving = app
+        .notes
+        .moving
+        .as_mut()
+        .filter(|m| m.note.nb == *key && m.note.id == id);
+    let is_moving = moving.is_some();
+    let held = moving.and_then(|m| m.held.take());
+    app.editor = Some(held.unwrap_or_else(|| Editor {
         nb,
         note_id: id,
         title: note.title.clone(),
@@ -436,7 +456,8 @@ pub fn open_editor(app: &mut App, fx: &mut Vec<Effect>, key: &NbKey, id: u64) {
         in_flight: false,
         save_queued: false,
         conflict: false,
-    });
+        moving: is_moving,
+    }));
     app.focus = Focus::Editor;
 }
 
@@ -1352,7 +1373,7 @@ pub fn submit_move(app: &mut App, fx: &mut Vec<Effect>) {
 
 /// The move into another notebook was confirmed: copy the note there, then
 /// delete the original. Refused while the editor still has text on its way
-/// for the note, which the copy would miss.
+/// for the note, which the copy would miss, and while another move runs.
 pub fn execute_move_note(
     app: &mut App,
     fx: &mut Vec<Effect>,
@@ -1360,6 +1381,10 @@ pub fn execute_move_note(
     to: &NbKey,
     folder: u64,
 ) {
+    if app.notes.moving.is_some() {
+        app.warn("Another note is still moving. Try Move again in a moment.");
+        return;
+    }
     let from = app
         .notes
         .book(&note.nb)
@@ -1378,6 +1403,13 @@ pub fn execute_move_note(
         return;
     }
     app.info(format!("Moving note to {}", to.notebook.title));
+    if let Some(ed) = app.editor.as_mut().filter(|e| e.is(&note.nb, note.id)) {
+        ed.moving = true;
+    }
+    app.notes.moving = Some(NoteMove {
+        note: note.clone(),
+        held: None,
+    });
     fx.push(Effect::MoveNoteAcross {
         from,
         id: note.id,
@@ -1407,8 +1439,10 @@ pub fn note_moved_across(
     note: Note,
     deleted: Result<(), String>,
 ) {
+    let moving = app.notes.moving.take();
     let (from_key, to_key) = (NbKey::of(&from), NbKey::of(&to));
     let (new_id, folder, title) = (note.id, note.folder_id, note.title.clone());
+    let revision = note.revision;
     let old_editor = app.editor.take_if(|e| e.is(&from_key, id));
     upsert(app, &to, note);
     if deleted.is_ok()
@@ -1429,6 +1463,14 @@ pub fn note_moved_across(
             request_save(ed, fx);
         }
         app.focus = focus;
+    } else if let Some(held) = moving.and_then(|m| m.held).filter(Editor::dirty) {
+        // The note was closed while it moved: its text goes on in the copy.
+        fx.push(Effect::SaveNote {
+            nb: to.clone(),
+            id: new_id,
+            body: held.body,
+            expected_revision: revision,
+        });
     }
     crate::todo::after_notes_changed(app, fx);
     match deleted {
@@ -1446,7 +1488,21 @@ pub fn note_moved_across(
     }
 }
 
-pub fn move_failed(app: &mut App, error: String) {
+/// The original stays, so text typed while the move ran is saved into it.
+pub fn move_failed(app: &mut App, fx: &mut Vec<Effect>, error: String) {
+    if let Some(m) = app.notes.moving.take() {
+        if let Some(ed) = app.editor.as_mut().filter(|e| e.is(&m.note.nb, m.note.id)) {
+            ed.moving = false;
+            request_save(ed, fx);
+        } else if let Some(held) = m.held.filter(Editor::dirty) {
+            fx.push(Effect::SaveNote {
+                nb: held.nb,
+                id: held.note_id,
+                body: held.body,
+                expected_revision: held.base_revision,
+            });
+        }
+    }
     app.error(format!("Move failed: {error}. Nothing changed."));
 }
 

@@ -444,3 +444,178 @@ fn a_move_across_waits_for_the_editor_to_save() {
         [Effect::MoveNoteAcross { id: 1, .. }]
     ));
 }
+
+// ----- typing while a move into another notebook runs -----
+
+/// Open `Top note`, go back to the list and confirm its move into Journal's
+/// `Daily`: the move is now on its way.
+fn open_and_start_move(app: &mut App) {
+    at_top_note(app);
+    press(app, Key::Enter);
+    press(app, Key::Escape);
+    let fx = send(
+        app,
+        Msg::ExecuteMoveNote {
+            note: top_note(),
+            to: NbKey::of(&nb_journal()),
+            folder: 21,
+        },
+    );
+    assert!(matches!(
+        fx.as_slice(),
+        [Effect::MoveNoteAcross { id: 1, .. }]
+    ));
+}
+
+/// Type `body` into the editor and let its save timer fire, as the shell
+/// does. A save of the original the core sends is acknowledged right away,
+/// as the server would before the move deletes it.
+fn type_and_wait(app: &mut App, body: &str) -> Vec<Effect> {
+    let mut fx = send(app, Msg::EditorChanged(body.into()));
+    let token = fx.iter().find_map(|e| match e {
+        Effect::ScheduleSave { token, .. } => Some(*token),
+        _ => None,
+    });
+    if let Some(token) = token {
+        fx.extend(send(app, Msg::SaveTimer(token)));
+    }
+    fx.extend(send(app, Msg::SaveNow));
+    ack_saves_of_the_original(app, &fx);
+    fx
+}
+
+fn ack_saves_of_the_original(app: &mut App, fx: &[Effect]) {
+    for e in fx {
+        if let Effect::SaveNote { nb: n, id: 1, body, .. } = e
+            && *n == nb()
+        {
+            send(
+                app,
+                Msg::NoteSaved {
+                    nb: nb(),
+                    note: note_in(1, 10, "Top note", body, 6),
+                },
+            );
+        }
+    }
+}
+
+fn saves_of_the_original(fx: &[Effect]) -> usize {
+    fx.iter()
+        .filter(|e| matches!(e, Effect::SaveNote { nb: n, id: 1, .. } if *n == nb()))
+        .count()
+}
+
+#[test]
+fn typing_during_a_move_is_held_and_saved_into_the_copy() {
+    let mut app = two_books();
+    open_and_start_move(&mut app);
+
+    // The original is about to be deleted: nothing is saved into it.
+    let fx = type_and_wait(&mut app, "typed while moving");
+    assert_eq!(saves_of_the_original(&fx), 0);
+    let fx = type_and_wait(&mut app, "typed while moving, and more");
+    assert_eq!(saves_of_the_original(&fx), 0);
+    assert!(app.editor.as_ref().is_some_and(|e| e.dirty()));
+
+    let fx = send(&mut app, moved_across(Ok(())));
+    let ed = app.editor.as_ref().unwrap();
+    assert!(ed.is(&NbKey::of(&nb_journal()), 5));
+    assert_eq!(ed.body, "typed while moving, and more");
+    assert_eq!(
+        save_notes(&fx),
+        [&Effect::SaveNote {
+            nb: nb_journal(),
+            id: 5,
+            body: "typed while moving, and more".into(),
+            expected_revision: 1,
+        }]
+    );
+
+    // After the move, saves go to the copy as usual.
+    let fx = type_and_wait(&mut app, "typed after");
+    assert_eq!(saves_of_the_original(&fx), 0);
+}
+
+#[test]
+fn a_note_left_during_a_move_keeps_its_typing_for_the_copy() {
+    let mut app = two_books();
+    open_and_start_move(&mut app);
+    let fx = type_and_wait(&mut app, "typed while moving");
+    assert_eq!(saves_of_the_original(&fx), 0);
+
+    // Open another note before the move finishes.
+    press(&mut app, Key::Up);
+    assert_eq!(selected_title(&app), "Newer top");
+    let fx = press(&mut app, Key::Enter);
+    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 4)));
+    assert_eq!(saves_of_the_original(&fx), 0);
+
+    let fx = send(&mut app, moved_across(Ok(())));
+    assert!(fx.contains(&Effect::SaveNote {
+        nb: nb_journal(),
+        id: 5,
+        body: "typed while moving".into(),
+        expected_revision: 1,
+    }));
+    // The note being edited stays open.
+    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 4)));
+}
+
+#[test]
+fn a_failed_move_saves_the_held_typing_into_the_original() {
+    let mut app = two_books();
+    open_and_start_move(&mut app);
+    let fx = type_and_wait(&mut app, "typed while moving");
+    assert_eq!(saves_of_the_original(&fx), 0);
+
+    let fx = send(
+        &mut app,
+        Msg::NoteMoveFailed {
+            error: "not found".into(),
+        },
+    );
+    assert!(fx.iter().any(|e| matches!(
+        e,
+        Effect::SaveNote { nb: n, id: 1, body, .. } if *n == nb() && body == "typed while moving"
+    )));
+    assert_eq!(app.status.text, "Move failed: not found. Nothing changed.");
+    assert!(app.editor.as_ref().is_some_and(|e| e.is(&NbKey::of(&nb()), 1)));
+}
+
+#[test]
+fn a_second_move_waits_for_the_first() {
+    let mut app = two_books();
+    open_and_start_move(&mut app);
+    let fx = send(
+        &mut app,
+        Msg::ExecuteMoveNote {
+            note: NoteRef {
+                nb: NbKey::of(&nb()),
+                id: 4,
+            },
+            to: NbKey::of(&nb_journal()),
+            folder: 21,
+        },
+    );
+    assert!(
+        !fx.iter()
+            .any(|e| matches!(e, Effect::MoveNoteAcross { .. }))
+    );
+    assert_eq!(app.status.level, Level::Warn);
+}
+
+#[test]
+fn typing_during_a_move_is_not_lost() {
+    // Only the outcome: whatever the core saves on the way, the copy ends
+    // up with the text typed while the move ran.
+    let mut app = two_books();
+    open_and_start_move(&mut app);
+    type_and_wait(&mut app, "typed while moving");
+    let fx = send(&mut app, moved_across(Ok(())));
+    assert_eq!(app.editor.as_ref().unwrap().body, "typed while moving");
+    assert!(fx.iter().any(|e| matches!(
+        e,
+        Effect::SaveNote { id: 5, body, .. } if body == "typed while moving"
+    )));
+}

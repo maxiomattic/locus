@@ -208,7 +208,7 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
             note,
             deleted,
         } => notes::note_moved_across(app, fx, from, id, to, *note, deleted),
-        Msg::NoteMoveFailed { error } => notes::move_failed(app, error),
+        Msg::NoteMoveFailed { error } => notes::move_failed(app, fx, error),
         Msg::NoteFolderDeleted { nb, id } => notes::folder_deleted(app, fx, nb, id),
         Msg::NotebookDeleted { nb } => notes::notebook_deleted(app, nb),
         Msg::NotebookRenamed { nb, title } => notes::notebook_renamed(app, &nb, title),

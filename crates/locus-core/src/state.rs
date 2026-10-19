@@ -289,6 +289,9 @@ pub struct Editor {
     pub save_queued: bool,
     /// Set after a conflict: the user's text is kept, the server copy was reloaded.
     pub conflict: bool,
+    /// The note is being moved into another notebook: saves wait for the
+    /// copy, since the original is about to be deleted.
+    pub moving: bool,
 }
 
 impl Editor {
@@ -424,6 +427,17 @@ pub struct NotesState {
     pub token_seq: u64,
     /// The saved revisions of one note, shown in place of the editor.
     pub history: Option<NoteHistory>,
+    /// A move of a note into another notebook on its way.
+    pub moving: Option<NoteMove>,
+}
+
+/// A note moving into another notebook.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteMove {
+    pub note: NoteRef,
+    /// The note's editor, if it was closed while the move ran; its text goes
+    /// to the copy.
+    pub held: Option<Editor>,
 }
 
 /// A note's revision list. `revs` is `None` while it loads.
