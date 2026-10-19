@@ -35,6 +35,8 @@ The near-term goal is a version the author can use day to day: working browser a
   - `7d1a114`: the locus and notes Hoon test files compile (one shadowed binding renamed; a dead helper deleted).
   - `91e56a7` and `77e6bbd`: spam protection (above). The desk changes move `%messages` to state-1 with a migration from state-0, so a server holding the current state must load it on upgrade; the migration is tested on fake ships only.
   - `0c8bce6`: a note moved between notebooks keeps the text typed during the move. Saves of the moving note wait for the copy (or for the original, if the move fails). Tested in the core; the desktop and browser behaviour is not yet checked.
+  - `b1db651`, `d8d22e7`: Todo and the calendar agenda draw only the rows on screen. The desktop rows are plainer than before (see above). Not checked in the apps.
+  - `1feeacd`: `cargo fmt` across the workspace, formatting only. `cargo fmt --check` is now clean.
 - Next:
   1. Deploy the commits above and check every agent on the server. This needs the administrator's confirmation.
   2. Run the two-ship checks listed above, on real ships or fixed fake ones.
