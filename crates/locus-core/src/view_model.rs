@@ -1180,3 +1180,49 @@ pub fn messages_view(app: &App) -> MessagesView {
         hint,
     }
 }
+
+// ----- virtual lists -----
+
+/// The rows of a list a shell builds when it draws only what is on screen.
+/// Rows `first..last` are built; `above` and `below` are the heights of the
+/// rows left out before and after them, for the spacers that stand in for
+/// them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RowWindow {
+    pub first: usize,
+    pub last: usize,
+    pub above: f32,
+    pub below: f32,
+}
+
+/// The on-screen window of a list whose rows have mixed heights, such as
+/// Todo (group headings and tasks) or the agenda (days and events).
+/// `heights` are the rows' heights in pixels, stacked with no gap between
+/// them; `offset` and `view_h` are the scrollable's scroll offset and
+/// height. `overscan` more rows are kept beyond each edge. For rows of one
+/// height this is the same window the shells' fixed-height lists draw.
+pub fn row_window(heights: &[f32], offset: f32, view_h: f32, overscan: usize) -> RowWindow {
+    let offset = offset.max(0.0);
+    let end = offset + view_h.max(0.0);
+    let mut first = None;
+    let mut last = heights.len();
+    let mut top = 0.0;
+    for (i, &h) in heights.iter().enumerate() {
+        if first.is_none() && top + h > offset {
+            first = Some(i);
+        }
+        if top >= end {
+            last = i;
+            break;
+        }
+        top += h;
+    }
+    let last = (last + overscan).min(heights.len());
+    let first = first.unwrap_or(heights.len()).saturating_sub(overscan).min(last);
+    RowWindow {
+        first,
+        last,
+        above: heights[..first].iter().sum(),
+        below: heights[last..].iter().sum(),
+    }
+}
