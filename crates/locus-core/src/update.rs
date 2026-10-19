@@ -132,6 +132,8 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::MessageDeleted { id } => messages::message_deleted(app, fx, id),
         Msg::SendFailed { peer, body, error } => messages::send_failed(app, peer, body, error),
         Msg::ExecuteDeleteMessage { id } => messages::execute_delete(app, fx, id),
+        Msg::SetBlocked { peer, blocked } => messages::set_blocked(fx, peer, blocked),
+        Msg::BlockChanged { peer, blocked } => messages::block_changed(app, fx, peer, blocked),
         Msg::DirMoved { from, to } => {
             files::dir_moved(app, &from, &to);
             load_section(app, Section::Files, fx);

@@ -253,6 +253,35 @@ pub fn message_deleted(app: &mut App, fx: &mut Vec<Effect>, id: u64) {
     app.info("Message deleted");
 }
 
+/// Whether the listed conversation with `peer` refuses its incoming messages.
+pub fn is_blocked(app: &App, peer: &str) -> bool {
+    conversation(app, peer).is_some_and(|c| c.blocked)
+}
+
+/// Block or unblock `peer`. Nothing changes on screen until the ship confirms.
+pub fn set_blocked(fx: &mut Vec<Effect>, peer: String, blocked: bool) {
+    fx.push(Effect::SetBlocked { peer, blocked });
+}
+
+/// The ship confirmed the block: the listed conversation takes the new state,
+/// and the list is read again.
+pub fn block_changed(app: &mut App, fx: &mut Vec<Effect>, peer: String, blocked: bool) {
+    if let Some(c) = app
+        .messages
+        .conversations
+        .iter_mut()
+        .find(|c| c.peer == peer)
+    {
+        c.blocked = blocked;
+    }
+    if blocked {
+        app.info(format!("Blocked {peer}: its messages are refused"));
+    } else {
+        app.info(format!("Unblocked {peer}"));
+    }
+    fx.push(Effect::LoadConversations);
+}
+
 /// Whether the highlighted message is one this ship has recorded, so Delete
 /// can act on it (a message still sending has no id yet).
 pub fn thread_has_deletable(app: &App) -> bool {

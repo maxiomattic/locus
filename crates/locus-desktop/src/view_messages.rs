@@ -91,11 +91,25 @@ fn thread_pane(view: &MessagesView) -> Element<'static, Message> {
     for m in shown {
         bubbles = bubbles.push(bubble(m));
     }
-    let header = widget::row::with_capacity(2)
+    let (block_label, block_tip) = if view.open_blocked {
+        ("Unblock", "Accept messages from this ship again")
+    } else {
+        ("Block", "Refuse messages from this ship")
+    };
+    let block = tool(
+        block_label,
+        block_tip,
+        Some(Msg::SetBlocked {
+            peer: peer.clone(),
+            blocked: !view.open_blocked,
+        }),
+    );
+    let header = widget::row::with_capacity(3)
         .spacing(s.space_s)
         .align_y(Alignment::Center)
         .push(widget::text::title4(view_model::short_ship(&peer)).width(Length::Fill))
-        .push(widget::text::caption(peer.clone()));
+        .push(widget::text::caption(peer.clone()))
+        .push(block);
     let draft = widget::text_input("Write a message", view.draft.clone())
         .id(Id::new(DRAFT_ID))
         .on_input(|value| core(Msg::Text(TextEdit::Set(value))))
@@ -109,11 +123,17 @@ fn thread_pane(view: &MessagesView) -> Element<'static, Message> {
         .align_y(Alignment::Center)
         .push(draft)
         .push(send);
-    widget::column::with_capacity(3)
+    let mut column = widget::column::with_capacity(4)
         .spacing(s.space_s)
         .width(Length::Fill)
         .height(Length::Fill)
-        .push(header)
+        .push(header);
+    if view.open_blocked {
+        column = column.push(widget::text::caption(
+            "Blocked: messages from this ship are refused. Yours still go.",
+        ));
+    }
+    column
         .push(scroll(THREAD_SCROLL, bubbles))
         .push(composer)
         .into()

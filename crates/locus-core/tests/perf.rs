@@ -137,6 +137,7 @@ fn big_library() -> App {
                     false,
                     "the last message in this conversation",
                 )),
+                blocked: false,
             }
         })
         .collect();

@@ -17,6 +17,8 @@ pub const HELP: &str = "locus messages <command>
   show <ship> [--json]              the messages with a ship, oldest first
   send <ship> <text...>             send a message (a ship like ~zod)
   read <ship>                       mark a conversation as read
+  block <ship>                      refuse messages from a ship (your messages to it still go)
+  unblock <ship>                    accept messages from a ship again
   rm <id>                           delete your copy of a message (the peer keeps theirs)
 
 A message you send is pending until the other ship's agent has it.
@@ -29,6 +31,8 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
         "show" => show(ctx, args).await,
         "send" => send(ctx, args).await,
         "read" => read(ctx, args).await,
+        "block" => block(ctx, args).await,
+        "unblock" => unblock(ctx, args).await,
         "rm" => rm(ctx, args).await,
         other => Err(format!(
             "unknown messages command {other}. try: locus messages --help"
@@ -64,6 +68,7 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
                     "peer": c.peer,
                     "count": c.count,
                     "unread": c.unread,
+                    "blocked": c.blocked,
                     "last": c.last,
                 })
             })
@@ -82,11 +87,19 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
                     String::new()
                 },
                 c.count.to_string(),
+                if c.blocked {
+                    "yes".into()
+                } else {
+                    String::new()
+                },
                 preview(c),
             ]
         })
         .collect();
-    emit(&table(&["SHIP", "NEW", "MESSAGES", "LAST"], &rows));
+    emit(&table(
+        &["SHIP", "NEW", "MESSAGES", "BLOCKED", "LAST"],
+        &rows,
+    ));
     Ok(())
 }
 
@@ -155,6 +168,26 @@ async fn read(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let client = ctx.client().await?;
     client.mark_read(&peer).await.map_err(client_error)?;
     emit(&format!("read {peer}\n"));
+    Ok(())
+}
+
+async fn block(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(1, 1, "locus messages block <ship>")?;
+    let peer = ship_arg(&pos[0])?;
+    let client = ctx.client().await?;
+    client.block(&peer).await.map_err(client_error)?;
+    emit(&format!("blocked {peer}\n"));
+    Ok(())
+}
+
+async fn unblock(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(1, 1, "locus messages unblock <ship>")?;
+    let peer = ship_arg(&pos[0])?;
+    let client = ctx.client().await?;
+    client.unblock(&peer).await.map_err(client_error)?;
+    emit(&format!("unblocked {peer}\n"));
     Ok(())
 }
 

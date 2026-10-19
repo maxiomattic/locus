@@ -152,6 +152,17 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
             Ok(()) => vec![Msg::MessageDeleted { id }],
             Err(e) => vec![write_failed(Section::Messages, &e)],
         },
+        Effect::SetBlocked { peer, blocked } => {
+            let done = if blocked {
+                client.block(&peer).await
+            } else {
+                client.unblock(&peer).await
+            };
+            match done {
+                Ok(()) => vec![Msg::BlockChanged { peer, blocked }],
+                Err(e) => vec![write_failed(Section::Messages, &e)],
+            }
+        }
         Effect::MoveDir { from, to } => match client.move_dir(&from, &to).await {
             Ok(()) => vec![Msg::DirMoved { from, to }],
             Err(e) => vec![write_failed(Section::Files, &e)],

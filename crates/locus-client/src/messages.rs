@@ -44,6 +44,10 @@ pub struct Conversation {
     pub count: u64,
     pub unread: u64,
     pub last: Option<Message>,
+    /// True when this ship refuses incoming messages from `peer`. Messages
+    /// this ship sends to `peer` still go.
+    #[serde(default)]
+    pub blocked: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,6 +115,20 @@ impl Client {
         check_ok(env.ok, env.error, env.message)
     }
 
+    /// Refuse incoming messages from `peer`. Messages to `peer` still go.
+    pub async fn block(&self, peer: &str) -> Result<()> {
+        let path = format!("/messages/~/v1/conversations/{}/block", seg(peer));
+        let env: Envelope = self.json(Method::POST, &path, Some(json!({}))).await?;
+        check_ok(env.ok, env.error, env.message)
+    }
+
+    /// Accept incoming messages from `peer` again.
+    pub async fn unblock(&self, peer: &str) -> Result<()> {
+        let path = format!("/messages/~/v1/conversations/{}/unblock", seg(peer));
+        let env: Envelope = self.json(Method::POST, &path, Some(json!({}))).await?;
+        check_ok(env.ok, env.error, env.message)
+    }
+
     /// Send `body` to `to` (a ship, e.g. `~zod`). Returns the local message id;
     /// the status moves from `pending` once the peer acks.
     pub async fn send_message(&self, to: &str, body: &str) -> Result<u64> {
@@ -154,5 +172,19 @@ mod tests {
     fn rejects_non_da() {
         assert_eq!(parse_da("hello"), None);
         assert_eq!(parse_da("~zod"), None);
+    }
+
+    #[test]
+    fn conversation_without_blocked_is_not_blocked() {
+        let raw = r#"{"peer":"~zod","count":1,"unread":0,"last":null}"#;
+        let c: Conversation = serde_json::from_str(raw).unwrap();
+        assert!(!c.blocked);
+    }
+
+    #[test]
+    fn conversation_with_blocked_is_blocked() {
+        let raw = r#"{"peer":"~zod","count":1,"unread":0,"last":null,"blocked":true}"#;
+        let c: Conversation = serde_json::from_str(raw).unwrap();
+        assert!(c.blocked);
     }
 }

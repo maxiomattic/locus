@@ -25,6 +25,7 @@ fn conv(peer: &str, unread: u64, last: Message) -> Conversation {
         count: 2,
         unread,
         last: Some(last),
+        blocked: false,
     }
 }
 
@@ -440,4 +441,121 @@ fn a_closed_conversation_keeps_its_unread_count() {
     );
     assert!(!fx.iter().any(|e| matches!(e, Effect::MarkRead { .. })));
     assert_eq!(locus_core::messages::unread_total(&app), 3);
+}
+
+#[test]
+fn block_asks_the_ship_and_shows_once_it_answers() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    assert!(!view_model::messages_view(&app).open_blocked);
+    let fx = send(
+        &mut app,
+        Msg::SetBlocked {
+            peer: "~dev".into(),
+            blocked: true,
+        },
+    );
+    assert!(fx.contains(&Effect::SetBlocked {
+        peer: "~dev".into(),
+        blocked: true,
+    }));
+    // Nothing changes on screen until the ship has done it.
+    assert!(!view_model::messages_view(&app).open_blocked);
+    let fx = send(
+        &mut app,
+        Msg::BlockChanged {
+            peer: "~dev".into(),
+            blocked: true,
+        },
+    );
+    assert!(view_model::messages_view(&app).open_blocked);
+    assert!(fx.contains(&Effect::LoadConversations));
+
+    let fx = send(
+        &mut app,
+        Msg::SetBlocked {
+            peer: "~dev".into(),
+            blocked: false,
+        },
+    );
+    assert!(fx.contains(&Effect::SetBlocked {
+        peer: "~dev".into(),
+        blocked: false,
+    }));
+    send(
+        &mut app,
+        Msg::BlockChanged {
+            peer: "~dev".into(),
+            blocked: false,
+        },
+    );
+    assert!(!view_model::messages_view(&app).open_blocked);
+}
+
+#[test]
+fn the_open_conversation_shows_the_listed_block_state() {
+    let mut app = inbox();
+    let mut blocked = conv(
+        "~tyr",
+        0,
+        msg(9, "~tyr", false, "photos are up", Status::Received),
+    );
+    blocked.blocked = true;
+    send(
+        &mut app,
+        Msg::ConversationsLoaded {
+            conversations: vec![
+                conv(
+                    "~dev",
+                    0,
+                    msg(3, "~dev", false, "see you at six", Status::Received),
+                ),
+                blocked,
+            ],
+        },
+    );
+    send(&mut app, Msg::Select(1));
+    assert!(view_model::messages_view(&app).open_blocked);
+    send(&mut app, Msg::Select(0));
+    assert!(!view_model::messages_view(&app).open_blocked);
+}
+
+#[test]
+fn a_block_answer_for_another_peer_leaves_the_open_one_alone() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    send(
+        &mut app,
+        Msg::BlockChanged {
+            peer: "~tyr".into(),
+            blocked: true,
+        },
+    );
+    assert!(!view_model::messages_view(&app).open_blocked);
+    assert_eq!(app.messages.open.as_deref(), Some("~dev"));
+}
+
+#[test]
+fn a_failed_send_still_returns_the_text_to_the_draft_when_blocked() {
+    let mut app = inbox();
+    send(&mut app, Msg::Select(0));
+    send(
+        &mut app,
+        Msg::BlockChanged {
+            peer: "~dev".into(),
+            blocked: true,
+        },
+    );
+    app.messages.draft = "hello".into();
+    let fx = send(&mut app, Msg::SendDraft);
+    assert_eq!(sent_to(&fx), vec![("~dev".to_string(), "hello".to_string())]);
+    send(
+        &mut app,
+        Msg::SendFailed {
+            peer: "~dev".into(),
+            body: "hello".into(),
+            error: "nacked".into(),
+        },
+    );
+    assert_eq!(app.messages.draft, "hello");
 }

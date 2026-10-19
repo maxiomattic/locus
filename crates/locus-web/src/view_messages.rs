@@ -26,12 +26,13 @@ pub(crate) fn messages(s: &Shell) -> Element<'_, Message> {
         open,
         thread,
         can_send,
+        open_blocked,
         hint,
         ..
     } = view_model::messages_view(&s.app);
     row![
         conversations_column(s, conversations, hint),
-        thread_pane(s, open, thread, can_send, hint),
+        thread_pane(s, open, thread, can_send, open_blocked, hint),
     ]
     .spacing(16)
     .height(Fill)
@@ -95,6 +96,7 @@ fn thread_pane<'a>(
     open: Option<String>,
     thread: Vec<ThreadMessage>,
     can_send: bool,
+    open_blocked: bool,
     hint: &'static str,
 ) -> Element<'a, Message> {
     let c = s.colors;
@@ -118,9 +120,17 @@ fn thread_pane<'a>(
             .color(c.text)
             .width(Fill),
         muted_text(c, peer.clone()),
+        block_button(c, peer.clone(), open_blocked),
     ]
     .spacing(8)
     .align_y(Center);
+    let mut pane = column![header].spacing(12).width(Fill).height(Fill);
+    if open_blocked {
+        pane = pane.push(muted_text(
+            c,
+            "Blocked: messages from this ship are refused. Yours still go.",
+        ));
+    }
     // Typing in the box makes it the draft, so the first key is never lost
     // after the click that focused it.
     let draft = text_input("Write a message", &s.app.messages.draft)
@@ -139,18 +149,33 @@ fn thread_pane<'a>(
         .style(style::primary_button(c))
         .on_press_maybe(can_send.then(|| core(Msg::SendDraft)));
     let composer = row![draft, send].spacing(8).align_y(Center);
-    column![
-        header,
+    pane.push(
         scrollable(bubbles)
             .id(THREAD_SCROLL)
             .on_scroll(scroll_msg(THREAD_SCROLL))
             .height(Fill),
-        composer,
-    ]
-    .spacing(12)
-    .width(Fill)
-    .height(Fill)
+    )
+    .push(composer)
     .into()
+}
+
+/// Blocks the open ship's messages, or lifts the block. Outgoing messages
+/// still go either way.
+fn block_button(c: Colors, peer: String, blocked: bool) -> Element<'static, Message> {
+    let (label, tip) = if blocked {
+        ("Unblock", "Accept messages from this ship again")
+    } else {
+        ("Block", "Refuse messages from this ship (yours still go)")
+    };
+    tool(
+        c,
+        label,
+        tip,
+        Some(Msg::SetBlocked {
+            peer,
+            blocked: !blocked,
+        }),
+    )
 }
 
 /// One message: outgoing on the right, incoming on the left, with its time

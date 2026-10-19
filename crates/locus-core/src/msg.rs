@@ -388,6 +388,19 @@ pub enum Msg {
     MessageDeleted {
         id: u64,
     },
+    /// The user asked to block or unblock incoming messages from `peer`. The
+    /// ship has not done it yet, so nothing changes on screen until
+    /// [`Msg::BlockChanged`].
+    SetBlocked {
+        peer: String,
+        blocked: bool,
+    },
+    /// The ship confirmed that incoming messages from `peer` are (or are no
+    /// longer) refused.
+    BlockChanged {
+        peer: String,
+        blocked: bool,
+    },
     /// The ship did not take the message: the text goes back to the draft.
     SendFailed {
         peer: String,
@@ -614,6 +627,12 @@ pub enum Effect {
     },
     DeleteMessage {
         id: u64,
+    },
+    /// Block or unblock incoming messages from `peer`. Answered by
+    /// [`Msg::BlockChanged`], or by a write failure.
+    SetBlocked {
+        peer: String,
+        blocked: bool,
     },
 
     /// Start (or restart) a one-shot timer. Send `Msg::SaveTimer(token)` when it fires.

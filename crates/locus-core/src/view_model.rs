@@ -1084,6 +1084,8 @@ pub struct MessagesView {
     /// Sending is allowed: a conversation is open and the draft is not empty.
     pub can_send: bool,
     pub unread_total: u64,
+    /// The open conversation's ship is blocked: its messages are refused.
+    pub open_blocked: bool,
     /// What the thread pane says when no conversation is open.
     pub hint: &'static str,
 }
@@ -1171,6 +1173,10 @@ pub fn messages_view(app: &App) -> MessagesView {
         draft: m.draft.clone(),
         can_send: m.open.is_some() && !m.draft.trim().is_empty(),
         unread_total: messages::unread_total(app),
+        open_blocked: m
+            .open
+            .as_deref()
+            .is_some_and(|peer| messages::is_blocked(app, peer)),
         hint,
     }
 }
