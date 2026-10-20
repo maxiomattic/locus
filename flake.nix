@@ -281,9 +281,6 @@
             # tiles it separately. They are all one binary, locus-app.
             postInstall = ''
               mkdir -p $out/share/applications
-              for app in notes todo calendar photos files contacts movies music messages; do
-                ln -s locus-app "$out/bin/locus-$app"
-              done
               entry() { # app-id name program icon comment
                 cat > "$out/share/applications/$1.desktop" <<EOF
               [Desktop Entry]
@@ -326,6 +323,13 @@
               # binaries carry it.
               for b in $out/bin/locus-app $out/bin/locus; do
                 wrapProgram "$b" --prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${gstPluginPath}"
+              done
+              # `locus-notes` and so on. Each names its app: the wrappers
+              # above exec scripts, so the program name does not reach the
+              # binary and cannot pick the app.
+              for app in notes todo calendar photos files contacts movies music messages; do
+                printf '#!${pkgs.runtimeShell}\nexec %s %s "$@"\n' "$out/bin/locus-app" "$app" > "$out/bin/locus-$app"
+                chmod +x "$out/bin/locus-$app"
               done
             '';
             meta = {
