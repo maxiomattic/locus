@@ -70,7 +70,8 @@ let
 
   khanEval = "[0 %fyrd %base %khan-eval %noun %ted-eval '=/  m  (strand ,vase)  ;<  our=@p  bind:m  get-our  ;<  code=@p  bind:m  (scry @p /j/code/(scot %p our))  (pure:m !>((crip (slag 1 (scow %p code)))))']";
 
-  # Live +code via conn.sock (do not scrape /~/login).
+  # Live +code via conn.sock (do not scrape /~/login). `urbit-code <pier>`
+  # reads another pier, such as an offline clone.
   urbitCode = pkgs.writeShellApplication {
     name = "urbit-code";
     runtimeInputs = [
@@ -80,7 +81,7 @@ let
       pkgs.gnugrep
     ];
     text = ''
-      pier=${lib.escapeShellArg verePier}
+      pier=''${1:-${lib.escapeShellArg verePier}}
       sock="$pier/.urb/conn.sock"
       if [ ! -S "$sock" ]; then
         echo "urbit-code: ship is not running (missing $sock)" >&2

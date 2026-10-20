@@ -63,6 +63,8 @@ Import `nixosModules.client` on a machine whose disk is the Locus desktop. Prove
 
 1. In the clan flake, update the Locus input and switch: `nix flake update locus && sudo nixos-rebuild switch --flake .#<host>`. This installs the gateway, which serves the browser app on port 8090.
 2. On the server, from a checkout of this repo: `EYRE_URL=http://127.0.0.1 ./scripts/desk-deploy.sh`. It snapshots the pier dataset, commits the desk, and waits for every agent. It never wipes or uninstalls anything.
-   New ships come with Tlon's `%groups` desk, which runs agents named `%notes` and `%contacts`. Gall runs an agent name from one desk only, so the script stops and names the clashing desk. Suspend it in the dojo (its state is kept; `|revive %groups` undoes this), then rerun: `|suspend %groups`.
+   New ships come with Tlon's `%groups` desk, which runs agents named `%notes` and `%contacts`. Gall runs an agent name from one desk only, so the script stops and names the clashing desk. Suspend it in the dojo, then rerun: `|suspend %groups`.
+   Gall keeps a suspended agent's state under its name and hands it to the next agent of that name, so Locus's `%notes` and `%contacts` then fail to load (`%load-failed`). On a new ship that state is Tlon's and empty: `|nuke %notes`, `|nuke %contacts`, `|revive %locus`. Do not nuke on a ship whose `%notes` or `%contacts` already run from `%locus`; that deletes the data.
+5. To move data from another ship (an old comet, or a comet before a planet): `locus backup export <dir>` against the old one and `locus backup import <dir>` against the new one. See [urbit.md](urbit.md#reset-to-a-new-identity-keeping-the-data).
 3. Open `http://<server>:8090/app/` and sign in with the ship's code (`sudo urbit-code`).
 4. Import Obsidian vaults (safe to rerun; never overwrites a note edited in Locus): `locus import-obsidian --url http://<server>:8090 --code-file <file> --notebook <title> <vault>`. Add `--dry-run` to preview.

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub mod apps;
+pub mod backup;
 pub mod import;
 
 pub const APP_ID: &str = "org.locus.household";

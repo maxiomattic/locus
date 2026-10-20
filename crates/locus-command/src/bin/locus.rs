@@ -1,6 +1,6 @@
 //! `locus` — clan command plane (same functions the ship audits).
 
-use locus_command::{Session, apps, execute_allowed, import, load_saved, run_approved_job};
+use locus_command::{Session, apps, backup, execute_allowed, import, load_saved, run_approved_job};
 use std::env;
 use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
@@ -122,6 +122,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         "import-obsidian" => cmd_import_obsidian(args.collect()),
+        "backup" => backup::run(args.collect()),
         "connect" => apps::connect(args.collect()),
         "open" => apps::open(args.collect()),
         app if apps::is_app(app) => apps::run(app, args.collect()),
@@ -157,6 +158,8 @@ fn print_help() {
          locus connect [<server-url> [--code-file <path>]]   # save gateway + code\n\
          locus notes|todo|calendar|photos|files|contacts <command>\n\
          locus open <app> [target]   # launch the GUI app (locus-<app>)\n\
+         locus backup export <dir>   # copy this ship's data to <dir>\n\
+         locus backup import <dir>   # recreate it on the connected ship\n\
          \n\
          Clan command plane:\n\
          \n\

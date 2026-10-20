@@ -56,15 +56,9 @@ zfs list -t snapshot -o name,creation rpool/urbit/pier
 
 ## Rollback
 
-Stop the ship first:
+`zfs rollback` moves a dataset back to a snapshot. It does not delete newer snapshots unless you pass `-r`. Prefer keeping newer snapshots until you know you do not need them.
 
-```bash
-sudo systemctl stop urbit
-sudo zfs rollback rpool/urbit/pier@before-change
-sudo systemctl start urbit
-```
-
-`rollback` only moves the live dataset to that snapshot. It does not delete newer snapshots unless you pass `-r`. Prefer keeping newer snapshots until you know you do not need them.
+Do not roll back `rpool/urbit/pier` and boot the ship on the network: the network refuses a ship that went back in time, and the only remedy is a new identity. Read old pier snapshots offline instead, and move data with `locus backup`. See [urbit.md](urbit.md#rollback-and-why-the-pier-must-not-go-back-in-time).
 
 ## notes-app must not destroy snapshots
 

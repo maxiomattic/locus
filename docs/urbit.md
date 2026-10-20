@@ -79,13 +79,25 @@ locus.server.urbit = {
 
 `keyFile` is a string, not a Nix path, so the key never enters the world-readable Nix store. The file must be absolute and readable by the `urbit` user only. Delete it after the first successful boot; the unit is started with `-` on the read-only path, so it still starts without the file.
 
-## Rollback
+## Rollback, and why the pier must not go back in time
 
-```bash
-sudo systemctl stop urbit
-sudo zfs rollback rpool/urbit/pier@before-change
-sudo systemctl start urbit
-```
+Do not roll the pier back and boot it on the network. The network remembers how far the ship got. A pier from an earlier snapshot is behind that, so the ship refuses to start ("double-boot detected"), and the only remedy is a reset to a new identity. The same happens if a copy of the pier boots online anywhere, even once. This is how the first comet was lost on 2026-10-20.
+
+Pier snapshots are still useful:
+
+- To read old data, boot a clone with no network at all: a network namespace with only loopback (`sudo ip netns add offline`, then run `urbit` under `sudo ip netns exec offline`). Never on the host network.
+- To bring that data onto the live ship, export it from the offline copy with `locus backup export`, then `locus backup import` it on the live ship (see below).
+- A snapshot taken while the ship is stopped, rolled back before the ship starts again, is the same ship at the same point and is safe.
+
+## Reset to a new identity, keeping the data
+
+A comet that will not boot ("double-boot detected", a lost key) is replaced by a new comet. A planet replaces a comet the same way. Notes, folders, files, photos, events and contacts come across; note history, timestamps and messages do not (messages stay in the backup file).
+
+1. Stop the ship and snapshot it: `sudo systemctl stop urbit && sudo zfs snapshot rpool/urbit/pier@pre-reset`.
+2. Boot a clone of that snapshot offline (above) and run a gateway beside it in the same namespace (`locus-gateway --listen 127.0.0.1:8190 --eyre http://127.0.0.1:<port> --data-dir <copy of /var/lib/locus/files>`). Get its code with `sudo ip netns exec offline urbit-code <clone>/ship`.
+3. In the namespace: `locus connect http://127.0.0.1:8190 --code-file <code>`, then `locus backup export <dir>`. Copy `<dir>` off the machine. Stop the clone.
+4. Clear the live pier (`sudo rm -rf /var/lib/urbit/pier/ship`; the snapshot keeps it) and `sudo systemctl start urbit`. With no pier, the unit boots a new comet.
+5. Suspend Tlon's `%groups` (it runs agents named `%notes` and `%contacts`), deploy the desk (`./scripts/desk-deploy.sh`), then `locus connect` to the server and `locus backup import <dir>`. Import skips what is already there, so it is safe to rerun.
 
 ## notes-app must not destroy snapshots
 
