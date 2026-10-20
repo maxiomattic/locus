@@ -332,3 +332,116 @@ fn files_filter_only_searches_the_current_directory() {
     app.files.cwd = "/Docs".into();
     assert_eq!(names(&app), ["tax.pdf"]);
 }
+
+fn sidebar(app: &locus_core::App) -> Vec<(String, usize, bool, bool)> {
+    view_model::files_sidebar(app)
+        .into_iter()
+        .map(|n| (n.path, n.depth, n.current, n.expanded))
+        .collect()
+}
+
+#[test]
+fn sidebar_lists_top_folders_and_opens_the_current_branch() {
+    let mut app = files_app();
+    send(
+        &mut app,
+        Msg::DirsLoaded {
+            dirs: vec!["/Music".into(), "/Photos b".into()],
+        },
+    );
+    let s = |p: &str, d, c, e| (p.to_string(), d, c, e);
+    assert_eq!(
+        sidebar(&app),
+        [
+            s("/", 0, true, true),
+            s("/Docs", 0, false, false),
+            s("/Music", 0, false, false),
+            s("/Photos", 0, false, false),
+            s("/Photos b", 0, false, false),
+        ]
+    );
+    send(&mut app, Msg::OpenDir("/Photos/2026".into()));
+    assert_eq!(app.files.cwd, "/Photos/2026");
+    // `/Photos/2026` sorts under `/Photos`, not after `/Photos b`.
+    assert_eq!(
+        sidebar(&app),
+        [
+            s("/", 0, false, true),
+            s("/Docs", 0, false, false),
+            s("/Music", 0, false, false),
+            s("/Photos", 0, false, true),
+            s("/Photos/2026", 1, true, true),
+            s("/Photos b", 0, false, false),
+        ]
+    );
+    let photos = view_model::files_sidebar(&app)
+        .into_iter()
+        .find(|n| n.path == "/Photos")
+        .unwrap();
+    assert!(photos.has_children && photos.label == "Photos");
+}
+
+#[test]
+fn open_dir_going_up_selects_the_folder_we_came_from() {
+    let mut app = files_app();
+    send(&mut app, Msg::OpenDir("/Photos/2026".into()));
+    send(&mut app, Msg::OpenDir("/".into()));
+    assert_eq!(app.files.cwd, "/");
+    assert_eq!(names(&app)[app.files.sel], "Photos");
+    // A bad path is ignored.
+    send(&mut app, Msg::OpenDir("../etc".into()));
+    assert_eq!(app.files.cwd, "/");
+}
+
+#[test]
+fn columns_sort_both_ways_with_folders_first_and_keep_the_selection() {
+    use locus_core::FileSortKey as K;
+    let mut app = locus_core::App::new();
+    send(&mut app, Msg::Switch(locus_core::Section::Files));
+    let sized = |id, name: &str, size, modified| locus_core::FileEntry {
+        size,
+        modified,
+        ..file(id, "/", name, 1)
+    };
+    send(
+        &mut app,
+        Msg::FilesLoaded {
+            files: vec![
+                sized(1, "b.txt", 300, 20),
+                sized(2, "a.txt", 100, 30),
+                sized(3, "c.txt", 200, 10),
+            ],
+        },
+    );
+    send(
+        &mut app,
+        Msg::DirsLoaded {
+            dirs: vec!["/Zed".into(), "/Alpha".into()],
+        },
+    );
+    assert_eq!(names(&app), ["Alpha", "Zed", "a.txt", "b.txt", "c.txt"]);
+
+    // Select b.txt, then sort by size: it stays selected.
+    app.files.sel = 3;
+    send(&mut app, Msg::SortFilesBy(K::Size));
+    assert_eq!(names(&app), ["Alpha", "Zed", "a.txt", "c.txt", "b.txt"]);
+    assert_eq!(names(&app)[app.files.sel], "b.txt");
+    // The same column again reverses it; folders stay first, by name.
+    send(&mut app, Msg::SortFilesBy(K::Size));
+    assert_eq!(names(&app), ["Alpha", "Zed", "b.txt", "c.txt", "a.txt"]);
+    let (cols, descending) = view_model::file_columns(&app);
+    assert!(descending);
+    assert_eq!(cols[1].label, "Size ▼");
+    assert!(cols[1].active && !cols[0].active);
+
+    // A new column starts ascending; the selectors set the direction.
+    send(&mut app, Msg::SortFilesBy(K::Modified));
+    assert_eq!(names(&app), ["Alpha", "Zed", "c.txt", "b.txt", "a.txt"]);
+    send(&mut app, Msg::SortFilesDescending(true));
+    assert_eq!(names(&app), ["Alpha", "Zed", "a.txt", "b.txt", "c.txt"]);
+    // Name descending reverses folders too.
+    send(&mut app, Msg::SortFilesBy(K::Name));
+    send(&mut app, Msg::SortFilesDescending(true));
+    assert_eq!(names(&app), ["Zed", "Alpha", "c.txt", "b.txt", "a.txt"]);
+    assert_eq!(view_model::file_columns(&app).0[0].label, "Name ▼");
+}

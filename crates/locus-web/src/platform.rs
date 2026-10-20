@@ -194,6 +194,45 @@ pub fn prefers_light() -> bool {
         .unwrap_or(false)
 }
 
+/// The desktop's accent colour, through the CSS `AccentColor` system colour.
+/// That is the only way a page can see it: Firefox maps it to the GTK and
+/// XDG portal accent on Linux. `None` when the browser does not support it.
+pub fn system_accent() -> Option<(u8, u8, u8)> {
+    use wasm_bindgen::JsCast;
+    let window = web_sys::window()?;
+    let document = window.document()?;
+    let body = document.body()?;
+    let probe = document.create_element("span").ok()?;
+    let el: &web_sys::HtmlElement = probe.dyn_ref()?;
+    let style = el.style();
+    style.set_property("display", "none").ok()?;
+    // A browser without `AccentColor` ignores the second value and keeps this
+    // marker, which no accent would be.
+    const MARKER: &str = "rgb(1, 2, 3)";
+    style.set_property("color", MARKER).ok()?;
+    style.set_property("color", "AccentColor").ok()?;
+    body.append_child(&probe).ok()?;
+    let color = window
+        .get_computed_style(&probe)
+        .ok()
+        .flatten()
+        .and_then(|cs| cs.get_property_value("color").ok());
+    body.remove_child(&probe).ok()?;
+    let color = color?;
+    if color == MARKER {
+        return None;
+    }
+    parse_rgb(&color)
+}
+
+/// `rgb(r, g, b)` or `rgba(r, g, b, a)` as computed styles print it.
+pub fn parse_rgb(css: &str) -> Option<(u8, u8, u8)> {
+    let inner = css.trim().strip_prefix("rgba(").or_else(|| css.trim().strip_prefix("rgb("))?;
+    let mut parts = inner.trim_end_matches(')').split(',').map(|p| p.trim().parse::<f32>());
+    let mut next = || parts.next()?.ok().map(|v| v.round().clamp(0.0, 255.0) as u8);
+    Some((next()?, next()?, next()?))
+}
+
 pub fn client() -> Client {
     Client::new(origin()).expect("page origin is a valid base URL")
 }

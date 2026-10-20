@@ -4,7 +4,9 @@
 use std::collections::BTreeSet;
 
 use crate::msg::{Effect, FileEntry, FilePatch, Msg, Nav};
-use crate::state::{App, Focus, Input, InputKind, Section, clamp_sel, matches_filter};
+use crate::state::{
+    App, FileSort, FileSortKey, Focus, Input, InputKind, Section, clamp_sel, matches_filter,
+};
 use crate::update::step;
 
 /// One row of the browser: folders first, then files.
@@ -113,14 +115,55 @@ pub fn rows(app: &App) -> Vec<Row> {
         .filter(|f| matches_filter(&app.filter, &[&f.name]))
         .cloned()
         .collect();
-    files.sort_by(|a, b| {
+    let FileSort { key, descending } = app.files.sort;
+    // Folders have no size or date: by name, reversed only when names are.
+    if key == FileSortKey::Name && descending {
+        out.reverse();
+    }
+    let by_name = |a: &FileEntry, b: &FileEntry| {
         a.name
             .to_lowercase()
             .cmp(&b.name.to_lowercase())
             .then(a.id.cmp(&b.id))
+    };
+    files.sort_by(|a, b| {
+        let order = match key {
+            FileSortKey::Name => by_name(a, b),
+            FileSortKey::Size => a.size.cmp(&b.size).then_with(|| by_name(a, b)),
+            FileSortKey::Modified => a.modified.cmp(&b.modified).then_with(|| by_name(a, b)),
+        };
+        if descending { order.reverse() } else { order }
     });
     out.extend(files.into_iter().map(Row::File));
     out
+}
+
+/// Order by `key`; the column already in use flips direction. The selected
+/// row stays selected.
+pub fn sort_by(app: &mut App, key: FileSortKey) {
+    let sort = app.files.sort;
+    let descending = if sort.key == key {
+        !sort.descending
+    } else {
+        false
+    };
+    resort(app, FileSort { key, descending });
+}
+
+/// Ascending or descending, keeping the column.
+pub fn set_descending(app: &mut App, descending: bool) {
+    let key = app.files.sort.key;
+    resort(app, FileSort { key, descending });
+}
+
+fn resort(app: &mut App, sort: FileSort) {
+    let keep = selected(app).map(|r| row_path(&r));
+    app.files.sort = sort;
+    if let Some(path) = keep {
+        if let Some(i) = rows(app).iter().position(|r| row_path(r) == path) {
+            app.files.sel = i;
+        }
+    }
 }
 
 pub fn selected(app: &App) -> Option<Row> {
@@ -146,6 +189,37 @@ pub fn nav(app: &mut App, nav: Nav) {
         other => {
             let len = rows(app).len();
             app.files.sel = step(app.files.sel, len, other);
+        }
+    }
+}
+
+/// Open a folder by path. Going up selects the folder we came from, as Back
+/// does; anything else starts at the top.
+pub fn open_dir(app: &mut App, path: &str) {
+    let Ok(path) = normalize_dir(path) else {
+        return;
+    };
+    if path == app.files.cwd {
+        return;
+    }
+    let from = app.files.cwd.clone();
+    app.files.cwd = path.clone();
+    app.files.sel = 0;
+    // `/a` from `/a/b/c`: select `b`.
+    let prefix = if path == "/" {
+        "/".to_string()
+    } else {
+        format!("{path}/")
+    };
+    if let Some(child) = from
+        .strip_prefix(&prefix)
+        .and_then(|rest| rest.split('/').next())
+    {
+        if let Some(i) = rows(app)
+            .iter()
+            .position(|r| matches!(r, Row::Folder { name, .. } if name == child))
+        {
+            app.files.sel = i;
         }
     }
 }

@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 28C4 23.5817 7.58172 20 12 20H116C120.418 20 124 23.5817 124 28V100C124 104.418 120.418 108 116 108H12C7.58172 108 4 104.418 4 100V28Z" fill="url(#frame)"/>
+<path d="M12 34C12 30.6863 14.6863 28 18 28H110C113.314 28 116 30.6863 116 34V94C116 97.3137 113.314 100 110 100H18C14.6863 100 12 97.3137 12 94V34Z" fill="url(#sky)"/>
+<circle cx="88" cy="46" r="9" fill="#FFAD00"/>
+<g clip-path="url(#pic)">
+<path d="M12 84L42 54C44.3431 51.6569 48.1421 51.6569 50.4853 54L80 83.5V94C80 97.3137 77.3137 100 74 100H18C14.6863 100 12 97.3137 12 94V84Z" fill="url(#hillback)"/>
+<path d="M36 100L70 66C72.3431 63.6569 76.1421 63.6569 78.4853 66L116 103.5V100H36Z" fill="url(#hillfront)"/>
+</g>
+<defs>
+<clipPath id="pic"><path d="M12 34C12 30.6863 14.6863 28 18 28H110C113.314 28 116 30.6863 116 34V94C116 97.3137 113.314 100 110 100H18C14.6863 100 12 97.3137 12 94V34Z"/></clipPath>
+<linearGradient id="frame" x1="64" y1="20" x2="64" y2="108" gradientUnits="userSpaceOnUse"><stop stop-color="#BEBEBE"/><stop offset="1" stop-color="#9E9E9E"/></linearGradient>
+<linearGradient id="sky" x1="64" y1="28" x2="64" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#E4F0FF"/><stop offset="1" stop-color="#82A1CA"/></linearGradient>
+<linearGradient id="hillback" x1="46" y1="52" x2="46" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#48B9C7"/><stop offset="1" stop-color="#229FAD"/></linearGradient>
+<linearGradient id="hillfront" x1="76" y1="64" x2="76" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#243C5F"/><stop offset="1" stop-color="#102A4C"/></linearGradient>
+</defs>
+</svg>

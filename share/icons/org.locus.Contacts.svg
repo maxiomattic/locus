@@ -1,0 +1,13 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M16 16C16 11.5817 19.5817 8 24 8H104C108.418 8 112 11.5817 112 16V112C112 116.418 108.418 120 104 120H24C19.5817 120 16 116.418 16 112V16Z" fill="url(#card)"/>
+<rect x="10" y="28" width="12" height="8" rx="4" fill="#485F84"/>
+<rect x="10" y="60" width="12" height="8" rx="4" fill="#485F84"/>
+<rect x="10" y="92" width="12" height="8" rx="4" fill="#485F84"/>
+<circle cx="64" cy="48" r="17" fill="url(#person)"/>
+<path d="M34 92C34 77.6406 45.6406 68 60 68H68C82.3594 68 94 77.6406 94 92V94C94 96.2091 92.2091 98 90 98H38C35.7909 98 34 96.2091 34 94V92Z" fill="url(#person2)"/>
+<defs>
+<linearGradient id="card" x1="64" y1="8" x2="64" y2="120" gradientUnits="userSpaceOnUse"><stop stop-color="#BEBEBE"/><stop offset="1" stop-color="#9E9E9E"/></linearGradient>
+<linearGradient id="person" x1="64" y1="31" x2="64" y2="65" gradientUnits="userSpaceOnUse"><stop stop-color="#FAFCFF"/><stop offset="1" stop-color="#E4F0FF"/></linearGradient>
+<linearGradient id="person2" x1="64" y1="68" x2="64" y2="98" gradientUnits="userSpaceOnUse"><stop stop-color="#FAFCFF"/><stop offset="1" stop-color="#E4F0FF"/></linearGradient>
+</defs>
+</svg>

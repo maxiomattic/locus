@@ -1,0 +1,11 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M44 46C44 41.5817 47.5817 38 52 38H112C116.418 38 120 41.5817 120 46V86C120 90.4183 116.418 94 112 94H106V108L90 94H52C47.5817 94 44 90.4183 44 86V46Z" fill="url(#back)"/>
+<path d="M8 24C8 19.5817 11.5817 16 16 16H84C88.4183 16 92 19.5817 92 24V68C92 72.4183 88.4183 76 84 76H40L22 92V76H16C11.5817 76 8 72.4183 8 68V24Z" fill="url(#front)"/>
+<circle cx="32" cy="46" r="6" fill="#FAFCFF"/>
+<circle cx="50" cy="46" r="6" fill="#FAFCFF"/>
+<circle cx="68" cy="46" r="6" fill="#FAFCFF"/>
+<defs>
+<linearGradient id="back" x1="82" y1="38" x2="82" y2="108" gradientUnits="userSpaceOnUse"><stop stop-color="#243C5F"/><stop offset="1" stop-color="#102A4C"/></linearGradient>
+<linearGradient id="front" x1="92" y1="16" x2="12" y2="92" gradientUnits="userSpaceOnUse"><stop stop-color="#48B9C7"/><stop offset="1" stop-color="#229FAD"/></linearGradient>
+</defs>
+</svg>

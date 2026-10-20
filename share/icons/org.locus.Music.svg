@@ -1,0 +1,12 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="64" cy="64" r="56" fill="url(#disc)"/>
+<circle cx="64" cy="64" r="47" stroke="#2C4A72" stroke-width="2"/>
+<circle cx="64" cy="64" r="38" stroke="#2C4A72" stroke-width="2"/>
+<circle cx="64" cy="64" r="20" fill="url(#label)"/>
+<circle cx="64" cy="64" r="4" fill="#FAFCFF"/>
+<path d="M30 40C35.5 31.5 44 25.5 54 23" stroke="#6582AA" stroke-width="4" stroke-linecap="round"/>
+<defs>
+<linearGradient id="disc" x1="64" y1="8" x2="64" y2="120" gradientUnits="userSpaceOnUse"><stop stop-color="#243C5F"/><stop offset="1" stop-color="#001534"/></linearGradient>
+<linearGradient id="label" x1="84" y1="44" x2="44" y2="84" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC94D"/><stop offset="1" stop-color="#FFAD00"/></linearGradient>
+</defs>
+</svg>

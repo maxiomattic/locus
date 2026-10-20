@@ -1066,15 +1066,64 @@ fn file_row(c: Colors, r: &view_model::FileRow, i: usize) -> Element<'static, Me
     click_row(c, content, ROW_H, r.selected, Msg::Select(i), Msg::Activate)
 }
 
-fn files_pane(s: &Shell) -> Element<'_, Message> {
+/// The Files sidebar: "All files" and the folder tree. A click opens the
+/// folder; the folder being browsed is highlighted.
+fn files_sidebar(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
-    let header = row![
-        muted_text(c, "Name").width(Fill),
-        muted_text(c, "Size").width(96),
-        muted_text(c, "Modified").width(120),
+    let mut col = Column::new().spacing(2);
+    for node in view_model::files_sidebar(&s.app) {
+        // ▾ an open folder with subfolders, ▸ a closed one.
+        let mark = match (node.has_children, node.expanded) {
+            (true, true) => "▾",
+            (true, false) => "▸",
+            _ => " ",
+        };
+        let content = row![
+            text(mark).size(12).color(c.muted).width(12),
+            text(node.label).size(14).color(c.text),
+        ]
+        .spacing(6)
+        .align_y(Center)
+        .padding(iced::Padding::ZERO.left(14.0 * node.depth as f32));
+        let open = Msg::OpenDir(node.path);
+        col = col.push(click_row(c, content, ROW_H, node.current, open.clone(), open));
+    }
+    container(scrollable(col).height(Fill)).width(220).height(Fill).into()
+}
+
+fn files_pane(s: &Shell) -> Element<'_, Message> {
+    row![files_sidebar(s), files_list(s)].spacing(16).height(Fill).into()
+}
+
+fn files_list(s: &Shell) -> Element<'_, Message> {
+    let c = s.colors;
+    let (columns, descending) = view_model::file_columns(&s.app);
+    // A column header orders by that column; again reverses it.
+    let mut header = Row::new().spacing(8);
+    for (col, width) in columns.into_iter().zip([Fill, Length::Fixed(96.0), Length::Fixed(120.0)]) {
+        let color = if col.active { c.accent } else { c.muted };
+        header = header.push(
+            button(text(col.label).size(12).color(color))
+                .padding([2, 8])
+                .style(style::quiet_button(c))
+                .on_press(core(Msg::SortFilesBy(col.key)))
+                .width(width),
+        );
+    }
+    let direction = |label: &'static str, on: bool| {
+        button(text(label).size(12))
+            .padding([4, 10])
+            .style(move |t, st| {
+                if on { style::primary_button(c)(t, st) } else { style::quiet_button(c)(t, st) }
+            })
+            .on_press(core(Msg::SortFilesDescending(label == "Descending")))
+    };
+    let order = row![
+        space::horizontal(),
+        direction("Ascending", !descending),
+        direction("Descending", descending),
     ]
-    .spacing(8)
-    .padding([0, 8]);
+    .spacing(4);
 
     let rows = view_model::file_rows(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
@@ -1083,7 +1132,7 @@ fn files_pane(s: &Shell) -> Element<'_, Message> {
         let count = rows.len();
         virtual_rows(s, "files", count, ROW_H + 4.0, move |i| gapped(file_row(c, &rows[i], i), 4.0))
     };
-    column![header, list].spacing(8).height(Fill).into()
+    column![order, header, list].spacing(8).height(Fill).into()
 }
 
 // ----- contacts -----

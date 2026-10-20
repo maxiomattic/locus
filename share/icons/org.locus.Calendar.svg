@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M8 28C8 23.5817 11.5817 20 16 20H112C116.418 20 120 23.5817 120 28V108C120 112.418 116.418 116 112 116H16C11.5817 116 8 112.418 8 108V28Z" fill="url(#page)"/>
+<path d="M8 28C8 23.5817 11.5817 20 16 20H112C116.418 20 120 23.5817 120 28V44H8V28Z" fill="url(#top)"/>
+<rect x="34" y="10" width="8" height="20" rx="4" fill="#485F84"/>
+<rect x="86" y="10" width="8" height="20" rx="4" fill="#485F84"/>
+<g fill="#485F84">
+<rect x="20" y="54" width="14" height="12" rx="3"/><rect x="40" y="54" width="14" height="12" rx="3"/><rect x="60" y="54" width="14" height="12" rx="3"/><rect x="80" y="54" width="14" height="12" rx="3"/><rect x="100" y="54" width="10" height="12" rx="3" opacity="0.5"/>
+<rect x="20" y="72" width="14" height="12" rx="3"/><rect x="40" y="72" width="14" height="12" rx="3"/><rect x="80" y="72" width="14" height="12" rx="3"/><rect x="100" y="72" width="10" height="12" rx="3" opacity="0.5"/>
+<rect x="20" y="90" width="14" height="12" rx="3"/><rect x="40" y="90" width="14" height="12" rx="3"/><rect x="60" y="90" width="14" height="12" rx="3"/>
+</g>
+<rect x="60" y="72" width="14" height="12" rx="3" fill="#FFAD00"/>
+<defs>
+<linearGradient id="page" x1="64" y1="20" x2="64" y2="116" gradientUnits="userSpaceOnUse"><stop stop-color="#FAFCFF"/><stop offset="1" stop-color="#E4F0FF"/></linearGradient>
+<linearGradient id="top" x1="64" y1="20" x2="64" y2="44" gradientUnits="userSpaceOnUse"><stop stop-color="#48B9C7"/><stop offset="1" stop-color="#229FAD"/></linearGradient>
+</defs>
+</svg>

@@ -65,6 +65,19 @@ impl Colors {
         }
     }
 
+    /// These colours with the desktop's accent in place of the built-in one.
+    /// Text on the accent is black or white, whichever reads better.
+    pub fn with_accent(mut self, (r, g, b): (u8, u8, u8)) -> Self {
+        self.accent = Color::from_rgb8(r, g, b);
+        let lum = |v: u8| {
+            let c = f32::from(v) / 255.0;
+            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        let l = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
+        self.on_accent = if l > 0.18 { hex(0x0d1117) } else { hex(0xffffff) };
+        self
+    }
+
     /// The iced theme built from the same colours, so built-in widgets match.
     pub fn theme(&self) -> Theme {
         Theme::custom(

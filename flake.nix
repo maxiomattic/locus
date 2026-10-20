@@ -299,15 +299,29 @@
               EOF
                 sed -i 's/^ *//' "$out/share/applications/$1.desktop"
               }
-              entry org.locus.Notes "Locus Notes" locus-notes accessories-text-editor-symbolic "Notes"
-              entry org.locus.Todo "Locus Todo" locus-todo object-select-symbolic "Tasks from your notes"
-              entry org.locus.Calendar "Locus Calendar" locus-calendar x-office-calendar-symbolic "Calendar"
-              entry org.locus.Photos "Locus Photos" locus-photos image-x-generic-symbolic "Photos"
-              entry org.locus.Files "Locus Files" locus-files folder-symbolic "Files"
-              entry org.locus.Contacts "Locus Contacts" locus-contacts x-office-address-book-symbolic "Contacts"
-              entry org.locus.Movies "Locus Movies" locus-movies video-x-generic-symbolic "Movies"
-              entry org.locus.Music "Locus Music" locus-music audio-x-generic-symbolic "Music"
-              entry org.locus.Messages "Locus Messages" locus-messages mail-message-new-symbolic "Messages"
+              entry org.locus.Notes "Locus Notes" locus-notes org.locus.Notes "Notes"
+              entry org.locus.Calendar "Locus Calendar" locus-calendar org.locus.Calendar "Calendar and tasks"
+              entry org.locus.Photos "Locus Photos" locus-photos org.locus.Photos "Photos"
+              entry org.locus.Files "Locus Files" locus-files org.locus.Files "Files"
+              entry org.locus.Contacts "Locus Contacts" locus-contacts org.locus.Contacts "Contacts"
+              entry org.locus.Movies "Locus Movies" locus-movies org.locus.Movies "Movies"
+              entry org.locus.Music "Locus Music" locus-music org.locus.Music "Music"
+              entry org.locus.Messages "Locus Messages" locus-messages org.locus.Messages "Messages"
+              # Icons. An app with a COSMIC counterpart uses that app's icon
+              # (GPL-3.0, from the COSMIC package); the others are drawn in
+              # the same style, in share/icons.
+              cosmicIcon() { # pkg cosmic-id locus-id
+                for f in "$1"/share/icons/hicolor/*/apps/"$2".svg; do
+                  size=$(basename "$(dirname "$(dirname "$f")")")
+                  install -Dm644 "$f" "$out/share/icons/hicolor/$size/apps/$3.svg"
+                done
+              }
+              cosmicIcon ${pkgs.cosmic-files} com.system76.CosmicFiles org.locus.Files
+              cosmicIcon ${pkgs.cosmic-edit} com.system76.CosmicEdit org.locus.Notes
+              cosmicIcon ${pkgs.cosmic-player} com.system76.CosmicPlayer org.locus.Movies
+              for f in ${./share/icons}/*.svg; do
+                install -Dm644 "$f" "$out/share/icons/hicolor/scalable/apps/$(basename "$f")"
+              done
               # GStreamer finds its plugins through this variable, so the
               # binaries carry it.
               for b in $out/bin/locus-app $out/bin/locus; do

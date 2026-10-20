@@ -504,6 +504,22 @@ pub struct PhotosState {
     pub columns: usize,
 }
 
+/// The column the Files listing is ordered by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FileSortKey {
+    #[default]
+    Name,
+    Size,
+    Modified,
+}
+
+/// A column and a direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FileSort {
+    pub key: FileSortKey,
+    pub descending: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FilesState {
     pub files: Vec<FileEntry>,
@@ -512,6 +528,8 @@ pub struct FilesState {
     pub dirs: Vec<String>,
     pub cwd: String,
     pub sel: usize,
+    /// How the listing is ordered. Folders always come first.
+    pub sort: FileSort,
     /// Full path of the folder a rename or move prompt is for.
     pub dir_edit: Option<String>,
 }

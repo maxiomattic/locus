@@ -78,6 +78,14 @@ pub enum Msg {
     Nav(Nav),
     /// Enter on the focused list row: open a note, enter a folder, open viewer.
     Activate,
+    /// Files: open this folder (an absolute path), from the sidebar or the
+    /// path bar.
+    OpenDir(String),
+    /// Files: order the listing by a column. Clicking the column it is
+    /// already ordered by reverses the direction.
+    SortFilesBy(crate::state::FileSortKey),
+    /// Files: ascending (`false`) or descending (`true`), same column.
+    SortFilesDescending(bool),
     /// `i` in Notes, `e` in Calendar/Contacts.
     Edit,
     New,

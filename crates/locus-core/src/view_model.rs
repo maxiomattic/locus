@@ -587,6 +587,42 @@ pub struct FileRow {
     pub selected: bool,
 }
 
+/// A column header of the Files listing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileColumn {
+    pub key: crate::state::FileSortKey,
+    /// `Name`, then ` ▲` or ` ▼` on the column in use.
+    pub label: String,
+    pub active: bool,
+}
+
+/// The three column headers, and whether the order is descending.
+pub fn file_columns(app: &App) -> (Vec<FileColumn>, bool) {
+    use crate::state::FileSortKey as K;
+    let sort = app.files.sort;
+    let cols = [
+        (K::Name, "Name"),
+        (K::Size, "Size"),
+        (K::Modified, "Modified"),
+    ]
+    .into_iter()
+    .map(|(key, name)| {
+        let active = sort.key == key;
+        let arrow = match (active, sort.descending) {
+            (false, _) => "",
+            (true, false) => " ▲",
+            (true, true) => " ▼",
+        };
+        FileColumn {
+            key,
+            label: format!("{name}{arrow}"),
+            active,
+        }
+    })
+    .collect();
+    (cols, sort.descending)
+}
+
 pub fn file_rows(app: &App) -> Vec<FileRow> {
     let tz = app.now.tz_offset_secs;
     files::rows(app)
@@ -615,6 +651,57 @@ pub fn file_rows(app: &App) -> Vec<FileRow> {
             }
         })
         .collect()
+}
+
+/// One folder in the Files sidebar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderNode {
+    pub label: String,
+    pub path: String,
+    /// 0 for "All files" and the top-level folders.
+    pub depth: usize,
+    /// The folder being browsed.
+    pub current: bool,
+    /// Has subfolders, shown or not.
+    pub has_children: bool,
+    /// Its subfolders are listed below it.
+    pub expanded: bool,
+}
+
+/// The Files sidebar: "All files", then the folder tree. Top-level folders
+/// are always listed; below them only the branch down to the current folder
+/// is open, plus the current folder's own subfolders.
+pub fn files_sidebar(app: &App) -> Vec<FolderNode> {
+    let cwd = app.files.cwd.as_str();
+    let mut all = crate::files::folders(app);
+    // By segment, so `/a/c` stays under `/a` and not after `/a b`.
+    all.sort_by(|a, b| a.split('/').cmp(b.split('/')));
+    let is_open = |p: &str| cwd == p || cwd.starts_with(&format!("{p}/"));
+    let mut out = vec![FolderNode {
+        label: "All files".into(),
+        path: "/".into(),
+        depth: 0,
+        current: cwd == "/",
+        has_children: !all.is_empty(),
+        expanded: true,
+    }];
+    // A parent comes right before its children.
+    for path in &all {
+        let parent = crate::files::parent(path);
+        if parent != "/" && !is_open(&parent) {
+            continue;
+        }
+        let prefix = format!("{path}/");
+        out.push(FolderNode {
+            label: path.rsplit('/').next().unwrap_or_default().to_string(),
+            path: path.clone(),
+            depth: path.matches('/').count() - 1,
+            current: cwd == path,
+            has_children: all.iter().any(|p| p.starts_with(&prefix)),
+            expanded: is_open(path),
+        });
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

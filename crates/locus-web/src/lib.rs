@@ -129,11 +129,14 @@ impl Shell {
     fn boot() -> (Shell, Task<Message>) {
         // wasm std has no randomness; request ids need a per-tab seed.
         locus_client::notes::seed_request_ids((js_sys::Math::random() * u64::MAX as f64) as u64);
-        let colors = if platform::prefers_light() {
+        let mut colors = if platform::prefers_light() {
             Colors::light()
         } else {
             Colors::dark()
         };
+        if let Some(accent) = platform::system_accent() {
+            colors = colors.with_accent(accent);
+        }
         let client = platform::client();
         let (locked, target) = platform::route();
         let mut shell = Shell {

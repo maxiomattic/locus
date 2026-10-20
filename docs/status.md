@@ -20,11 +20,13 @@ The near-term goal is a version the author can use day to day: working browser a
 ### 2. Core apps (in progress)
 
 - Done and tested (unit tests, plus clicking through each app against real data with throwaway items):
-  - Nine standard point-and-click apps. Each runs in its own browser tab (`/app/<app>`) and as its own desktop program (`locus-<app>`). Todo is a tab of the Calendar app, so it has no app of its own.
+  - Eight standard point-and-click apps. Each runs in its own browser tab (`/app/<app>`) and as its own desktop program (`locus-<app>`). Todo is a tab of the Calendar app, so it has no app of its own.
   - The `locus` CLI covers the same actions as the apps.
+  - Each app has its own launcher and icon, and there is no combined Locus window. Files, Notes and Movies use the icons of COSMIC Files, Edit and Player; Photos, Music, Calendar, Contacts and Messages have icons drawn in the same style (`share/icons`). Todo opens from Calendar.
+  - Accent colour: the desktop apps follow the XDG portal's accent and dark or light setting (libcosmic's `xdg-portal` feature), so they match GNOME as well as COSMIC. The browser app uses the CSS `AccentColor`, which Firefox maps to the desktop's accent; other browsers keep the default blue.
   - Notes: folders, notebooks, rename, move, delete, revision history and restore, move between notebooks with a destination picker, and conflict copies. Moving a note between notebooks is tested in both apps (desktop and browser).
   - Todo: tasks are checkbox lines in notes. New tasks go to the notebook named "Tasks" if there is one, otherwise to the notebook being browsed.
-  - Files: upload, folders, rename, move, delete. Folders can be renamed and moved (the `%files` desk has `dir.move`).
+  - Files: upload, folders, rename, move, delete. Folders can be renamed and moved (the `%files` desk has `dir.move`). A sidebar lists "All files" and the folder tree (top-level folders, the branch down to the open folder, and its subfolders). The Name, Size and Modified headers sort the listing; clicking the sorted one again reverses it, and Ascending and Descending set the direction. Folders always come first.
   - Photos: albums, viewer, rename, move, delete. A video in the library plays in the desktop viewer (tested 2026-10-20: frames advance, the time counts up, and the controls show).
   - Calendar and Contacts: create, edit, delete.
   - Movies and Music: views over Files. A movie is a video file at or below `/Movies`; a track is an audio file at or below `/Music` (in `/Music/<artist>/<album>/`, for example). Transport tested on 2026-10-20 in both apps:

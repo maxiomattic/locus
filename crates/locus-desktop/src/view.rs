@@ -1455,7 +1455,48 @@ fn file_row<'a>(row: &view_model::FileRow, i: usize) -> Element<'a, Message> {
     row_area(content, ROW1_H, row.selected, Msg::Select(i), Msg::Activate)
 }
 
+/// Width of the Files sidebar.
+const SIDEBAR_W: f32 = 220.0;
+
+/// The Files sidebar: "All files" and the folder tree. A click opens the
+/// folder; the folder being browsed is highlighted.
+fn files_sidebar(app: &App) -> Element<'_, Message> {
+    let s = theme::spacing();
+    let mut col = widget::column::with_capacity(16).spacing(s.space_xxxs);
+    for node in view_model::files_sidebar(&app.ui) {
+        let icon = if node.path == "/" {
+            "user-home-symbolic"
+        } else if node.expanded && node.has_children {
+            "folder-open-symbolic"
+        } else {
+            "folder-symbolic"
+        };
+        let content = widget::row::with_capacity(2)
+            .spacing(s.space_xxs)
+            .align_y(Alignment::Center)
+            .padding([0, 0, 0, s.space_s * node.depth as u16])
+            .push(widget::icon::from_name(icon).size(16).icon())
+            .push(widget::text::body(node.label));
+        let open = Msg::OpenDir(node.path);
+        col = col.push(row_area(content, ROW1_H, node.current, open.clone(), open));
+    }
+    widget::container(widget::scrollable(col).height(Length::Fill))
+        .width(Length::Fixed(SIDEBAR_W))
+        .height(Length::Fill)
+        .into()
+}
+
 pub(crate) fn files(app: &App) -> Element<'_, Message> {
+    widget::row::with_capacity(3)
+        .spacing(theme::spacing().space_s)
+        .height(Length::Fill)
+        .push(files_sidebar(app))
+        .push(widget::divider::vertical::default())
+        .push(files_list(app))
+        .into()
+}
+
+fn files_list(app: &App) -> Element<'_, Message> {
     let s = theme::spacing();
     let rows = view_model::file_rows(&app.ui);
     let body: Element<'_, Message> = if rows.is_empty() {
@@ -1465,14 +1506,48 @@ pub(crate) fn files(app: &App) -> Element<'_, Message> {
         )
     } else {
         let count = rows.len();
-        let header = widget::row::with_capacity(3)
+        let (columns, descending) = view_model::file_columns(&app.ui);
+        // A column header orders by that column; again reverses it.
+        let mut header = widget::row::with_capacity(3)
             .spacing(s.space_s)
-            .padding([0, s.space_m])
-            .push(widget::text::caption("Name").width(Length::Fill))
-            .push(widget::text::caption("Size").width(Length::Fixed(90.0)))
-            .push(widget::text::caption("Modified").width(Length::Fixed(100.0)));
-        widget::column::with_capacity(2)
+            .padding([0, s.space_m - s.space_xxs]);
+        for (col, width) in
+            columns
+                .into_iter()
+                .zip([Length::Fill, Length::Fixed(90.0), Length::Fixed(100.0)])
+        {
+            let label = widget::text::caption(col.label);
+            let label = if col.active {
+                label.class(theme::Text::Color(accent()))
+            } else {
+                label
+            };
+            header = header.push(
+                widget::button::custom(label)
+                    .padding([0, s.space_xxs])
+                    .class(theme::Button::Text)
+                    .on_press(core(Msg::SortFilesBy(col.key)))
+                    .width(width),
+            );
+        }
+        let direction = |label: &'static str, on: bool| {
+            widget::button::text(label)
+                .class(if on {
+                    theme::Button::Suggested
+                } else {
+                    theme::Button::Standard
+                })
+                .on_press(core(Msg::SortFilesDescending(label == "Descending")))
+        };
+        let order = widget::row::with_capacity(3)
             .spacing(s.space_xxs)
+            .align_y(Alignment::Center)
+            .push(widget::space::horizontal().width(Length::Fill))
+            .push(direction("Ascending", !descending))
+            .push(direction("Descending", descending));
+        widget::column::with_capacity(3)
+            .spacing(s.space_xxs)
+            .push(order)
             .push(header)
             .push(virtual_list(app, FILES_SCROLL, count, ROW1_H, move |i| {
                 file_row(&rows[i], i)

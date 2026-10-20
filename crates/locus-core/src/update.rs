@@ -53,6 +53,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         }
         Msg::Nav(nav) => nav_key(app, fx, nav),
         Msg::Activate => activate(app, fx),
+        Msg::OpenDir(path) => crate::files::open_dir(app, &path),
+        Msg::SortFilesBy(key) => crate::files::sort_by(app, key),
+        Msg::SortFilesDescending(d) => crate::files::set_descending(app, d),
         Msg::Edit => edit(app, fx),
         Msg::New => new_item(app, fx),
         Msg::NewFolder => notes::begin_new_folder(app),
