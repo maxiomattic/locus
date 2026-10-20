@@ -1,17 +1,19 @@
 # Locus: status
 
-Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-18.
+Where the work stands against [plan.md](plan.md). The plan says what to do and [intent.md](intent.md) says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-20.
 
 ## Now: stages 1 and 2, a first version to try
 
-The near-term goal is a version the author can use day to day: working browser and Linux desktop apps for notes, todo, calendar, files, photos and contacts, plus the `locus` command line for everything, running on the clan server. The agent builds and tests it end to end, then the author tries it.
+The near-term goal is a version the author can use day to day: working browser and Linux desktop apps for notes, todo, calendar, files, photos, movies, music, messages and contacts, plus the `locus` command line for everything, running on the clan server. The agent builds and tests it end to end, then the author tries it.
 
 ### 1. Foundation (mostly done)
 
 - Done: a NixOS server with ZFS, the Urbit ship as a service, and `locus-gateway` serving the browser app, file bytes and the ship's API. The first server runs it, and the Obsidian vaults are imported as notebooks.
+- Done 2026-10-20: an off-machine copy of the ship's pier. A ZFS stream of `rpool/urbit/pier` is on the laptop (`~/Backups/surface-pier/`), checked by SHA-256 on both ends. The stream itself was not restored from the laptop; the same snapshot was restored locally and booted with networking off, and its data matched the live ship.
 - Open:
+  - The ship is down as of 2026-10-20. A restore test booted a copy of the pier with networking on, and the network recorded that boot as the latest version, so the real ship now refuses to start ("double-boot detected"). The only remedy the docs name is a factory reset, which clears the event log and gives the comet a new identity. This needs the administrator's decision. The pier is kept in `rpool/urbit/pier` and `rpool/urbit/pier-restore-20261019`.
   - The server runs on a comet. The planet (the clan's root identity) comes later.
-  - The ship's Azimuth eth-watcher error is unfixed.
+  - The ship's Azimuth eth-watcher error ("range 100000 exceeds limit of 10000") is unfixed. Public Ethereum endpoints cap `eth_getLogs` below that range, so it needs an RPC provider with a higher limit, or a local node.
   - Nobody has yet tried the "fresh machine through one documented procedure" check from the plan.
 
 ### 2. Core apps (in progress)
@@ -19,31 +21,26 @@ The near-term goal is a version the author can use day to day: working browser a
 - Done and tested (unit tests, plus clicking through each app against real data with throwaway items):
   - Nine standard point-and-click apps. Each runs in its own browser tab (`/app/<app>`) and as its own desktop program (`locus-<app>`). Todo is a tab of the Calendar app, so it has no app of its own.
   - The `locus` CLI covers the same actions as the apps.
-  - Notes: folders, notebooks, rename, move, delete, revision history and restore, move between notebooks with a destination picker, and conflict copies.
+  - Notes: folders, notebooks, rename, move, delete, revision history and restore, move between notebooks with a destination picker, and conflict copies. Moving a note between notebooks is tested in both apps (desktop and browser).
   - Todo: tasks are checkbox lines in notes. New tasks go to the notebook named "Tasks" if there is one, otherwise to the notebook being browsed.
   - Files: upload, folders, rename, move, delete. Folders can be renamed and moved (the `%files` desk has `dir.move`).
-  - Photos: albums, viewer, rename, move, delete. A video in the library plays in the viewer, built but not yet tried.
+  - Photos: albums, viewer, rename, move, delete. A video in the library plays in the desktop viewer (tested 2026-10-20: frames advance, the time counts up, and the controls show).
   - Calendar and Contacts: create, edit, delete.
-  - Movies and Music: views over Files. A movie is a video file at or below `/Movies`; a track is an audio file at or below `/Music` (in `/Music/<artist>/<album>/`, for example). Play is tested in the browser and on the desktop, with video frames drawn in the app. Pause, seek, volume, next and previous are built but not yet tried.
-  - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. If the ship refuses it, it shows as failed and the text goes back into the draft. Messages you send to yourself are stored once. Conversations list newest first, and an open conversation clears its unread count. Tested with messages to the same ship (Hoon and Rust tests, including a remote poke that the previous build silently dropped).
-  - Spam protection: a ship's incoming messages are refused when it is blocked (`locus messages block ~ship`, or the Block button in the conversation), and the 21st message from one ship within a minute is refused. A refused message stores nothing, and our own sends to a blocked ship still go. Built and tested; not deployed yet.
-  - Not yet verified between two real ships. The fake-ship test could not get past its setup on 2026-10-18 (a fake ship's own Locus agents were down, and its API key could not be read). Still to run: a message both ways, a send to a ship that is offline (it should stay pending, not fail), and a junk poke (it should be refused and store nothing).
-- Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows: Notes, Files, Contacts, Photos, Movies, Music, Messages, and now Todo and the calendar agenda. On the desktop, Todo and the agenda rows now have the plain styling of Files and Contacts (no cards or dividers, and closer spacing), which is a visible change; the browser app looks the same as before.
-- Deployed to the Surface server on 2026-10-18: the browser app, the gateway, and the %locus desk with %messages and folder moves. The desk was snapshotted first (rpool/urbit/pier@locus-desk-deploy-20261018T190032Z). The installed desktop programs still have a GStreamer bug (no movie or track plays) until the fix in aece93a is built and switched in.
-- Committed but not deployed (on `main`, after 8c03e3c):
-  - `a6ece4e` and `d28c44f`: remote messages arrive (they were dropped before); a bad poke or upgrade no longer wipes an agent's data (all six agents); ids above 999,999; newest-first conversations; a move from a folder that does not exist answers "not found"; the shell and browser fixes above.
-  - `7d1a114`: the locus and notes Hoon test files compile (one shadowed binding renamed; a dead helper deleted).
-  - `91e56a7` and `77e6bbd`: spam protection (above). The desk changes move `%messages` to state-1 with a migration from state-0, so a server holding the current state must load it on upgrade; the migration is tested on fake ships only.
-  - `0c8bce6`: a note moved between notebooks keeps the text typed during the move. Saves of the moving note wait for the copy (or for the original, if the move fails). Tested in the core; the desktop and browser behaviour is not yet checked.
-  - `b1db651`, `d8d22e7`: Todo and the calendar agenda draw only the rows on screen. The desktop rows are plainer than before (see above). Not checked in the apps.
-  - `1feeacd`: `cargo fmt` across the workspace, formatting only. `cargo fmt --check` is now clean.
+  - Movies and Music: views over Files. A movie is a video file at or below `/Movies`; a track is an audio file at or below `/Music` (in `/Music/<artist>/<album>/`, for example). Transport tested on 2026-10-20 in both apps:
+    - Browser: play, pause (the position holds), seek while paused (lands and stays paused), resume from the seek point, volume, stop; for music also next, previous (restart past 3 s, previous track within 3 s) and moving on to the next track at the end.
+    - Desktop: play, pause, seek while paused, seek while playing, resume, volume, stop; for music also next, previous and moving on at the end.
+  - Messages: direct messages between ships, sent as `%messages` pokes over Ames. A message you send shows as sending until the other ship's agent has it, then as delivered. If the ship refuses it, it shows as failed and the text goes back into the draft. Messages you send to yourself are stored once. Conversations list newest first, and an open conversation clears its unread count.
+  - Spam protection: a ship's incoming messages are refused when it is blocked (`locus messages block ~ship`, or the Block button in the conversation), and the 21st message from one ship within a minute is refused. A refused message stores nothing, and our own sends to a blocked ship still go. Deployed 2026-10-20.
+  - Two-ship messages, checked on two fake ships (`~/exp/two-ship-test.sh`, 2026-10-20, all 12 checks pass): a message both ways, the sender's copy goes from pending to delivered, a send to a ship that is offline stays pending and then arrives when it is back, and junk pokes are refused without storing anything. The test logs in with the ship's code, because gall scries are cancelled on fake ships.
+- Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows: Notes, Files, Contacts, Photos, Movies, Music, Messages, and now Todo and the calendar agenda.
+- Fixed 2026-10-20:
+  - Desktop scroll-to-selection drifted on long lists (commit `139d8ca`). Checked: 60 notes, the selection stays on screen.
+  - Desktop seeks landed at the start of the movie (commit `d824319`). The player seeked to the previous keyframe; now it lands on the requested time. Checked in the desktop app, paused and playing.
+- Deployed to the Surface server on 2026-10-20: the %locus desk, with the messages fixes and spam protection, after a ZFS snapshot (`rpool/urbit/pier@locus-desk-deploy-20261020T042207Z`). The desktop programs and the gateway were rebuilt from `139d8ca` and then `d824319`. The ship has been down since 2026-10-20, so the deployed agents are not running right now.
 - Next:
-  1. Deploy the commits above and check every agent on the server. This needs the administrator's confirmation.
-  2. Run the two-ship checks listed above, on real ships or fixed fake ones.
-  3. Try the transport controls (pause, seek, volume, next, previous) and a video in the Photos viewer, in the desktop and browser apps. Also try the note move in both apps.
-  4. Scroll-to-selection on the desktop drifts on long Notes, Files, Contacts and Movies/Music lists: `selection_rect` uses the spacing of the old card lists (h + 9 px), but those rows are drawn h apart.
-  5. Group conversations (not started).
-  6. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
+  1. Decide on the factory reset of the comet (see Open above). Until then the server cannot run.
+  2. Group conversations (not started): a group has a title and members, messages go to every member, and each member keeps their own copy. Needs a state migration, the core, the CLI and both shells, with Hoon and Rust tests. Tested on the fake ships first, deployed once the server is back.
+  3. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
 
 ## Later stages
 
