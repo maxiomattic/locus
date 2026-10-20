@@ -1729,37 +1729,40 @@ pub(crate) fn capitalize(s: &str) -> String {
 /// mirroring the layout above.
 pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
     let ui = &app.ui;
-    let rect = |id, i: usize, h: f32| Some((id, i as f32 * row_pitch(h), row_pitch(h)));
+    // A list_column draws each row with a gap and a divider, which row_pitch models.
+    let listed = |id, i: usize, h: f32| Some((id, i as f32 * row_pitch(h), row_pitch(h)));
+    // A virtual_list draws its rows exactly `h` apart, with no gap.
+    let fixed = |id, i: usize, h: f32| Some((id, i as f32 * h, h));
     if ui.focus == Focus::Palette {
         let i = view_model::palette_rows(ui)
             .iter()
             .position(|r| r.selected)?;
-        return rect(PALETTE_SCROLL, i, ROW1_H);
+        return listed(PALETTE_SCROLL, i, ROW1_H);
     }
     if let Some(picker) = view_model::move_picker(ui) {
         let i = picker.rows.iter().position(|r| r.selected)?;
-        return rect(MOVE_SCROLL, i, ROW1_H);
+        return listed(MOVE_SCROLL, i, ROW1_H);
     }
     match ui.section {
         Section::Notes => {
             let i = view_model::notes_list(ui).iter().position(|r| r.selected)?;
-            rect(NOTES_SCROLL, i, ROW2_H)
+            fixed(NOTES_SCROLL, i, ROW2_H)
         }
         Section::Files => {
             let i = view_model::file_rows(ui).iter().position(|r| r.selected)?;
-            rect(FILES_SCROLL, i, ROW1_H)
+            fixed(FILES_SCROLL, i, ROW1_H)
         }
         Section::Contacts => {
             let i = view_model::contact_rows(ui)
                 .iter()
                 .position(|r| r.selected)?;
-            rect(CONTACTS_SCROLL, i, ROW2_H)
+            fixed(CONTACTS_SCROLL, i, ROW2_H)
         }
         Section::Movies | Section::Music => {
             let i = view_model::media_rows(ui, ui.section)
                 .iter()
                 .position(|r| r.selected)?;
-            rect(
+            fixed(
                 if ui.section == Section::Music {
                     MUSIC_SCROLL
                 } else {
@@ -1771,7 +1774,7 @@ pub fn selection_rect(app: &App) -> Option<(&'static str, f32, f32)> {
         }
         Section::Messages => {
             let i = ui.messages.sel;
-            rect(CONVERSATIONS_SCROLL, i, CONVERSATION_H)
+            fixed(CONVERSATIONS_SCROLL, i, CONVERSATION_H)
         }
         Section::Todo => {
             let mut y = 0.0;
