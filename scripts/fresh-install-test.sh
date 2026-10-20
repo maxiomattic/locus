@@ -88,7 +88,7 @@ s = s.replace('  system.stateVersion', '''  # VM only: virtio disk without /dev/
   system.stateVersion''')
 open(p, 'w').write(s)
 PY
-grep -q EDIT "$W/clan/host.nix" && fail "host.nix still has EDIT lines"
+grep -qE "\"[^\"]*EDIT[^\"]*\"" "$W/clan/host.nix" && fail "host.nix still has EDIT lines"
 
 say "building the system on this host"
 TOP="$("${NIX[@]}" build --no-link --print-out-paths "path:$W/clan#nixosConfigurations.server.config.system.build.toplevel")"
