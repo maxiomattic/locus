@@ -28,6 +28,13 @@ pub struct Message {
     /// The ship's `@da`, e.g. `~2026.10.17..06.53.53..223a`.
     pub sent: String,
     pub status: Status,
+    /// The group this message is in, e.g. `~zod-1`; `None` for a direct message.
+    /// For a group message, `peer` is the member who wrote it.
+    #[serde(default)]
+    pub group: Option<String>,
+    /// Group sends only: members whose copy the agent has not acked yet.
+    #[serde(default)]
+    pub waiting: Vec<String>,
 }
 
 impl Message {
@@ -48,6 +55,34 @@ pub struct Conversation {
     /// this ship sends to `peer` still go.
     #[serde(default)]
     pub blocked: bool,
+    /// A group's title, for the row of a group (`peer` is then `group:~zod-1`).
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// A group this ship belongs to. Its messages come from every member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Group {
+    /// The group's id, its owner, a dash and a count, e.g. `~zod-1`.
+    pub gid: String,
+    pub title: String,
+    pub owner: String,
+    /// Every member, this ship included.
+    pub members: Vec<String>,
+    pub count: u64,
+    pub unread: u64,
+    pub last: Option<Message>,
+}
+
+/// The conversation-list key of a group: `group:~zod-1`. A direct conversation
+/// is keyed by its ship, so the two never clash.
+pub fn group_key(gid: &str) -> String {
+    format!("group:{gid}")
+}
+
+/// The group id behind a conversation key, or `None` for a direct conversation.
+pub fn group_id(key: &str) -> Option<&str> {
+    key.strip_prefix("group:")
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +94,8 @@ struct Envelope {
     id: Option<u64>,
     conversations: Option<Vec<Conversation>>,
     messages: Option<Vec<Message>>,
+    groups: Option<Vec<Group>>,
+    gid: Option<String>,
 }
 
 /// Parse a Hoon `@da` such as `~2026.10.17..06.53.53..223a` into Unix
@@ -106,6 +143,78 @@ impl Client {
         let env: Envelope = self.get_json(&path).await?;
         check_ok(env.ok, env.error, env.message)?;
         Ok(env.messages.unwrap_or_default())
+    }
+
+    /// Direct conversations and groups in one list, newest activity first. A
+    /// group's row is keyed `group:~zod-1` (see [`group_key`]).
+    pub async fn list_all_conversations(&self) -> Result<Vec<Conversation>> {
+        let mut rows = self.list_conversations().await?;
+        for g in self.list_groups().await? {
+            rows.push(Conversation {
+                peer: group_key(&g.gid),
+                count: g.count,
+                unread: g.unread,
+                last: g.last,
+                blocked: false,
+                title: Some(g.title),
+            });
+        }
+        rows.sort_by_key(|c| std::cmp::Reverse(c.last.as_ref().map_or(0, Message::sent_unix)));
+        Ok(rows)
+    }
+
+    /// Every group this ship belongs to, newest activity first.
+    pub async fn list_groups(&self) -> Result<Vec<Group>> {
+        let env: Envelope = self.get_json("/messages/~/v1/groups").await?;
+        check_ok(env.ok, env.error, env.message)?;
+        Ok(env.groups.unwrap_or_default())
+    }
+
+    /// All messages of group `gid`, oldest first, from every member.
+    pub async fn group_thread(&self, gid: &str) -> Result<Vec<Message>> {
+        let path = format!("/messages/~/v1/groups/{}", seg(gid));
+        let env: Envelope = self.get_json(&path).await?;
+        check_ok(env.ok, env.error, env.message)?;
+        Ok(env.messages.unwrap_or_default())
+    }
+
+    /// Start a group with `members` (ships like ~nec, not counting this ship).
+    /// Returns the new group's id.
+    pub async fn create_group(&self, title: &str, members: &[String]) -> Result<String> {
+        let p = "/messages/~/v1/groups";
+        let env: Envelope = self
+            .json(
+                Method::POST,
+                p,
+                Some(json!({ "title": title, "members": members })),
+            )
+            .await?;
+        check_ok(env.ok, env.error, env.message)?;
+        env.gid.ok_or_else(|| Error::Decode {
+            path: p.into(),
+            detail: "envelope has no `gid`".into(),
+        })
+    }
+
+    /// Write `body` to group `gid`. Returns the local message id; the status
+    /// moves from `pending` once every member has acked.
+    pub async fn send_group_message(&self, gid: &str, body: &str) -> Result<u64> {
+        let path = format!("/messages/~/v1/groups/{}/messages", seg(gid));
+        let env: Envelope = self
+            .json(Method::POST, &path, Some(json!({ "body": body })))
+            .await?;
+        check_ok(env.ok, env.error, env.message)?;
+        env.id.ok_or_else(|| Error::Decode {
+            path,
+            detail: "envelope has no `id`".into(),
+        })
+    }
+
+    /// Mark everything in group `gid` as read.
+    pub async fn mark_group_read(&self, gid: &str) -> Result<()> {
+        let path = format!("/messages/~/v1/groups/{}/read", seg(gid));
+        let env: Envelope = self.json(Method::POST, &path, Some(json!({}))).await?;
+        check_ok(env.ok, env.error, env.message)
     }
 
     /// Mark everything from `peer` as read, through the newest message.
@@ -179,6 +288,21 @@ mod tests {
         let raw = r#"{"peer":"~zod","count":1,"unread":0,"last":null}"#;
         let c: Conversation = serde_json::from_str(raw).unwrap();
         assert!(!c.blocked);
+    }
+
+    #[test]
+    fn group_key_round_trips() {
+        assert_eq!(group_key("~zod-1"), "group:~zod-1");
+        assert_eq!(group_id("group:~zod-1"), Some("~zod-1"));
+        assert_eq!(group_id("~zod"), None);
+    }
+
+    #[test]
+    fn group_message_fields_are_optional() {
+        let raw = r#"{"id":4,"peer":"~nec","outgoing":false,"body":"hi","sent":"~2026.10.17..06.53.53..223a","status":"received"}"#;
+        let m: Message = serde_json::from_str(raw).unwrap();
+        assert_eq!(m.group, None);
+        assert!(m.waiting.is_empty());
     }
 
     #[test]

@@ -138,6 +138,7 @@ fn big_library() -> App {
                     "the last message in this conversation",
                 )),
                 blocked: false,
+                title: None,
             }
         })
         .collect();
@@ -176,6 +177,8 @@ fn message(id: u64, peer: &str, outgoing: bool, body: &str) -> Message {
         } else {
             Status::Received
         },
+        group: None,
+        waiting: Vec::new(),
     }
 }
 

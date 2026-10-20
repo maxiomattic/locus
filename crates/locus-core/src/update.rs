@@ -23,6 +23,8 @@ pub fn update(app: &mut App, msg: Msg, now: Now) -> Vec<Effect> {
             | Msg::EventsLoaded { .. }
             | Msg::PhotosLoaded { .. }
             | Msg::ConversationsLoaded { .. }
+            | Msg::BeginNewGroup
+            | Msg::GroupCreated { .. }
     );
     dispatch(app, msg, now, &mut fx);
     if settles && let Some(target) = app.pending_target.take() {
@@ -132,7 +134,9 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::MessageDeleted { id } => messages::message_deleted(app, fx, id),
         Msg::SendFailed { peer, body, error } => messages::send_failed(app, peer, body, error),
         Msg::ExecuteDeleteMessage { id } => messages::execute_delete(app, fx, id),
-        Msg::SetBlocked { peer, blocked } => messages::set_blocked(fx, peer, blocked),
+        Msg::SetBlocked { peer, blocked } => messages::set_blocked(app, fx, peer, blocked),
+        Msg::BeginNewGroup => messages::begin_new_group(app),
+        Msg::GroupCreated { gid } => messages::group_created(app, fx, gid),
         Msg::BlockChanged { peer, blocked } => messages::block_changed(app, fx, peer, blocked),
         Msg::DirMoved { from, to } => {
             files::dir_moved(app, &from, &to);
@@ -583,6 +587,7 @@ fn submit_input(app: &mut App, fx: &mut Vec<Effect>, kind: InputKind) {
         InputKind::MoveDir => files::submit_move_dir(app, fx),
         InputKind::MessageDraft => messages::send(app, fx),
         InputKind::NewPeer => messages::submit_new_peer(app, fx),
+        InputKind::NewGroup => messages::submit_new_group(app, fx),
         InputKind::MoveNote | InputKind::MoveNoteFolder => notes::submit_move(app, fx),
         InputKind::RenameNoteFolder => notes::submit_folder_rename(app, fx),
         InputKind::RenameNotebook => notes::submit_notebook_rename(app, fx),

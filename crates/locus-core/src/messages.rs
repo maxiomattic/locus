@@ -2,7 +2,7 @@
 //! draft. Sending is optimistic: the message shows at once as pending, and the
 //! next read of the thread shows what the ship and the peer's agent recorded.
 
-use locus_client::messages::{Conversation, Message, Status};
+use locus_client::messages::{Conversation, Message, Status, group_id, group_key};
 
 use crate::msg::{Effect, Msg, Nav};
 use crate::state::{App, Focus, Input, InputKind, Section, clamp_sel};
@@ -149,6 +149,53 @@ pub fn begin_new(app: &mut App) {
     app.focus = Focus::Input(InputKind::NewPeer);
 }
 
+/// Split `Team ~nec ~dev` into its title (the words that are not ships) and its
+/// members (the words that are).
+pub fn parse_new_group(raw: &str) -> (String, Vec<String>) {
+    let mut title = Vec::new();
+    let mut members = Vec::new();
+    for word in raw.split_whitespace() {
+        if valid_ship(word) {
+            members.push(word.to_string());
+        } else {
+            title.push(word);
+        }
+    }
+    (title.join(" "), members)
+}
+
+/// New group: ask for its title and members.
+pub fn begin_new_group(app: &mut App) {
+    app.input = Input {
+        text: String::new(),
+        target: None,
+    };
+    app.focus = Focus::Input(InputKind::NewGroup);
+}
+
+pub fn submit_new_group(app: &mut App, fx: &mut Vec<Effect>) {
+    let (title, members) = parse_new_group(&app.input.text);
+    if title.is_empty() {
+        app.error("Give the group a title, then its members, like Team ~nec ~dev");
+        return;
+    }
+    if members.is_empty() {
+        app.error("Add at least one member, like ~nec");
+        return;
+    }
+    app.input = Input::default();
+    app.focus = Focus::List;
+    fx.push(Effect::CreateGroup { title, members });
+}
+
+/// The ship made the group: list it and open it for writing.
+pub fn group_created(app: &mut App, fx: &mut Vec<Effect>, gid: String) {
+    app.info("Group started");
+    fx.push(Effect::LoadConversations);
+    open_peer(app, fx, group_key(&gid));
+    begin_draft(app);
+}
+
 pub fn submit_new_peer(app: &mut App, fx: &mut Vec<Effect>) {
     let peer = app.input.text.trim().to_string();
     if !valid_ship(&peer) {
@@ -180,6 +227,8 @@ pub fn send(app: &mut App, fx: &mut Vec<Effect>) {
         body: body.clone(),
         sent: String::new(),
         status: Status::Pending,
+        group: group_id(&peer).map(str::to_string),
+        waiting: Vec::new(),
     });
     app.messages.thread_sel = app.messages.thread.len() - 1;
     fx.push(Effect::SendMessage { to: peer, body });
@@ -258,7 +307,12 @@ pub fn is_blocked(app: &App, peer: &str) -> bool {
 }
 
 /// Block or unblock `peer`. Nothing changes on screen until the ship confirms.
-pub fn set_blocked(fx: &mut Vec<Effect>, peer: String, blocked: bool) {
+/// A group is not a ship, so it cannot be blocked.
+pub fn set_blocked(app: &mut App, fx: &mut Vec<Effect>, peer: String, blocked: bool) {
+    if group_id(&peer).is_some() {
+        app.info("A group cannot be blocked. Block one of its members instead.");
+        return;
+    }
     fx.push(Effect::SetBlocked { peer, blocked });
 }
 

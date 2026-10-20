@@ -237,6 +237,8 @@ pub enum InputKind {
     MessageDraft,
     /// The ship to start a conversation with.
     NewPeer,
+    /// A group's title, then its members (ships), e.g. `Team ~nec ~dev`.
+    NewGroup,
     Login,
 }
 

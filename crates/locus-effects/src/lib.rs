@@ -34,6 +34,7 @@
 use std::future::Future;
 
 use locus_client::Client;
+use locus_client::messages::group_id;
 use locus_core::{Effect, FileEntry, Msg, Now, Section};
 use url::Url;
 
@@ -126,28 +127,50 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
         // or browser media), and it reports back with Msg::PlayerTick.
         Effect::CopyToClipboard(_) | Effect::OpenSection(..) | Effect::Playback(_) => Vec::new(),
 
-        Effect::LoadConversations => match client.list_conversations().await {
+        Effect::LoadConversations => match client.list_all_conversations().await {
             Ok(conversations) => vec![Msg::ConversationsLoaded { conversations }],
             Err(e) => vec![load_failed(Section::Messages, &e)],
         },
-        Effect::LoadThread { peer } => match client.thread(&peer).await {
-            Ok(messages) => vec![Msg::ThreadLoaded { peer, messages }],
-            Err(e) => vec![load_failed(Section::Messages, &e)],
-        },
-        Effect::SendMessage { to, body } => match client.send_message(&to, &body).await {
-            Ok(_) => vec![Msg::MessageSent { peer: to }],
-            Err(e) => vec![Msg::SendFailed {
-                peer: to,
-                body,
-                error: describe(&e),
-            }],
-        },
+        // A conversation key is a ship (a direct thread) or `group:~zod-1`.
+        Effect::LoadThread { peer } => {
+            let loaded = match group_id(&peer) {
+                Some(gid) => client.group_thread(gid).await,
+                None => client.thread(&peer).await,
+            };
+            match loaded {
+                Ok(messages) => vec![Msg::ThreadLoaded { peer, messages }],
+                Err(e) => vec![load_failed(Section::Messages, &e)],
+            }
+        }
+        Effect::SendMessage { to, body } => {
+            let sent = match group_id(&to) {
+                Some(gid) => client.send_group_message(gid, &body).await,
+                None => client.send_message(&to, &body).await,
+            };
+            match sent {
+                Ok(_) => vec![Msg::MessageSent { peer: to }],
+                Err(e) => vec![Msg::SendFailed {
+                    peer: to,
+                    body,
+                    error: describe(&e),
+                }],
+            }
+        }
         // A missed read mark is not worth interrupting the user; the next read
         // of the list will show the unread count again.
-        Effect::MarkRead { peer } => match client.mark_read(&peer).await {
-            Ok(()) => Vec::new(),
-            Err(_) => Vec::new(),
-        },
+        Effect::MarkRead { peer } => {
+            let _ = match group_id(&peer) {
+                Some(gid) => client.mark_group_read(gid).await,
+                None => client.mark_read(&peer).await,
+            };
+            Vec::new()
+        }
+        Effect::CreateGroup { title, members } => {
+            match client.create_group(&title, &members).await {
+                Ok(gid) => vec![Msg::GroupCreated { gid }],
+                Err(e) => vec![write_failed(Section::Messages, &e)],
+            }
+        }
         Effect::DeleteMessage { id } => match client.delete_message(id).await {
             Ok(()) => vec![Msg::MessageDeleted { id }],
             Err(e) => vec![write_failed(Section::Messages, &e)],

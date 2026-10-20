@@ -50,6 +50,7 @@ fn conversations<'a>(app: &'a App, view: &MessagesView) -> Element<'a, Message> 
         .width(Length::Fixed(LIST_W))
         .height(Length::Fill)
         .push(tool("New conversation", "Ctrl+N", Some(Msg::New)))
+        .push(tool("New group", "", Some(Msg::BeginNewGroup)))
         .push(list)
         .into()
 }
@@ -57,7 +58,11 @@ fn conversations<'a>(app: &'a App, view: &MessagesView) -> Element<'a, Message> 
 fn conversation_row(i: usize, c: &ConversationView) -> Element<'static, Message> {
     let s = theme::spacing();
     let name = widget::column::with_capacity(2)
-        .push(widget::text::body(view_model::short_ship(&c.peer)))
+        .push(widget::text::body(if c.group {
+            c.label.clone()
+        } else {
+            view_model::short_ship(&c.peer)
+        }))
         .push(widget::text::caption(c.preview.clone()));
     let mut right = widget::column::with_capacity(2).align_x(Alignment::End);
     right = right.push(widget::text::caption(c.when.clone()));

@@ -723,6 +723,10 @@ pub fn input_prompt(app: &App) -> Option<InputView> {
         InputKind::MoveDir => ("move folder to (full path)", app.input.text.clone()),
         InputKind::MessageDraft => ("message", app.messages.draft.clone()),
         InputKind::NewPeer => ("ship to message, like ~zod", app.input.text.clone()),
+        InputKind::NewGroup => (
+            "group title, then its members, like Team ~nec ~dev",
+            app.input.text.clone(),
+        ),
         InputKind::MoveNote | InputKind::MoveNoteFolder => return None,
         InputKind::Login => ("ship web code", app.input.text.clone()),
     };
@@ -1054,6 +1058,10 @@ pub fn player(app: &App) -> Option<PlayerView> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationView {
     pub peer: String,
+    /// What the row shows: the ship, or the title of a group.
+    pub label: String,
+    /// True for a group's row.
+    pub group: bool,
     pub selected: bool,
     pub open: bool,
     pub unread: u64,
@@ -1133,6 +1141,8 @@ pub fn messages_view(app: &App) -> MessagesView {
         .enumerate()
         .map(|(i, c)| ConversationView {
             peer: c.peer.clone(),
+            label: c.title.clone().unwrap_or_else(|| c.peer.clone()),
+            group: locus_client::messages::group_id(&c.peer).is_some(),
             selected: i == m.sel,
             open: m.open.as_deref() == Some(c.peer.as_str()),
             unread: c.unread,
@@ -1155,7 +1165,12 @@ pub fn messages_view(app: &App) -> MessagesView {
         .map(|(i, t)| ThreadMessage {
             id: t.id,
             outgoing: t.outgoing,
-            body: t.body.clone(),
+            // In a group, a message from someone else shows who wrote it.
+            body: if t.group.is_some() && !t.outgoing {
+                format!("{}: {}", t.peer, t.body)
+            } else {
+                t.body.clone()
+            },
             when: message_when(t.sent_unix(), app),
             status: status_label(t),
             selected: i == m.thread_sel,

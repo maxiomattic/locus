@@ -54,6 +54,7 @@ fn conversations_column<'a>(
     };
     column![
         tool(c, "New conversation", "Ctrl+N or Alt+N", Some(Msg::New)),
+        tool(c, "New group", "", Some(Msg::BeginNewGroup)),
         body,
     ]
     .spacing(8)
@@ -72,7 +73,13 @@ fn conversation_row(c: Colors, v: &ConversationView, i: usize) -> Element<'stati
     }
     let content = row![
         column![
-            text(view_model::short_ship(&v.peer)).size(14).color(c.text),
+            text(if v.group {
+                v.label.clone()
+            } else {
+                view_model::short_ship(&v.peer)
+            })
+            .size(14)
+            .color(c.text),
             text(v.preview.clone()).size(12).color(c.muted),
         ]
         .spacing(2)

@@ -376,6 +376,13 @@ pub enum Msg {
     ConversationsLoaded {
         conversations: Vec<Conversation>,
     },
+    /// The user asked to start a group (Messages). Its title and members are
+    /// typed into the input that opens.
+    BeginNewGroup,
+    /// The ship made the group `gid`. It is opened for writing.
+    GroupCreated {
+        gid: String,
+    },
     ThreadLoaded {
         peer: String,
         messages: Vec<Message>,
@@ -633,6 +640,12 @@ pub enum Effect {
     SetBlocked {
         peer: String,
         blocked: bool,
+    },
+    /// Start a group with `members` (ships) and `title`. Answered by
+    /// [`Msg::GroupCreated`], or by a write failure.
+    CreateGroup {
+        title: String,
+        members: Vec<String>,
     },
 
     /// Start (or restart) a one-shot timer. Send `Msg::SaveTimer(token)` when it fires.

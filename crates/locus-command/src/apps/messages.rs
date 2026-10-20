@@ -1,27 +1,29 @@
 //! `locus messages`: direct messages with other ships, from the command line.
 //! The same functions as the Messages app.
 
-use locus_client::messages::{Conversation, Message};
+use locus_client::messages::{Conversation, Message, group_id, group_key};
 use serde_json::json;
 
 use super::Ctx;
 use super::args::Parsed;
 use super::fmt::{self, client_error, clip, emit, one_line, table};
-use locus_core::messages::valid_ship;
+use locus_core::messages::{parse_new_group, valid_ship};
 use locus_core::view_model::short_ship;
 
 /// Help for `locus messages --help`.
 pub const HELP: &str = "locus messages <command>
 
-  ls [--json]                       conversations, newest first, with unread counts
-  show <ship> [--json]              the messages with a ship, oldest first
-  send <ship> <text...>             send a message (a ship like ~zod)
-  read <ship>                       mark a conversation as read
+  ls [--json]                       conversations and groups, newest first, with unread counts
+  show <ship|group:~zod-1> [--json] the messages with a ship, or in a group, oldest first
+  send <ship|group:~zod-1> <text...>  send a message, to a ship or to every member of a group
+  group-new <title...> <ship...>    start a group with these members (you are added)
+  read <ship|group:~zod-1>          mark a conversation or a group as read
   block <ship>                      refuse messages from a ship (your messages to it still go)
   unblock <ship>                    accept messages from a ship again
   rm <id>                           delete your copy of a message (the peer keeps theirs)
 
-A message you send is pending until the other ship's agent has it.
+A message you send is pending until the other ship's agent has it (for a group,
+until every member has it).
 ";
 
 /// Run one `locus messages` command.
@@ -30,6 +32,7 @@ pub async fn run(ctx: &Ctx, cmd: &str, args: Vec<String>) -> Result<(), String> 
         "ls" => ls(ctx, args).await,
         "show" => show(ctx, args).await,
         "send" => send(ctx, args).await,
+        "group-new" => group_new(ctx, args).await,
         "read" => read(ctx, args).await,
         "block" => block(ctx, args).await,
         "unblock" => unblock(ctx, args).await,
@@ -48,6 +51,17 @@ fn ship_arg(raw: &str) -> Result<String, String> {
     Ok(ship)
 }
 
+/// A ship, or a group written `group:~zod-1` (as `ls` prints it).
+fn target_arg(raw: &str) -> Result<String, String> {
+    match group_id(raw.trim()) {
+        Some(gid) if valid_ship(gid.split('-').next().unwrap_or("")) && gid.contains('-') => {
+            Ok(raw.trim().to_string())
+        }
+        Some(_) => Err(format!("not a group id: {raw} (like group:~zod-1)")),
+        None => ship_arg(raw),
+    }
+}
+
 fn preview(c: &Conversation) -> String {
     c.last
         .as_ref()
@@ -59,13 +73,17 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &["--json"])?;
     p.positionals(0, 0, "locus messages ls [--json]")?;
     let client = ctx.client().await?;
-    let convos = client.list_conversations().await.map_err(client_error)?;
+    let convos = client
+        .list_all_conversations()
+        .await
+        .map_err(client_error)?;
     if p.has("--json") {
         let rows: Vec<_> = convos
             .iter()
             .map(|c| {
                 json!({
                     "peer": c.peer,
+                    "title": c.title,
                     "count": c.count,
                     "unread": c.unread,
                     "blocked": c.blocked,
@@ -80,7 +98,10 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
         .iter()
         .map(|c| {
             vec![
-                c.peer.clone(),
+                match &c.title {
+                    Some(title) => format!("{title} ({})", c.peer),
+                    None => c.peer.clone(),
+                },
                 if c.unread > 0 {
                     c.unread.to_string()
                 } else {
@@ -105,10 +126,14 @@ async fn ls(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
 
 async fn show(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &["--json"])?;
-    let pos = p.positionals(1, 1, "locus messages show <ship> [--json]")?;
-    let peer = ship_arg(&pos[0])?;
+    let pos = p.positionals(1, 1, "locus messages show <ship|group:~zod-1> [--json]")?;
+    let peer = target_arg(&pos[0])?;
     let client = ctx.client().await?;
-    let messages = client.thread(&peer).await.map_err(client_error)?;
+    let messages = match group_id(&peer) {
+        Some(gid) => client.group_thread(gid).await,
+        None => client.thread(&peer).await,
+    }
+    .map_err(client_error)?;
     if p.has("--json") {
         fmt::json(&json!({ "peer": peer, "messages": messages }));
         return Ok(());
@@ -146,28 +171,60 @@ fn status_word(m: &Message) -> String {
 
 async fn send(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &[])?;
-    let pos = p.positionals(2, usize::MAX, "locus messages send <ship> <text...>")?;
-    let to = ship_arg(&pos[0])?;
+    let pos = p.positionals(
+        2,
+        usize::MAX,
+        "locus messages send <ship|group:~zod-1> <text...>",
+    )?;
+    let to = target_arg(&pos[0])?;
     let body = pos[1..].join(" ");
     if body.trim().is_empty() {
         return Err("the message is empty".into());
     }
     let client = ctx.client().await?;
-    let id = client
-        .send_message(&to, &body)
-        .await
-        .map_err(client_error)?;
+    let id = match group_id(&to) {
+        Some(gid) => client.send_group_message(gid, &body).await,
+        None => client.send_message(&to, &body).await,
+    }
+    .map_err(client_error)?;
     emit(&format!("{id}\n"));
     Ok(())
 }
 
 async fn read(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
     let p = Parsed::parse(&args, &[], &[])?;
-    let pos = p.positionals(1, 1, "locus messages read <ship>")?;
-    let peer = ship_arg(&pos[0])?;
+    let pos = p.positionals(1, 1, "locus messages read <ship|group:~zod-1>")?;
+    let peer = target_arg(&pos[0])?;
     let client = ctx.client().await?;
-    client.mark_read(&peer).await.map_err(client_error)?;
+    match group_id(&peer) {
+        Some(gid) => client.mark_group_read(gid).await,
+        None => client.mark_read(&peer).await,
+    }
+    .map_err(client_error)?;
     emit(&format!("read {peer}\n"));
+    Ok(())
+}
+
+async fn group_new(ctx: &Ctx, args: Vec<String>) -> Result<(), String> {
+    let p = Parsed::parse(&args, &[], &[])?;
+    let pos = p.positionals(
+        2,
+        usize::MAX,
+        "locus messages group-new <title...> <ship...>",
+    )?;
+    let (title, members) = parse_new_group(&pos.join(" "));
+    if title.is_empty() {
+        return Err("give the group a title, then its members, like: Team ~nec ~dev".into());
+    }
+    if members.is_empty() {
+        return Err("add at least one member, like ~nec".into());
+    }
+    let client = ctx.client().await?;
+    let gid = client
+        .create_group(&title, &members)
+        .await
+        .map_err(client_error)?;
+    emit(&format!("{}\n", group_key(&gid)));
     Ok(())
 }
 

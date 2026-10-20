@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use locus_client::messages::{Conversation, Message, Status};
-use locus_core::messages::valid_ship;
+use locus_core::messages::{parse_new_group, valid_ship};
 use locus_core::{Effect, Focus, InputKind, Section, view_model};
 
 fn msg(id: u64, peer: &str, outgoing: bool, body: &str, status: Status) -> Message {
@@ -16,6 +16,8 @@ fn msg(id: u64, peer: &str, outgoing: bool, body: &str, status: Status) -> Messa
         body: body.into(),
         sent: "~2026.10.17..09.00.00..0000".into(),
         status,
+        group: None,
+        waiting: Vec::new(),
     }
 }
 
@@ -26,6 +28,7 @@ fn conv(peer: &str, unread: u64, last: Message) -> Conversation {
         unread,
         last: Some(last),
         blocked: false,
+        title: None,
     }
 }
 
@@ -570,4 +573,70 @@ fn a_failed_send_still_returns_the_text_to_the_draft_when_blocked() {
         },
     );
     assert_eq!(app.messages.draft, "hello");
+}
+
+#[test]
+fn a_group_title_is_the_words_that_are_not_ships() {
+    let (title, members) = parse_new_group("Family trip ~nec ~tyr-mor");
+    assert_eq!(title, "Family trip");
+    assert_eq!(members, vec!["~nec".to_string(), "~tyr-mor".to_string()]);
+}
+
+#[test]
+fn a_new_group_needs_a_title_and_a_member() {
+    let mut app = inbox();
+    send(&mut app, Msg::BeginNewGroup);
+    assert!(matches!(app.focus, Focus::Input(InputKind::NewGroup)));
+    app.input.text = "Family".into();
+    let fx = send(&mut app, Msg::Submit);
+    assert!(!fx.iter().any(|e| matches!(e, Effect::CreateGroup { .. })));
+    app.input.text = "~nec".into();
+    let fx = send(&mut app, Msg::Submit);
+    assert!(!fx.iter().any(|e| matches!(e, Effect::CreateGroup { .. })));
+}
+
+#[test]
+fn a_new_group_is_created_with_its_title_and_members() {
+    let mut app = inbox();
+    send(&mut app, Msg::BeginNewGroup);
+    app.input.text = "Family ~nec ~dev".into();
+    let fx = send(&mut app, Msg::Submit);
+    assert!(fx.contains(&Effect::CreateGroup {
+        title: "Family".into(),
+        members: vec!["~nec".into(), "~dev".into()],
+    }));
+}
+
+#[test]
+fn a_created_group_opens_for_writing_and_sends_to_the_group() {
+    let mut app = inbox();
+    let fx = send(
+        &mut app,
+        Msg::GroupCreated {
+            gid: "~zod-1".into(),
+        },
+    );
+    assert!(fx.contains(&Effect::LoadThread {
+        peer: "group:~zod-1".into()
+    }));
+    assert_eq!(app.messages.open.as_deref(), Some("group:~zod-1"));
+    app.messages.draft = "hello team".into();
+    let fx = send(&mut app, Msg::SendDraft);
+    assert!(fx.contains(&Effect::SendMessage {
+        to: "group:~zod-1".into(),
+        body: "hello team".into(),
+    }));
+}
+
+#[test]
+fn a_group_cannot_be_blocked() {
+    let mut app = inbox();
+    let fx = send(
+        &mut app,
+        Msg::SetBlocked {
+            peer: "group:~zod-1".into(),
+            blocked: true,
+        },
+    );
+    assert!(!fx.iter().any(|e| matches!(e, Effect::SetBlocked { .. })));
 }
