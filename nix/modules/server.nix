@@ -71,6 +71,23 @@ in
       };
     };
 
+    desk = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Install the %locus desk on the ship, and update it when its source
+          changes (`locus-desk.service`, after the ship starts). Each deploy
+          snapshots the pier first. On a new ship it also suspends Tlon's
+          %groups and clears its %notes and %contacts, which clash with ours.
+        '';
+      };
+      source = lib.mkOption {
+        type = lib.types.path;
+        description = "Directory with desk/ and scripts/ (set by the flake module).";
+      };
+    };
+
     extraDatasets = lib.mkOption {
       type = lib.types.attrs;
       default = { };
@@ -143,6 +160,48 @@ in
         SystemCallArchitectures = "native";
       };
     };
+    # Runs desk-deploy.sh from the store. The stamp skips a deploy when the
+    # source has not changed since the last good one.
+    systemd.services.locus-desk = lib.mkIf cfg.desk.enable {
+      description = "Install or update the %locus desk on the ship";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "urbit.service" ];
+      requires = [ "urbit.service" ];
+      path = [
+        cfg.urbit.package
+        pkgs.bash
+        pkgs.coreutils
+        pkgs.curl
+        pkgs.gnugrep
+        pkgs.netcat-openbsd
+        pkgs.rsync
+        pkgs.systemd
+        pkgs.zfs
+      ];
+      environment = {
+        EYRE_URL = "http://127.0.0.1:${toString cfg.urbit.httpPort}";
+        URBIT_PIER = "${cfg.pierMountpoint}/${cfg.urbit.verePierName}";
+        LOCUS_NEW_SHIP = "1";
+      };
+      script = ''
+        export PATH=/run/wrappers/bin:$PATH
+        stamp=/var/lib/locus-desk/deployed
+        if [ "$(cat "$stamp" 2>/dev/null)" = ${cfg.desk.source} ]; then
+          echo "%locus desk is up to date (${cfg.desk.source})"
+          exit 0
+        fi
+        ${cfg.desk.source}/scripts/desk-deploy.sh
+        echo ${cfg.desk.source} > "$stamp"
+      '';
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        StateDirectory = "locus-desk";
+        # A first install compiles every agent; a new comet also syncs first.
+        TimeoutStartSec = "2h";
+      };
+    };
+
     networking.firewall.allowedTCPPorts = lib.mkIf (
       cfg.gateway.enable && cfg.gateway.openFirewall
     ) [ cfg.gateway.port ];

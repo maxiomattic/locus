@@ -62,6 +62,18 @@
           # Every Locus server serves the browser app at /app/ out of the box.
           locus.server.gateway.webRoot =
             lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-web;
+          # The desk and the deploy script, without the rest of the repo, so
+          # an unrelated change does not redeploy the desk.
+          locus.server.desk.source = lib.mkDefault (
+            lib.fileset.toSource {
+              root = ./.;
+              fileset = lib.fileset.unions [
+                ./desk
+                ./scripts/desk-deploy.sh
+                ./scripts/lib
+              ];
+            }
+          );
         };
       nixosModules.default = self.nixosModules.server;
 

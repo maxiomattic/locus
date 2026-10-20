@@ -18,6 +18,10 @@
 #   URBIT_BIN       urbit binary, default from PATH
 #   LOCUS_SNAPSHOT  1 (default) = take a ZFS snapshot of the pier dataset
 #                   first (never destroyed by this script); 0 = skip.
+#   LOCUS_NEW_SHIP  1 = on a ship without the %locus desk, suspend Tlon's
+#                   %groups and clear the state of its %notes and %contacts,
+#                   which clash with ours. A new ship has nothing in them.
+#                   Never applies once %locus exists. Default 0.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,6 +55,26 @@ echo "desk %$LOCUS_DESK agents: ${AGENTS[*]}"
 # Gall runs each agent name from one desk only. If another desk (Tlon's, or
 # an older Locus desk) runs one of ours, installing would fail. This script
 # does not uninstall anything; the operator decides.
+# A new ship runs Tlon's %groups, whose %notes and %contacts clash with ours.
+# Gall hands a suspended agent's state to the next agent of that name, so
+# suspending is not enough: the state is cleared too. Only before %locus
+# exists, so Locus data is never touched.
+if [ "${LOCUS_NEW_SHIP:-0}" = 1 ] && ! desk_exists; then
+  groups_clash=0
+  for a in "${AGENTS[@]}"; do
+    [ "$(agent_desk "$a")" = groups ] && groups_clash=1
+  done
+  if [ "$groups_clash" = 1 ]; then
+    echo "new ship: |suspend %groups, then clear Tlon's %notes and %contacts"
+    hood_poke "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-suspend+!>(%groups))  (pure:m !>(%ok))"
+    sleep 5
+    for a in notes contacts; do
+      hood_poke "=/  m  (strand ,vase)  ;<  ~  bind:m  (poke-our %hood kiln-nuke+!>([%$a %.n]))  (pure:m !>(%ok))"
+      sleep 3
+    done
+  fi
+fi
+
 clash=0
 for a in "${AGENTS[@]}"; do
   d="$(agent_desk "$a")"
