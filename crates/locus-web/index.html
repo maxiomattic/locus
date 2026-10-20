@@ -67,10 +67,31 @@
     // Never fail silently: show startup errors, and explain a canvas that
     // never draws (WebGL disabled, e.g. LibreWolf's default).
     const boot = document.getElementById("boot");
+    // A Rust panic logs its message with console.error, then the wasm traps
+    // with a bare "unreachable". Keep the message so the page can show it.
+    const errors = [];
+    const consoleError = console.error.bind(console);
+    console.error = (...args) => {
+      errors.push(args.map(String).join(" "));
+      consoleError(...args);
+    };
+    const about = () => {
+      let gl = "none";
+      try {
+        const c = document.createElement("canvas");
+        const g = c.getContext("webgl2") ? "webgl2" : c.getContext("webgl") ? "webgl" : "none";
+        const x = c.getContext(g === "none" ? "webgl" : g);
+        const dbg = x && x.getExtension("WEBGL_debug_renderer_info");
+        gl = g + (dbg ? ", " + x.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "");
+      } catch (_) {}
+      return "\n\n" + navigator.userAgent + "\nscreen " + innerWidth + "x" + innerHeight +
+        " @" + devicePixelRatio + ", " + gl;
+    };
     const fail = (msg) => {
       boot.className = "error";
       boot.innerHTML = "<div><b>Locus could not start.</b><pre></pre></div>";
-      boot.querySelector("pre").textContent = msg;
+      const detail = errors.length ? errors.slice(-3).join("\n") + "\n" : "";
+      boot.querySelector("pre").textContent = detail + msg + about();
     };
     // winit throws this on purpose to start its event loop; it is not an error.
     const benign = (m) => m.includes("Using exceptions for control flow");

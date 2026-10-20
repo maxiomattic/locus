@@ -176,10 +176,25 @@
 
           gstPluginPath = gstPluginPathFor pkgs;
 
+          # What the Rust workspace builds from. Docs, the desk, scripts and
+          # the browser app (its own workspace) are left out, so a change
+          # there does not recompile the desktop apps and the gateway.
+          rustSrc = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.difference (pkgs.lib.fileset.unions [
+              ./Cargo.toml
+              ./Cargo.lock
+              ./crates
+            ]) (pkgs.lib.fileset.unions [
+              ./crates/locus-web
+              (pkgs.lib.fileset.maybeMissing ./crates/locus-desktop/target)
+            ]);
+          };
+
           # One vendored dependency set for every crate in the workspace.
           # Update the hash whenever Cargo.lock changes.
           cargoDeps = rustPlatform.fetchCargoVendor {
-            src = pkgs.lib.cleanSource ./.;
+            src = rustSrc;
             name = "locus-cargo-deps";
             hash = "sha256-bAL5J3vtF1kt2casrS5QR8+Ew4BOC0FGyYp3c+e4p+U=";
           };
@@ -196,7 +211,7 @@
           locus-gateway = rustPlatform.buildRustPackage {
             pname = "locus-gateway";
             version = "0.1.0";
-            src = pkgs.lib.cleanSource ./.;
+            src = rustSrc;
             inherit cargoDeps;
             cargoBuildFlags = [ "-p" "locus-gateway" ];
             doCheck = false;
@@ -209,7 +224,7 @@
           notes-app = rustPlatform.buildRustPackage {
             pname = "notes-app";
             version = "0.1.0";
-            src = pkgs.lib.cleanSource ./.;
+            src = rustSrc;
             inherit cargoDeps;
             cargoBuildFlags = [ "-p" "notes-app" ];
             doCheck = false;
@@ -236,7 +251,7 @@
           locus-desktop = rustPlatform.buildRustPackage {
             pname = "locus-desktop";
             version = "0.1.0";
-            src = pkgs.lib.cleanSource ./.;
+            src = rustSrc;
             inherit cargoDeps;
             # The apps and the `locus` command line, which can do everything
             # the apps do.
