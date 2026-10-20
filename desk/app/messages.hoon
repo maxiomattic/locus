@@ -1,6 +1,8 @@
-::  %messages — direct messages between ships. Each ship keeps its own copy.
-::  Sending pokes the peer's %messages agent; its ack moves the message from
-::  %pending to %delivered or %failed. Incoming pokes are stored as %received.
+::  %messages — direct messages and group conversations between ships. Each ship
+::  keeps its own copy. Sending pokes the peer's %messages agent; its ack moves the
+::  message from %pending to %delivered or %failed. A group message is poked to
+::  every other member and is %delivered once all of them have acked.
+::  Incoming pokes are stored as %received.
 ::
 /-  msg=messages
 /+  default-agent, dbug, server
@@ -9,9 +11,13 @@
 ::
 |%
 +$  card  card:agent:gall
-+$  current-state  state-1:msg
++$  current-state  state-2:msg
 ::  longest message body, in bytes, sent or accepted
 ++  max-body  8.192
+::  longest group title, in bytes
+++  max-title  120
+::  most members in one group, the owner included
+++  max-members  50
 ::  most messages accepted from one peer within rate-window
 ++  rate-max  20
 ::  the rolling window the per-peer rate limit counts over
@@ -64,6 +70,8 @@
     ``json+!>(?~(api-key ~ s+u.api-key))
       [%x %messages ~]
     ``json+!>((conversations:enjs:messages-json summaries:cor))
+      [%x %groups ~]
+    ``json+!>((groups:enjs:messages-json group-summaries:cor))
   ==
 ::
 ++  on-agent
@@ -92,6 +100,7 @@
   ^+  cor
   =.  api-key  `(scot %uv eny.bowl)
   =.  next-id  1
+  =.  next-group  1
   (emit [%pass /eyre/messages %arvo %e %connect [~ /messages] %messages])
 ::
 ++  load
@@ -102,10 +111,32 @@
   =/  old  !<(versioned-state:msg vase)
   =.  state
     ?-  -.old
-      %1  old
-      %0  [%1 messages.old next-id.old read.old api-key.old ~ ~]
+      %2  old
+      %1  (upgrade-1 old)
+      %0  (upgrade-1 [%1 messages.old next-id.old read.old api-key.old ~ ~])
     ==
   (emit [%pass /eyre/messages %arvo %e %connect [~ /messages] %messages])
+::
+::  a state-1 save gains group conversations: no groups yet, the first id free
+++  upgrade-1
+  |=  old=state-1:msg
+  ^-  state-2:msg
+  :*  %2
+      (~(run by messages.old) to-message)
+      next-id.old
+      read.old
+      api-key.old
+      blocked.old
+      recent.old
+      ~
+      1
+      ~
+  ==
+::
+++  to-message
+  |=  m=message-1:msg
+  ^-  message:msg
+  [id.m peer.m outgoing.m body.m sent.m status.m ~ ~]
 ::
 ++  poke
   |=  [=mark =vase]
@@ -130,22 +161,58 @@
 ++  receive
   |=  =vase
   ^+  cor
+  ?:  ?=([%grp *] q.vase)
+    =/  [* gd=@t owner=@p title=@t members=(list @p) body=@t sent=@da]
+      ;;([%grp @t @p @t (list @p) @t @da] q.vase)
+    (receive-group gd owner title members body sent)
   =/  [* body=@t sent=@da]  ;;([%msg @t @da] q.vase)
   ?<  =('' body)
   ?>  (lte (met 3 body) max-body)
   ?:  =(our.bowl src.bowl)  cor
-  ?<  (~(has in blocked) src.bowl)
+  =.  recent  (admit src.bowl)
+  =/  id=@ud  next-id
+  =.  next-id  +(next-id)
+  =.  messages  (~(put by messages) id [id src.bowl %.n body sent %received ~ ~])
+  cor
+::
+::  a group message from one of its members. The first message of a group carries
+::  the group's details, so we make our copy from them. The sender must be a member,
+::  and so must we; an existing group keeps its own members.
+++  receive-group
+  |=  [gd=gid:msg owner=@p title=@t members=(list @p) body=@t sent=@da]
+  ^+  cor
+  ?<  =('' body)
+  ?>  (lte (met 3 body) max-body)
+  ?>  (lte (met 3 title) max-title)
+  ?>  (lte (lent members) max-members)
+  ?:  =(our.bowl src.bowl)  cor
+  =/  mset=(set @p)  (silt members)
+  ?>  (~(has in mset) our.bowl)
+  ?>  (~(has in mset) src.bowl)
+  =/  have=(unit group:msg)  (~(get by groups) gd)
+  =/  grp=group:msg
+    ?~  have  [gd title owner mset]
+    ?>  (~(has in members.u.have) src.bowl)
+    u.have
+  =.  groups  (~(put by groups) gd grp)
+  =.  recent  (admit src.bowl)
+  =/  id=@ud  next-id
+  =.  next-id  +(next-id)
+  =.  messages  (~(put by messages) id [id src.bowl %.n body sent %received `gd ~])
+  cor
+::
+::  the rate limit and block list, for a message from `src`
+++  admit
+  |=  src=@p
+  ^+  recent
+  ?<  (~(has in blocked) src)
   ::  arrivals less than rate-window old still count toward the limit
   =/  window=(list @da)
-    %+  skim  (~(gut by recent) src.bowl ~)
+    %+  skim  (~(gut by recent) src ~)
     |=  t=@da
     ?|((gth t now.bowl) (lth (sub now.bowl t) rate-window))
   ?>  (lth (lent window) rate-max)
-  =.  recent  (~(put by recent) src.bowl [now.bowl window])
-  =/  id=@ud  next-id
-  =.  next-id  +(next-id)
-  =.  messages  (~(put by messages) id [id src.bowl %.n body sent %received])
-  cor
+  (~(put by recent) src [now.bowl window])
 ::
 ++  agent
   |=  [=wire =sign:agent:gall]
@@ -155,6 +222,19 @@
     ?~  m=(~(get by messages) id)  cor
     =/  st=status:msg  ?~(p.sign %delivered %failed)
     =.  messages  (~(put by messages) id u.m(status st))
+    cor
+  ::  one member's ack for a group message: it is delivered once every member has acked
+  ?:  ?&(?=([%gsend @ @ ~] wire) ?=(%poke-ack -.sign))
+    =/  id=@ud  (slav %ud i.t.wire)
+    =/  who=@p  (slav %p i.t.t.wire)
+    ?~  m=(~(get by messages) id)  cor
+    =/  left=(set @p)  (~(del in waiting.u.m) who)
+    =/  nxt=status:msg
+      ?^  p.sign  %failed
+      ?:  =(%failed status.u.m)  %failed
+      ?:  =(~ left)  %delivered
+      %pending
+    =.  messages  (~(put by messages) id u.m(status nxt, waiting left))
     cor
   cor
 ::
@@ -213,6 +293,35 @@
     ?.  =(%'DELETE' method)
       (http-error eyre-id 405 'method not allowed')
     =^  out=json  cor  (dispatch 'message.delete' (pairs:enjs:format ~[id+(numb:enjs:format u.id)]))
+    (give-json-status eyre-id out)
+  ?:  ?=([%messages %~.~ %v1 %groups ~] site)
+    ?:  =(%'GET' method)
+      (give-json-status eyre-id (ok:enjs:messages-json [groups+(groups:enjs:messages-json group-summaries)]~))
+    ?.  =(%'POST' method)
+      (http-error eyre-id 405 'method not allowed')
+    =^  out=json  cor  (body-json inbound-request 'group.new')
+    (give-json-status eyre-id out)
+  ?:  ?=([%messages %~.~ %v1 %groups @ ~] site)
+    ?.  =(%'GET' method)
+      (http-error eyre-id 405 'method not allowed')
+    %+  give-json-status  eyre-id
+    (ok:enjs:messages-json [messages+(messages:enjs:messages-json (group-thread i.t.t.t.t.site))]~)
+  ?:  ?=([%messages %~.~ %v1 %groups @ %messages ~] site)
+    ?.  =(%'POST' method)
+      (http-error eyre-id 405 'method not allowed')
+    ?~  body.request.inbound-request
+      (give-json-status eyre-id (err:enjs:messages-json 'bad-request' 'missing body'))
+    ?~  jon=(de:json:html q.u.body.request.inbound-request)
+      (give-json-status eyre-id (err:enjs:messages-json 'bad-request' 'invalid json'))
+    ?.  ?=(%o -.u.jon)
+      (give-json-status eyre-id (err:enjs:messages-json 'bad-request' 'need a json object'))
+    =^  out=json  cor
+      (dispatch 'group.send' [%o (~(put by p.u.jon) 'group' [%s i.t.t.t.t.site])])
+    (give-json-status eyre-id out)
+  ?:  ?=([%messages %~.~ %v1 %groups @ %read ~] site)
+    ?.  =(%'POST' method)
+      (http-error eyre-id 405 'method not allowed')
+    =^  out=json  cor  (dispatch 'group.read' (pairs:enjs:format ~[group+s+i.t.t.t.t.site]))
     (give-json-status eyre-id out)
   (http-error eyre-id 404 'not found')
 ::
@@ -298,13 +407,24 @@
   ?:  =(fn 'conversation.read')     (read-conversation args)
   ?:  =(fn 'peer.block')            (set-block args %.y)
   ?:  =(fn 'peer.unblock')          (set-block args %.n)
+  ?:  =(fn 'group.new')             (new-group args)
+  ?:  =(fn 'group.send')            (send-group args)
+  ?:  =(fn 'group.read')            (read-group args)
   [(err:enjs:messages-json 'unknown-function' fn) cor]
 ::
-::  all messages with one ship, oldest first
+::  all direct messages with one ship, oldest first
 ++  thread
   |=  who=@p
   ^-  (list message:msg)
-  %+  sort  (skim ~(val by messages) |=(m=message:msg =(peer.m who)))
+  %+  sort  (skim ~(val by messages) |=(m=message:msg &(=(peer.m who) ?=(~ group.m))))
+  |=  [a=message:msg b=message:msg]
+  (lth id.a id.b)
+::
+::  all messages of one group, oldest first
+++  group-thread
+  |=  gd=gid:msg
+  ^-  (list message:msg)
+  %+  sort  (skim ~(val by messages) |=(m=message:msg =(group.m `gd)))
   |=  [a=message:msg b=message:msg]
   (lth id.a id.b)
 ::
@@ -313,7 +433,7 @@
 ++  summaries
   ^-  (list summary)
   =/  peers=(list @p)
-    ~(tap in (silt (turn ~(val by messages) |=(m=message:msg peer.m))))
+    ~(tap in (silt (turn (skim ~(val by messages) |=(m=message:msg ?=(~ group.m))) |=(m=message:msg peer.m))))
   %+  sort  (turn peers summary-of)
   |=  [a=summary b=summary]
   (gth ?~(last.a 0 id.u.last.a) ?~(last.b 0 id.u.last.b))
@@ -327,6 +447,23 @@
   =/  unread=@ud
     (lent (skim mine |=(m=message:msg &(!outgoing.m (gth id.m seen)))))
   [who (lent mine) unread ?~(mine ~ `(rear mine)) (~(has in blocked) who)]
+::
+::  one row per group we belong to, newest activity first
++$  gsummary  [grp=group:msg count=@ud unread=@ud last=(unit message:msg)]
+++  group-summaries
+  ^-  (list gsummary)
+  %+  sort  (turn ~(val by groups) group-summary-of)
+  |=  [a=gsummary b=gsummary]
+  (gth ?~(last.a 0 id.u.last.a) ?~(last.b 0 id.u.last.b))
+::
+++  group-summary-of
+  |=  grp=group:msg
+  ^-  gsummary
+  =/  mine=(list message:msg)  (group-thread gid.grp)
+  =/  seen=@ud  (~(gut by group-read) gid.grp 0)
+  =/  unread=@ud
+    (lent (skim mine |=(m=message:msg &(!outgoing.m (gth id.m seen)))))
+  [grp (lent mine) unread ?~(mine ~ `(rear mine))]
 ::
 ++  parse-send
   |=  args=json
@@ -348,10 +485,97 @@
     [(err:enjs:messages-json 'bad-request' 'message is too long') cor]
   =/  id=@ud  next-id
   =.  next-id  +(next-id)
-  =.  messages  (~(put by messages) id [id to %.y body now.bowl %pending])
+  =.  messages  (~(put by messages) id [id to %.y body now.bowl %pending ~ ~])
   =/  out=_cor
     (emit [%pass /send/(scot %ud id) %agent [to %messages] %poke %noun !>([%msg body now.bowl])])
   [(ok:enjs:messages-json [id+(numb:enjs:format id)]~) out]
+::
+++  parse-new-group
+  |=  args=json
+  ^-  [@t (list @p)]
+  ?>  ?=(%o -.args)
+  =/  names=(list @t)
+    ((ar:dejs:format so:dejs:format) (~(got by p.args) 'members'))
+  :-  (so:dejs:format (~(got by p.args) 'title'))
+  (turn names |=(t=@t (slav %p t)))
+::
+::  start a group with us as its owner. Other members learn of it from its first
+::  message, which carries the title and the member list.
+++  new-group
+  |=  args=json
+  ^-  [json _cor]
+  =/  parsed=(each [@t (list @p)] tang)  (mule |.((parse-new-group args)))
+  ?:  ?=(%| -.parsed)
+    [(err:enjs:messages-json 'bad-request' 'need a title and members (ships like ~zod)') cor]
+  =/  [title=@t members=(list @p)]  p.parsed
+  ?:  =('' title)
+    [(err:enjs:messages-json 'bad-request' 'title is empty') cor]
+  ?:  (gth (met 3 title) max-title)
+    [(err:enjs:messages-json 'bad-request' 'title is too long') cor]
+  ?:  (gth (lent members) (dec max-members))
+    [(err:enjs:messages-json 'bad-request' 'too many members') cor]
+  =/  mset=(set @p)  (~(put in (silt members)) our.bowl)
+  ?:  =(1 ~(wyt in mset))
+    [(err:enjs:messages-json 'bad-request' 'add at least one other member') cor]
+  =/  gd=gid:msg  (rap 3 ~[(scot %p our.bowl) '-' (scot %ud next-group)])
+  =.  groups  (~(put by groups) gd [gd title our.bowl mset])
+  =.  next-group  +(next-group)
+  [(ok:enjs:messages-json [gid+s+gd]~) cor]
+::
+++  parse-group-send
+  |=  args=json
+  ^-  [gid:msg @t]
+  ?>  ?=(%o -.args)
+  :-  (so:dejs:format (~(got by p.args) 'group'))
+  (so:dejs:format (~(got by p.args) 'body'))
+::
+::  write to a group: one copy here, and a poke to each other member. The message
+::  is %pending until every member has acked it.
+++  send-group
+  |=  args=json
+  ^-  [json _cor]
+  =/  parsed=(each [gid:msg @t] tang)  (mule |.((parse-group-send args)))
+  ?:  ?=(%| -.parsed)
+    [(err:enjs:messages-json 'bad-request' 'need a group and a body') cor]
+  =/  [gd=gid:msg body=@t]  p.parsed
+  ?:  =('' body)
+    [(err:enjs:messages-json 'bad-request' 'message is empty') cor]
+  ?:  (gth (met 3 body) max-body)
+    [(err:enjs:messages-json 'bad-request' 'message is too long') cor]
+  ?~  have=(~(get by groups) gd)
+    [(err:enjs:messages-json 'not-found' 'no such group') cor]
+  =/  grp=group:msg  u.have
+  =/  others=(list @p)  ~(tap in (~(del in members.grp) our.bowl))
+  =/  id=@ud  next-id
+  =.  next-id  +(next-id)
+  =/  st=status:msg  ?~(others %delivered %pending)
+  =.  messages
+    (~(put by messages) id [id our.bowl %.y body now.bowl st `gd (silt others)])
+  =/  cds=(list card)
+    %+  turn  others
+    |=  who=@p
+    ^-  card
+    :*  %pass  /gsend/(scot %ud id)/(scot %p who)  %agent  [who %messages]  %poke  %noun
+        !>([%grp gd owner.grp title.grp ~(tap in members.grp) body now.bowl])
+    ==
+  [(ok:enjs:messages-json [id+(numb:enjs:format id)]~) (emil cds)]
+::
+::  mark a group read through its newest message
+++  read-group
+  |=  args=json
+  ^-  [json _cor]
+  =/  parsed=(each gid:msg tang)
+    (mule |.(?>(?=(%o -.args) (so:dejs:format (~(got by p.args) 'group')))))
+  ?:  ?=(%| -.parsed)
+    [(err:enjs:messages-json 'bad-request' 'need group') cor]
+  =/  mine=(list message:msg)  (group-thread p.parsed)
+  ?~  mine
+    [(ok:enjs:messages-json ~) cor]
+  =/  last=message:msg  (rear mine)
+  =/  cur=@ud  (~(gut by group-read) p.parsed 0)
+  =.  group-read
+    ?:((gth id.last cur) (~(put by group-read) p.parsed id.last) group-read)
+  [(ok:enjs:messages-json ~) cor]
 ::
 ++  delete-message
   |=  args=json

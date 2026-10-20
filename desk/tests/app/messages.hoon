@@ -307,6 +307,79 @@
 ::
 ::  a save from before blocking existed loads, keeps its data, and starts
 ::  with nobody blocked and no rate history
+++  team-new
+  %-  pairs:enjs:format
+  :~  fn+s+'group.new'
+      args+(pairs:enjs:format ~[title+s+'Team' members+a+~[s+'~dev']])
+  ==
+::
+++  team-send
+  %-  pairs:enjs:format
+  :~  fn+s+'group.send'
+      args+(pairs:enjs:format ~[group+s+'~zod-1' body+s+'hi team'])
+  ==
+::
+++  team-read
+  %-  pairs:enjs:format
+  :~  fn+s+'group.read'
+      args+(pairs:enjs:format ~[group+s+'~dev-1'])
+  ==
+::
+++  test-group-message-from-member-is-received
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (do-poke %noun !>(`*`[%grp '~dev-1' ~dev 'Team' ~[~zod ~dev] 'hello group' `@da`~2026.10.16]))
+  ;<  =cage  bind:m  (got-peek /x/groups)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?>  (has txt '"gid":"~dev-1"')
+  ?>  (has txt '"title":"Team"')
+  ?>  (has txt '"unread":1')
+  (pure:m ~)
+::
+++  test-group-from-non-member-is-nacked
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  ~  bind:m  (ex-fail (do-poke %noun !>(`*`[%grp '~nec-1' ~nec 'Other' ~[~zod ~nec] 'x' `@da`~2026.10.16])))
+  ;<  =cage  bind:m  (got-peek /x/groups)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?<  (has txt '"gid":"~nec-1"')
+  (pure:m ~)
+::
+++  test-group-send-waits-for-members
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (call team-new)
+  ;<  *  bind:m  (call team-send)
+  ;<  =cage  bind:m  (got-peek /x/groups)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?>  (has txt '"gid":"~zod-1"')
+  ?>  (has txt '"count":1')
+  ?>  (has txt '"status":"pending"')
+  ?>  (has txt '"waiting":["~dev"]')
+  (pure:m ~)
+::
+++  test-group-read-clears-unread
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  ~  bind:m  (set-src ~dev)
+  ;<  *  bind:m  (do-poke %noun !>(`*`[%grp '~dev-1' ~dev 'Team' ~[~zod ~dev] 'hello group' `@da`~2026.10.16]))
+  ;<  ~  bind:m  (set-src ~zod)
+  ;<  *  bind:m  (call team-read)
+  ;<  =cage  bind:m  (got-peek /x/groups)
+  =/  txt=tape  (trip (en:json:html !<(json q.cage)))
+  ?>  (has txt '"unread":0')
+  (pure:m ~)
+
 ++  test-state-0-loads
   %-  eval-mare
   =/  m  (mare ,~)
@@ -314,15 +387,15 @@
   ;<  ~  bind:m  init
   =/  old=state-0:msg
     :*  %0
-        (~(put by *(map @ud message:msg)) 7 [7 ~dev %.n 'kept' ~2026.10.16 %received])
+        (~(put by *(map @ud message-1:msg)) 7 [7 ~dev %.n 'kept' ~2026.10.16 %received])
         8
         (~(put by *(map @p @ud)) ~dev 7)
         `'old-key'
     ==
   ;<  *  bind:m  (do-load messages-agent `!>(old))
   ;<  sav=vase  bind:m  get-save
-  =/  new=state-1:msg  !<(state-1:msg sav)
-  ?>  =(%1 -.new)
+  =/  new=state-2:msg  !<(state-2:msg sav)
+  ?>  =(%2 -.new)
   ?>  =(~ blocked.new)
   ?>  =(~ recent.new)
   ?>  =(8 next-id.new)
@@ -334,8 +407,10 @@
   ;<  ~  bind:m  (set-src ~dev)
   ;<  *  bind:m  (remote 'after upgrade' ~2026.10.16)
   ;<  sav=vase  bind:m  get-save
-  =/  newer=state-1:msg  !<(state-1:msg sav)
+  =/  newer=state-2:msg  !<(state-2:msg sav)
   ?>  (~(has by messages.newer) 8)
   ?>  =(9 next-id.newer)
   (pure:m ~)
+::
+
 --
