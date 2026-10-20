@@ -22,7 +22,8 @@
 #
 # Usage: scripts/fresh-install-test.sh [backup-dir]
 # Env:   FRESH_DIR (default ~/vms/fresh-install), FRESH_SSH_PORT (22231),
-#        FRESH_HTTP_PORT (28090), FRESH_RAM (3G), FRESH_KEEP=1 leaves it running.
+#        FRESH_HTTP_PORT (28090), FRESH_RAM (3G), FRESH_KEEP=1 leaves it running,
+#        FRESH_BUILD_ONLY=1 builds the system and stops.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -92,6 +93,12 @@ grep -q EDIT "$W/clan/host.nix" && fail "host.nix still has EDIT lines"
 say "building the system on this host"
 TOP="$("${NIX[@]}" build --no-link --print-out-paths "path:$W/clan#nixosConfigurations.server.config.system.build.toplevel")"
 echo "system $TOP"
+# Build here, run the VM elsewhere: copy $W/key and $W/key.pub to the other
+# machine's FRESH_DIR first, so both render the same host.nix.
+if [ "${FRESH_BUILD_ONLY:-0}" = 1 ]; then
+  echo "$TOP" >"$W/toplevel"
+  exit 0
+fi
 
 say "installer ISO (stock minimal installer with this test's SSH key)"
 ISO="$("${NIX[@]}" build --no-link --print-out-paths --impure --expr "
