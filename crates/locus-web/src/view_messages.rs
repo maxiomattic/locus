@@ -24,6 +24,8 @@ pub(crate) fn messages(s: &Shell) -> Element<'_, Message> {
     let MessagesView {
         conversations,
         open,
+        open_label,
+        open_group,
         thread,
         can_send,
         open_blocked,
@@ -32,7 +34,16 @@ pub(crate) fn messages(s: &Shell) -> Element<'_, Message> {
     } = view_model::messages_view(&s.app);
     row![
         conversations_column(s, conversations, hint),
-        thread_pane(s, open, thread, can_send, open_blocked, hint),
+        thread_pane(
+            s,
+            open,
+            open_label,
+            open_group,
+            thread,
+            can_send,
+            open_blocked,
+            hint
+        ),
     ]
     .spacing(16)
     .height(Fill)
@@ -101,6 +112,8 @@ fn conversation_row(c: Colors, v: &ConversationView, i: usize) -> Element<'stati
 fn thread_pane<'a>(
     s: &'a Shell,
     open: Option<String>,
+    open_label: Option<String>,
+    open_group: bool,
     thread: Vec<ThreadMessage>,
     can_send: bool,
     open_blocked: bool,
@@ -121,14 +134,19 @@ fn thread_pane<'a>(
     for m in &thread[shown_from..] {
         bubbles = bubbles.push(bubble(c, m));
     }
-    let header = row![
-        text(view_model::short_ship(&peer))
-            .size(18)
-            .color(c.text)
-            .width(Fill),
-        muted_text(c, peer.clone()),
-        block_button(c, peer.clone(), open_blocked),
-    ]
+    let title = open_label.unwrap_or_else(|| view_model::short_ship(&peer));
+    let header = if open_group {
+        row![
+            text(title).size(18).color(c.text).width(Fill),
+            muted_text(c, "group".to_string()),
+        ]
+    } else {
+        row![
+            text(title).size(18).color(c.text).width(Fill),
+            muted_text(c, peer.clone()),
+            block_button(c, peer.clone(), open_blocked),
+        ]
+    }
     .spacing(8)
     .align_y(Center);
     let mut pane = column![header].spacing(12).width(Fill).height(Fill);

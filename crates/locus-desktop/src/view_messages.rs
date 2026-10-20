@@ -109,12 +109,22 @@ fn thread_pane(view: &MessagesView) -> Element<'static, Message> {
             blocked: !view.open_blocked,
         }),
     );
-    let header = widget::row::with_capacity(3)
+    let title = view
+        .open_label
+        .clone()
+        .unwrap_or_else(|| view_model::short_ship(&peer));
+    let mut header = widget::row::with_capacity(3)
         .spacing(s.space_s)
         .align_y(Alignment::Center)
-        .push(widget::text::title4(view_model::short_ship(&peer)).width(Length::Fill))
-        .push(widget::text::caption(peer.clone()))
-        .push(block);
+        .push(widget::text::title4(title).width(Length::Fill))
+        .push(widget::text::caption(if view.open_group {
+            "group".to_string()
+        } else {
+            peer.clone()
+        }));
+    if !view.open_group {
+        header = header.push(block);
+    }
     let draft = widget::text_input("Write a message", view.draft.clone())
         .id(Id::new(DRAFT_ID))
         .on_input(|value| core(Msg::Text(TextEdit::Set(value))))

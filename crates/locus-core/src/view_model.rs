@@ -1092,6 +1092,10 @@ pub struct MessagesView {
     /// Sending is allowed: a conversation is open and the draft is not empty.
     pub can_send: bool,
     pub unread_total: u64,
+    /// The open conversation's title (a group) or ship, for its header.
+    pub open_label: Option<String>,
+    /// The open conversation is a group. A group cannot be blocked.
+    pub open_group: bool,
     /// The open conversation's ship is blocked: its messages are refused.
     pub open_blocked: bool,
     /// What the thread pane says when no conversation is open.
@@ -1176,6 +1180,15 @@ pub fn messages_view(app: &App) -> MessagesView {
             selected: i == m.thread_sel,
         })
         .collect();
+    let open_row = m
+        .open
+        .as_deref()
+        .and_then(|p| m.conversations.iter().find(|c| c.peer == p));
+    let open_label = open_row.map(|c| c.title.clone().unwrap_or_else(|| c.peer.clone()));
+    let open_group = m
+        .open
+        .as_deref()
+        .is_some_and(|p| locus_client::messages::group_id(p).is_some());
     let hint = if m.conversations.is_empty() && m.open.is_none() {
         "No conversations yet. Start one with New."
     } else {
@@ -1184,6 +1197,8 @@ pub fn messages_view(app: &App) -> MessagesView {
     MessagesView {
         conversations,
         open: m.open.clone(),
+        open_label,
+        open_group,
         thread,
         draft: m.draft.clone(),
         can_send: m.open.is_some() && !m.draft.trim().is_empty(),
