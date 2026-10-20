@@ -9,7 +9,9 @@
 //! files, photos, events, contacts, and message threads) and `blobs/<sha256>`
 //! (the bytes of every file). Import recreates notebooks, folders, notes,
 //! files, photos, events and contacts. It skips anything the target already
-//! has, so it is safe to rerun. Not carried over: note revision history,
+//! has, so it is safe to rerun. A photo is a path on the server's photo
+//! dataset, so its bytes are not in the backup; they stay on that disk.
+//! Not carried over: note revision history,
 //! timestamps (items get the time of the import) and messages, which stay in
 //! the backup file because replaying them would send them to people again.
 
