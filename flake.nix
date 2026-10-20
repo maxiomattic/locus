@@ -77,6 +77,13 @@
         };
       nixosModules.default = self.nixosModules.server;
 
+      # `nix flake new -t github:maxiomattic/locus#server <dir>`: the host flake
+      # for a new clan server. See docs/install.md.
+      templates.server = {
+        path = ./templates/server;
+        description = "A Locus clan server (fill in host.nix)";
+      };
+
       nixosModules.client =
         { pkgs, lib, ... }:
         {
