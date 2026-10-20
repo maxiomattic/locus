@@ -22,7 +22,7 @@
 #
 # Usage: scripts/fresh-install-test.sh [backup-dir]
 # Env:   FRESH_DIR (default ~/vms/fresh-install), FRESH_SSH_PORT (22231),
-#        FRESH_HTTP_PORT (28090), FRESH_RAM (3G), FRESH_KEEP=1 leaves it running,
+#        FRESH_HTTP_PORT (28090), FRESH_RAM (4G), FRESH_KEEP=1 leaves it running,
 #        FRESH_BUILD_ONLY=1 builds the system and stops.
 set -euo pipefail
 
@@ -30,7 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 W="${FRESH_DIR:-$HOME/vms/fresh-install}"
 SSH_PORT="${FRESH_SSH_PORT:-22231}"
 HTTP_PORT="${FRESH_HTTP_PORT:-28090}"
-RAM="${FRESH_RAM:-3G}"
+RAM="${FRESH_RAM:-4G}"
 BACKUP="${1:-}"
 NIX=(nix --extra-experimental-features 'nix-command flakes')
 
@@ -157,7 +157,7 @@ rsync -a -e "ssh -i $W/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$W/known_
 vm_ssh root "sed -i 's|path:$W/locus|path:/root/locus|' /root/clan/flake.nix"
 
 say "step 3: disko"
-vm_ssh root "cd /root/clan && nix --extra-experimental-features 'nix-command flakes' run github:nix-community/disko -- --mode destroy,format,mount --yes-wipe-all-disks --flake .#server" \
+vm_ssh root "cd /root/clan && nix --extra-experimental-features 'nix-command flakes' run .#disko -- --mode destroy,format,mount --yes-wipe-all-disks --flake .#server" \
   || fail "disko"
 
 say "copying the built system into the VM's /mnt store"

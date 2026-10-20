@@ -6,7 +6,7 @@ One procedure takes a fresh x86-64 machine to a working Locus server. That means
 
 ## You need
 
-- The machine, with a disk it can erase and a wired or Wi-Fi network that reaches the internet.
+- The machine, with a disk it can erase, at least 4 GB of memory (the installer keeps its downloads in memory), and a network that reaches the internet.
 - A USB stick with the NixOS minimal installer ([nixos.org/download](https://nixos.org/download), "Minimal ISO image").
 - An SSH key on the computer you administer from (`ssh-keygen -t ed25519` if you have none).
 
@@ -37,7 +37,7 @@ Formatting erases the disk named in `host.nix`:
 
 ```bash
 cd /root/clan
-nix --extra-experimental-features 'nix-command flakes' run github:nix-community/disko -- \
+nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
   --mode destroy,format,mount --flake .#server
 nixos-install --flake .#server --no-root-passwd
 mkdir -p /mnt/etc/clan && cp -r /root/clan/. /mnt/etc/clan/
