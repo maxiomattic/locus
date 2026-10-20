@@ -6,15 +6,16 @@ Where the work stands against [plan.md](plan.md). The plan says what to do and [
 
 The near-term goal is a version the author can use day to day: working browser and Linux desktop apps for notes, todo, calendar, files, photos, movies, music, messages and contacts, plus the `locus` command line for everything, running on the clan server. The agent builds and tests it end to end, then the author tries it.
 
-### 1. Foundation (mostly done)
+### 1. Foundation
 
 - Done: a NixOS server with ZFS, the Urbit ship as a service, and `locus-gateway` serving the browser app, file bytes and the ship's API. The first server runs it, and the Obsidian vaults are imported as notebooks.
-- Done 2026-10-20: an off-machine copy of the ship's pier. A ZFS stream of `rpool/urbit/pier` is on the laptop (`~/Backups/surface-pier/`), checked by SHA-256 on both ends. The stream itself was not restored from the laptop; the same snapshot was restored locally and booted with networking off, and its data matched the live ship.
+- Done 2026-10-20: one install procedure from a blank disk, [install.md](install.md). The steps are: the host template (`nix flake new -t …#server`), disko, `nixos-install`, then reboot. `locus-desk.service` installs the `%locus` desk by itself on first boot and updates it after each rebuild. It snapshots the pier first. On a new ship it suspends Tlon's `%groups` and clears its `%notes` and `%contacts`. `scripts/fresh-install-test.sh` runs the procedure in a VM from a stock NixOS minimal installer.
+- Done 2026-10-20: moving data to a new identity. `locus backup export <dir>` and `locus backup import <dir>` copy notebooks, folders, notes, files with their bytes, photos, events and contacts. Import skips what is there, so it is safe to rerun. Note history, timestamps and messages are not carried over.
+- Done 2026-10-20: off-machine copies. The pier and the Locus data export are on the laptop (`~/Backups/`) and on here-nor-there (`/data/Backups/surface-locus/`), checked by SHA-256.
+- The server's comet was reset on 2026-10-20. A restore test had booted a copy of the old comet's pier online, and the network then refused the real ship ("double-boot detected"). The data was exported from an offline copy of the old pier and imported into a new comet, `~masned-savted-difted-locden--rovruc-sonsem-witper-wanzod`: 242 notes in 9 notebooks, 31 folders and 12 files. An export of the new ship matches the old one item for item. The old pier is kept in `rpool/urbit/pier@pre-reset-20261020`. The rollback docs used to say to roll the pier back and start it; they now explain why that loses the identity ([urbit.md](urbit.md#rollback-and-why-the-pier-must-not-go-back-in-time)).
 - Open:
-  - The ship is down as of 2026-10-20. A restore test booted a copy of the pier with networking on, and the network recorded that boot as the latest version, so the real ship now refuses to start ("double-boot detected"). The only remedy the docs name is a factory reset, which clears the event log and gives the comet a new identity. This needs the administrator's decision. The pier is kept in `rpool/urbit/pier` and `rpool/urbit/pier-restore-20261019`.
-  - The server runs on a comet. The planet (the clan's root identity) comes later.
+  - The server runs on a comet. The planet (the clan's root identity) comes later, and moves the data the same way.
   - The ship's Azimuth eth-watcher error ("range 100000 exceeds limit of 10000") is unfixed. Public Ethereum endpoints cap `eth_getLogs` below that range, so it needs an RPC provider with a higher limit, or a local node.
-  - Nobody has yet tried the "fresh machine through one documented procedure" check from the plan.
 
 ### 2. Core apps (in progress)
 
@@ -33,7 +34,7 @@ The near-term goal is a version the author can use day to day: working browser a
   - Spam protection: a ship's incoming messages are refused when it is blocked (`locus messages block ~ship`, or the Block button in the conversation), and the 21st message from one ship within a minute is refused. A refused message stores nothing, and our own sends to a blocked ship still go. Deployed 2026-10-20.
   - Two-ship messages, checked on two fake ships (`~/exp/two-ship-test.sh`, 2026-10-20, all 12 checks pass): a message both ways, the sender's copy goes from pending to delivered, a send to a ship that is offline stays pending and then arrives when it is back, and junk pokes are refused without storing anything. The test logs in with the ship's code, because gall scries are cancelled on fake ships.
 - Performance: every core operation measured in release is under 16.6 ms (slowest: opening a folder of 10,000 files, about 10 ms). The shells draw long lists as virtual rows: Notes, Files, Contacts, Photos, Movies, Music, Messages, and now Todo and the calendar agenda.
-- Group conversations (built 2026-10-20, not deployed; the server is down):
+- Group conversations (built 2026-10-20, deployed to the new comet the same day):
   - A group has an id (owner, dash, count: `~zod-1`), a title, an owner and members. Writing to a group sends it to every other member; the message is delivered once all of them have it, and shows who is still waiting.
   - A member learns of a group from its first message, which carries the title and members. Later messages must come from a member, and so must the group's first message. The member list comes from the group's creator, so a creator can list members who never agreed; that is accepted for a family and friends clan, not for open groups.
   - A group cannot be blocked (block a member instead). There is no add, remove or leave yet, and no rename.
@@ -41,11 +42,9 @@ The near-term goal is a version the author can use day to day: working browser a
 - Fixed 2026-10-20:
   - Desktop scroll-to-selection drifted on long lists (commit `139d8ca`). Checked: 60 notes, the selection stays on screen.
   - Desktop seeks landed at the start of the movie (commit `d824319`). The player seeked to the previous keyframe; now it lands on the requested time. Checked in the desktop app, paused and playing.
-- Deployed to the Surface server on 2026-10-20: the %locus desk, with the messages fixes and spam protection, after a ZFS snapshot (`rpool/urbit/pier@locus-desk-deploy-20261020T042207Z`). The desktop programs and the gateway were rebuilt from `139d8ca` and then `d824319`. The ship has been down since 2026-10-20, so the deployed agents are not running right now.
+- Deployed to the Surface server on 2026-10-20: the %locus desk on the new comet, with the messages fixes, spam protection and group conversations. The desktop programs, the gateway and the `locus` CLI are rebuilt from the same commit. All seven agents serve.
 - Next:
-  1. Decide on the factory reset of the comet (see Open above). Until then the server cannot run.
-  2. Deploy the group conversations (built and tested, below) and the messages state-2 upgrade. The desk deploy and the desktop, web and CLI rebuild are ready; the desk deploy waits for the server.
-  3. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
+  1. The author tries the whole set. This stage is done when they use it as their only system for notes, files and calendar/tasks.
 
 ## Later stages
 
