@@ -148,8 +148,11 @@ impl Player {
             PlayerCmd::Resume => self.set_state(gst::State::Playing),
             PlayerCmd::Seek(ms) => {
                 if let Some(p) = &self.pipeline {
+                    // ACCURATE lands on the requested time. KEY_UNIT would snap back
+                    // to the previous keyframe, which can be many seconds away, so a
+                    // seek would land at the start of a movie with few keyframes.
                     p.seek_simple(
-                        gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
+                        gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
                         gst::ClockTime::from_mseconds(ms),
                     )
                     .map_err(|e| format!("could not seek: {e}"))?;
