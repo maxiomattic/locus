@@ -208,6 +208,10 @@ pub struct EditorView {
     pub saving: bool,
     pub conflict: bool,
     pub focused: bool,
+    /// Show the Markdown source; otherwise render `blocks`.
+    pub source: bool,
+    /// The note rendered, Obsidian style. Empty while `source` is set.
+    pub blocks: Vec<crate::markdown::Block>,
 }
 
 pub fn editor(app: &App) -> Option<EditorView> {
@@ -220,6 +224,12 @@ pub fn editor(app: &App) -> Option<EditorView> {
         saving: e.in_flight,
         conflict: e.conflict,
         focused: app.focus == Focus::Editor,
+        source: app.notes.source,
+        blocks: if app.notes.source {
+            Vec::new()
+        } else {
+            crate::markdown::blocks(&e.body)
+        },
     })
 }
 

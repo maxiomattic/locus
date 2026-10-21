@@ -5,7 +5,7 @@
 use iced::border::Radius;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, image, mouse_area, opaque, row, scrollable,
-    space, stack, text, text_editor, text_input, tooltip,
+    space, stack, text, text_input, tooltip,
 };
 use iced::{Border, Center, ContentFit, Element, Fill, Length, Shadow};
 use locus_core::view_model::{self, EditorView, FormView, HistoryView};
@@ -13,8 +13,8 @@ use locus_core::{Date, Focus, InputKind, Level, Msg, Section, TextEdit};
 
 use crate::style::{self, Colors};
 use crate::{
-    FORM_IDS, GAP, HEADER_H, Message, PAD, PALETTE_ROW_H, ROW_H, Shell, TODO_ROW_H,
-    photo_columns, tile_px, view_media, view_messages,
+    FORM_IDS, GAP, HEADER_H, Message, PAD, PALETTE_ROW_H, ROW_H, Shell, TODO_ROW_H, photo_columns,
+    tile_px, view_media, view_messages,
 };
 
 /// The draft box's widget id, shared with the core's focus.
@@ -34,7 +34,6 @@ pub(crate) fn core(msg: Msg) -> Message {
 pub(crate) fn scroll_msg(id: &'static str) -> impl Fn(scrollable::Viewport) -> Message + 'static {
     move |vp| Message::Scrolled(id, vp)
 }
-
 
 pub fn root(s: &Shell) -> Element<'_, Message> {
     if !s.logged_in {
@@ -61,8 +60,12 @@ fn login_screen(s: &Shell) -> Element<'_, Message> {
     let status_color = level_color(c, view_model::status_level(&s.app));
     let card = container(
         column![
-            text(view_model::window_title(&s.app)).size(20).color(c.text),
-            text("Enter the web code for your ship.").size(14).color(c.muted),
+            text(view_model::window_title(&s.app))
+                .size(20)
+                .color(c.text),
+            text("Enter the web code for your ship.")
+                .size(14)
+                .color(c.muted),
             text_input("+code", &s.app.input.text)
                 .id("login")
                 .secure(true)
@@ -151,7 +154,12 @@ fn app_blurb(section: Section) -> &'static str {
 
 /// A toolbar button with a label and a tooltip naming its shortcut.
 /// `None` for `msg` draws it disabled.
-pub(crate) fn tool<'a>(c: Colors, label: &'a str, tip: &'a str, msg: Option<Msg>) -> Element<'a, Message> {
+pub(crate) fn tool<'a>(
+    c: Colors,
+    label: &'a str,
+    tip: &'a str,
+    msg: Option<Msg>,
+) -> Element<'a, Message> {
     let b = button(text(label).size(13))
         .padding([5, 10])
         .on_press_maybe(msg.map(core))
@@ -201,8 +209,18 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
     };
     if matches!(app.section, Section::Calendar | Section::Todo) {
         // The Calendar app's two views are tabs where its title would be.
-        bar = bar.push(app_tab(c, "Calendar", app.section == Section::Calendar, Msg::Switch(Section::Calendar)));
-        bar = bar.push(app_tab(c, "Todo", app.section == Section::Todo, Msg::Switch(Section::Todo)));
+        bar = bar.push(app_tab(
+            c,
+            "Calendar",
+            app.section == Section::Calendar,
+            Msg::Switch(Section::Calendar),
+        ));
+        bar = bar.push(app_tab(
+            c,
+            "Todo",
+            app.section == Section::Todo,
+            Msg::Switch(Section::Todo),
+        ));
     } else {
         bar = bar.push(text(place).size(15).color(c.text));
     }
@@ -211,7 +229,10 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         text_input("Search", &app.filter)
             .id("filter")
             .on_input(|value| {
-                Message::Core(Msg::Batch(vec![Msg::FocusFilter, Msg::Text(TextEdit::Set(value))]))
+                Message::Core(Msg::Batch(vec![
+                    Msg::FocusFilter,
+                    Msg::Text(TextEdit::Set(value)),
+                ]))
             })
             .padding([5, 10])
             .size(13)
@@ -221,24 +242,42 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         Section::Notes if !view_model::can_go_up(app) => vec![
             tool(c, "New notebook", "", Some(Msg::NewNotebook)),
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
-            tool(c, "Rename", "F2", when(view_model::can_rename(app), Msg::Rename)),
+            tool(
+                c,
+                "Rename",
+                "F2",
+                when(view_model::can_rename(app), Msg::Rename),
+            ),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Notes => vec![
             tool(c, "New note", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "New folder", "", Some(Msg::NewFolder)),
-            tool(c, "Rename", "F2", when(view_model::can_rename(app), Msg::Rename)),
+            tool(
+                c,
+                "Rename",
+                "F2",
+                when(view_model::can_rename(app), Msg::Rename),
+            ),
             tool(c, "Move", "", when(view_model::can_move(app), Msg::Move)),
             tool(
                 c,
-                if app.notes.history.is_some() { "Close history" } else { "History" },
+                if app.notes.history.is_some() {
+                    "Close history"
+                } else {
+                    "History"
+                },
                 "",
                 when(view_model::can_show_history(app), Msg::History),
             ),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Todo => {
-            let done = if app.todo.show_done { "Hide done" } else { "Show done" };
+            let done = if app.todo.show_done {
+                "Hide done"
+            } else {
+                "Show done"
+            };
             vec![
                 tool(c, "Add task", "Ctrl+N or Alt+N", Some(Msg::New)),
                 tool(c, "Open note", "Enter", when(item, Msg::Activate)),
@@ -252,7 +291,12 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
         ],
         Section::Photos => vec![
             tool(c, "Upload", "Ctrl+O", Some(Msg::Upload)),
-            tool(c, "Open", "Enter", when(item && app.focus != Focus::Detail, Msg::Activate)),
+            tool(
+                c,
+                "Open",
+                "Enter",
+                when(item && app.focus != Focus::Detail, Msg::Activate),
+            ),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
             tool(c, "Move", "", when(item, Msg::Move)),
             tool(c, "Delete", "Delete", when(item, Msg::Delete)),
@@ -262,7 +306,12 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "New folder", "Ctrl+N or Alt+N", Some(Msg::New)),
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
             tool(c, "Move", "", when(item, Msg::Move)),
-            tool(c, "Copy path", "Ctrl+C", when(view_model::has_file_row_selected(app), Msg::Yank)),
+            tool(
+                c,
+                "Copy path",
+                "Ctrl+C",
+                when(view_model::has_file_row_selected(app), Msg::Yank),
+            ),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
         Section::Contacts => vec![
@@ -276,9 +325,12 @@ fn toolbar(s: &Shell) -> Element<'_, Message> {
             tool(c, "Rename", "F2", when(item, Msg::Rename)),
             tool(c, "Delete", "Delete", when(deletable, Msg::Delete)),
         ],
-        Section::Messages => vec![
-            tool(c, "Delete message", "Delete", when(deletable, Msg::Delete)),
-        ],
+        Section::Messages => vec![tool(
+            c,
+            "Delete message",
+            "Delete",
+            when(deletable, Msg::Delete),
+        )],
     };
     for action in actions {
         bar = bar.push(action);
@@ -341,11 +393,7 @@ fn main_pane(s: &Shell) -> Element<'_, Message> {
         Section::Music => view_media::music(s),
         Section::Messages => view_messages::messages(s),
     };
-    container(body)
-        .padding(PAD)
-        .width(Fill)
-        .height(Fill)
-        .into()
+    container(body).padding(PAD).width(Fill).height(Fill).into()
 }
 
 // ----- shared pieces -----
@@ -550,28 +598,39 @@ fn notes_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let rows = view_model::notes_list(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
-        muted_text(c, empty_hint(s, "No notes here yet. Click New note to write one.")).into()
+        muted_text(
+            c,
+            empty_hint(s, "No notes here yet. Click New note to write one."),
+        )
+        .into()
     } else {
         let count = rows.len();
         virtual_rows(s, "notes", count, ROW_H + 4.0, move |i| {
             let r = &rows[i];
-            gapped(list_row(c, i, &r.title, &r.subtitle, r.selected, r.is_dir), 4.0)
+            gapped(
+                list_row(c, i, &r.title, &r.subtitle, r.selected, r.is_dir),
+                4.0,
+            )
         })
     };
     let left = container(list).width(300).height(Fill);
 
-    let right: Element<'_, Message> = match (view_model::note_history(&s.app), view_model::editor(&s.app)) {
-        (Some(h), _) => history_pane(c, h),
-        (None, Some(ed)) => editor_pane(s, ed),
-        (None, None) => empty_card(c, "No note open", "Double-click a note to open it."),
-    };
+    let right: Element<'_, Message> =
+        match (view_model::note_history(&s.app), view_model::editor(&s.app)) {
+            (Some(h), _) => history_pane(c, h),
+            (None, Some(ed)) => editor_pane(s, ed),
+            (None, None) => empty_card(c, "No note open", "Double-click a note to open it."),
+        };
     row![left, right].spacing(16).height(Fill).into()
 }
 
 fn editor_pane(s: &Shell, ed: EditorView) -> Element<'_, Message> {
     let c = s.colors;
     let (status, color) = if ed.conflict {
-        ("Changed elsewhere. Your text is kept; server copy reloaded.", c.warn)
+        (
+            "Changed elsewhere. Your text is kept; server copy reloaded.",
+            c.warn,
+        )
     } else if ed.saving {
         ("Saving...", c.muted)
     } else if ed.dirty {
@@ -579,20 +638,26 @@ fn editor_pane(s: &Shell, ed: EditorView) -> Element<'_, Message> {
     } else {
         ("Saved", c.muted)
     };
+    let (mode, tip) = if ed.source {
+        ("Done", "Show the note formatted (Ctrl+E)")
+    } else {
+        ("Edit", "Edit the Markdown (Ctrl+E, or click the text)")
+    };
     let header = row![
         text(ed.title.clone()).size(16).color(c.text),
         space::horizontal(),
         text(status).size(12).color(color),
+        tool(c, mode, tip, Some(Msg::ToggleNoteSource)),
     ]
     .spacing(8)
     .align_y(Center);
-    let editor = text_editor(&s.editor)
-        .id("editor")
-        .on_action(Message::Editor)
-        .padding(12)
-        .size(14)
-        .height(Fill);
-    container(column![header, editor].spacing(8).padding(12))
+    let body = if ed.source {
+        crate::view_note::source(s)
+    } else {
+        let last_line = ed.body.lines().count().saturating_sub(1);
+        crate::view_note::rendered(c, &ed.blocks, last_line)
+    };
+    container(column![header, body].spacing(8).padding(12))
         .width(Fill)
         .height(Fill)
         .style(move |_| style::card(c))
@@ -603,9 +668,16 @@ fn editor_pane(s: &Shell, ed: EditorView) -> Element<'_, Message> {
 /// on the right. Read only.
 fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
     let header = row![
-        text(format!("History of {}", h.title)).size(16).color(c.text),
+        text(format!("History of {}", h.title))
+            .size(16)
+            .color(c.text),
         space::horizontal(),
-        tool(c, "Restore this version", "", h.can_restore.then_some(Msg::RestoreRevision)),
+        tool(
+            c,
+            "Restore this version",
+            "",
+            h.can_restore.then_some(Msg::RestoreRevision)
+        ),
         tool(c, "Close", "Escape", Some(Msg::History)),
     ]
     .spacing(8)
@@ -613,7 +685,11 @@ fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
     let body: Element<'a, Message> = if h.loading {
         muted_text(c, "Loading...").into()
     } else if h.rows.is_empty() {
-        muted_text(c, "No saved revisions. Earlier versions of this note appear here.").into()
+        muted_text(
+            c,
+            "No saved revisions. Earlier versions of this note appear here.",
+        )
+        .into()
     } else {
         let mut list = Column::new();
         for (i, r) in h.rows.into_iter().enumerate() {
@@ -656,8 +732,14 @@ fn history_pane<'a>(c: Colors, h: HistoryView) -> Element<'a, Message> {
 /// One line of the todo list: a group heading, or a task with its index among
 /// all the tasks (the index that `Select` and `ToggleTask` count).
 enum TodoLine {
-    Header { title: String, count: usize },
-    Task { task: view_model::TaskRow, index: usize },
+    Header {
+        title: String,
+        count: usize,
+    },
+    Task {
+        task: view_model::TaskRow,
+        index: usize,
+    },
 }
 
 fn todo_pane(s: &Shell) -> Element<'_, Message> {
@@ -682,7 +764,10 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
         } else {
             group.title.to_string()
         };
-        lines.push(TodoLine::Header { title, count: group.count });
+        lines.push(TodoLine::Header {
+            title,
+            count: group.count,
+        });
         heights.push(HEADER_H);
         for task in group.items {
             lines.push(TodoLine::Task { task, index });
@@ -722,7 +807,14 @@ fn todo_pane(s: &Shell) -> Element<'_, Message> {
             ]
             .spacing(12)
             .align_y(Center);
-            click_row(c, content, TODO_ROW_H, task.selected, Msg::Select(i), Msg::Activate)
+            click_row(
+                c,
+                content,
+                TODO_ROW_H,
+                task.selected,
+                Msg::Select(i),
+                Msg::Activate,
+            )
         }
     });
     scrollable(col)
@@ -740,7 +832,11 @@ fn calendar_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let agenda_mode = s.app.calendar.mode == locus_core::CalMode::Agenda;
     let month = view_model::month_grid(&s.app);
-    let mode_label = if agenda_mode { "Month view" } else { "Agenda view" };
+    let mode_label = if agenda_mode {
+        "Month view"
+    } else {
+        "Agenda view"
+    };
     let header = row![
         button(text("‹ Previous").size(14))
             .padding([4, 10])
@@ -784,8 +880,15 @@ fn calendar_pane(s: &Shell) -> Element<'_, Message> {
 /// One line of the agenda: a day's heading, or an event with its index among
 /// that day's events and the day it is on.
 enum AgendaLine {
-    Header { label: String, is_today: bool },
-    Event { event: view_model::EventRow, date: Date, index: usize },
+    Header {
+        label: String,
+        is_today: bool,
+    },
+    Event {
+        event: view_model::EventRow,
+        date: Date,
+        index: usize,
+    },
 }
 
 fn agenda_list(s: &Shell) -> Element<'_, Message> {
@@ -798,10 +901,17 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
         if day.is_today {
             label.push_str("  · today");
         }
-        lines.push(AgendaLine::Header { label, is_today: day.is_today });
+        lines.push(AgendaLine::Header {
+            label,
+            is_today: day.is_today,
+        });
         heights.push(HEADER_H);
         for (index, event) in day.events.into_iter().enumerate() {
-            lines.push(AgendaLine::Event { event, date: day.date, index });
+            lines.push(AgendaLine::Event {
+                event,
+                date: day.date,
+                index,
+            });
             heights.push(ROW_H);
         }
     }
@@ -823,7 +933,10 @@ fn agenda_list(s: &Shell) -> Element<'_, Message> {
             AgendaLine::Event { event, date, index } => {
                 let select = Msg::Batch(vec![Msg::SelectDay(*date), Msg::Select(*index)]);
                 let content = row![
-                    text(event.time_label.clone()).size(12).color(c.muted).width(110),
+                    text(event.time_label.clone())
+                        .size(12)
+                        .color(c.muted)
+                        .width(110),
                     text(event.title.clone()).size(14).color(c.text).width(Fill),
                 ]
                 .spacing(8)
@@ -856,12 +969,22 @@ fn day_events(s: &Shell) -> Element<'_, Message> {
         Some(day) => {
             for (i, ev) in day.events.iter().enumerate() {
                 let content = row![
-                    text(ev.time_label.clone()).size(12).color(c.muted).width(110),
+                    text(ev.time_label.clone())
+                        .size(12)
+                        .color(c.muted)
+                        .width(110),
                     text(ev.title.clone()).size(14).color(c.text).width(Fill),
                 ]
                 .spacing(8)
                 .align_y(Center);
-                col = col.push(click_row(c, content, 36.0, ev.selected, Msg::Select(i), Msg::Edit));
+                col = col.push(click_row(
+                    c,
+                    content,
+                    36.0,
+                    ev.selected,
+                    Msg::Select(i),
+                    Msg::Edit,
+                ));
             }
         }
     }
@@ -872,11 +995,7 @@ fn month_grid<'a>(s: &Shell, month: &view_model::MonthView) -> Element<'a, Messa
     let c = s.colors;
     let mut weekdays = Row::new().spacing(4);
     for name in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] {
-        weekdays = weekdays.push(
-            container(muted_text(c, name))
-                .width(Fill)
-                .center_x(Fill),
-        );
+        weekdays = weekdays.push(container(muted_text(c, name)).width(Fill).center_x(Fill));
     }
     let mut grid = Column::new().spacing(4);
     for week in month.weeks.iter() {
@@ -892,7 +1011,11 @@ fn month_grid<'a>(s: &Shell, month: &view_model::MonthView) -> Element<'a, Messa
             };
             let label = column![
                 text(cell.day.to_string()).size(14).color(fg),
-                text(dots).size(10).color(if cell.is_selected { c.on_accent } else { c.accent }),
+                text(dots).size(10).color(if cell.is_selected {
+                    c.on_accent
+                } else {
+                    c.accent
+                }),
             ]
             .align_x(Center);
             let selected = cell.is_selected;
@@ -913,7 +1036,11 @@ fn month_grid<'a>(s: &Shell, month: &view_model::MonthView) -> Element<'a, Messa
                         },
                         text_color: fg,
                         border: Border {
-                            color: if today { c.accent } else { iced::Color::TRANSPARENT },
+                            color: if today {
+                                c.accent
+                            } else {
+                                iced::Color::TRANSPARENT
+                            },
                             width: if today { 1.0 } else { 0.0 },
                             radius: Radius::from(6.0),
                         },
@@ -944,7 +1071,9 @@ fn photos_pane(s: &Shell) -> Element<'_, Message> {
     // Only the grid rows on screen are built; each row is one pitch tall.
     let count = grid.rows.len();
     let rows = grid.rows;
-    virtual_rows(s, "photos", count, tile + GAP, move |ri| photo_grid_row(s, &rows[ri], ri, cols, tile))
+    virtual_rows(s, "photos", count, tile + GAP, move |ri| {
+        photo_grid_row(s, &rows[ri], ri, cols, tile)
+    })
 }
 
 /// One row of the photo grid: `cols` tiles, then the gap below them.
@@ -979,7 +1108,11 @@ fn photo_grid_row<'a>(
             .style(move |_| container::Style {
                 background: Some(iced::Background::Color(c.panel)),
                 border: Border {
-                    color: if selected { c.accent } else { iced::Color::TRANSPARENT },
+                    color: if selected {
+                        c.accent
+                    } else {
+                        iced::Color::TRANSPARENT
+                    },
                     width: 2.0,
                     radius: Radius::from(6.0),
                 },
@@ -1013,7 +1146,11 @@ fn viewer(s: &Shell) -> Element<'_, Message> {
             .content_fit(ContentFit::Contain)
             .into(),
         None if detail.hash.is_none() => muted_text(c, "No preview for this photo").into(),
-        None if detail.hash.as_deref().is_some_and(|h| s.thumb_failed(h, 1024)) => {
+        None if detail
+            .hash
+            .as_deref()
+            .is_some_and(|h| s.thumb_failed(h, 1024)) =>
+        {
             muted_text(c, "Could not load this photo.").into()
         }
         None => muted_text(c, "Loading...").into(),
@@ -1086,13 +1223,26 @@ fn files_sidebar(s: &Shell) -> Element<'_, Message> {
         .align_y(Center)
         .padding(iced::Padding::ZERO.left(14.0 * node.depth as f32));
         let open = Msg::OpenDir(node.path);
-        col = col.push(click_row(c, content, ROW_H, node.current, open.clone(), open));
+        col = col.push(click_row(
+            c,
+            content,
+            ROW_H,
+            node.current,
+            open.clone(),
+            open,
+        ));
     }
-    container(scrollable(col).height(Fill)).width(220).height(Fill).into()
+    container(scrollable(col).height(Fill))
+        .width(220)
+        .height(Fill)
+        .into()
 }
 
 fn files_pane(s: &Shell) -> Element<'_, Message> {
-    row![files_sidebar(s), files_list(s)].spacing(16).height(Fill).into()
+    row![files_sidebar(s), files_list(s)]
+        .spacing(16)
+        .height(Fill)
+        .into()
 }
 
 fn files_list(s: &Shell) -> Element<'_, Message> {
@@ -1100,7 +1250,10 @@ fn files_list(s: &Shell) -> Element<'_, Message> {
     let (columns, descending) = view_model::file_columns(&s.app);
     // A column header orders by that column; again reverses it.
     let mut header = Row::new().spacing(8);
-    for (col, width) in columns.into_iter().zip([Fill, Length::Fixed(96.0), Length::Fixed(120.0)]) {
+    for (col, width) in columns
+        .into_iter()
+        .zip([Fill, Length::Fixed(96.0), Length::Fixed(120.0)])
+    {
         let color = if col.active { c.accent } else { c.muted };
         header = header.push(
             button(text(col.label).size(12).color(color))
@@ -1114,7 +1267,11 @@ fn files_list(s: &Shell) -> Element<'_, Message> {
         button(text(label).size(12))
             .padding([4, 10])
             .style(move |t, st| {
-                if on { style::primary_button(c)(t, st) } else { style::quiet_button(c)(t, st) }
+                if on {
+                    style::primary_button(c)(t, st)
+                } else {
+                    style::quiet_button(c)(t, st)
+                }
             })
             .on_press(core(Msg::SortFilesDescending(label == "Descending")))
     };
@@ -1127,10 +1284,16 @@ fn files_list(s: &Shell) -> Element<'_, Message> {
 
     let rows = view_model::file_rows(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
-        muted_text(c, empty_hint(s, "Empty folder. Click Upload to add files here.")).into()
+        muted_text(
+            c,
+            empty_hint(s, "Empty folder. Click Upload to add files here."),
+        )
+        .into()
     } else {
         let count = rows.len();
-        virtual_rows(s, "files", count, ROW_H + 4.0, move |i| gapped(file_row(c, &rows[i], i), 4.0))
+        virtual_rows(s, "files", count, ROW_H + 4.0, move |i| {
+            gapped(file_row(c, &rows[i], i), 4.0)
+        })
     };
     column![order, header, list].spacing(8).height(Fill).into()
 }
@@ -1151,7 +1314,11 @@ fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     let c = s.colors;
     let rows = view_model::contact_rows(&s.app);
     let list: Element<'_, Message> = if rows.is_empty() {
-        muted_text(c, empty_hint(s, "No contacts yet. Click New contact to add one.")).into()
+        muted_text(
+            c,
+            empty_hint(s, "No contacts yet. Click New contact to add one."),
+        )
+        .into()
     } else {
         let count = rows.len();
         virtual_rows(s, "contacts", count, ROW_H + 4.0, move |i| {
@@ -1160,26 +1327,29 @@ fn contacts_pane(s: &Shell) -> Element<'_, Message> {
     };
     let left = container(list).width(300).height(Fill);
 
-    let right: Element<'_, Message> = if let Some(form) =
-        view_model::form(&s.app).filter(|f| f.title.contains("contact"))
-    {
-        form_card(c, &form)
-    } else if let Some(detail) = view_model::contact_detail(&s.app) {
-        container(
-            column![
-                text(detail.name).size(16).color(c.text),
-                muted_text(c, detail.email),
-                muted_text(c, detail.ship),
-            ]
-            .spacing(8),
-        )
-        .padding(16)
-        .width(Fill)
-        .style(move |_| style::card(c))
-        .into()
-    } else {
-        empty_card(c, "No contact selected", "Pick a contact to see its details.")
-    };
+    let right: Element<'_, Message> =
+        if let Some(form) = view_model::form(&s.app).filter(|f| f.title.contains("contact")) {
+            form_card(c, &form)
+        } else if let Some(detail) = view_model::contact_detail(&s.app) {
+            container(
+                column![
+                    text(detail.name).size(16).color(c.text),
+                    muted_text(c, detail.email),
+                    muted_text(c, detail.ship),
+                ]
+                .spacing(8),
+            )
+            .padding(16)
+            .width(Fill)
+            .style(move |_| style::card(c))
+            .into()
+        } else {
+            empty_card(
+                c,
+                "No contact selected",
+                "Pick a contact to see its details.",
+            )
+        };
     row![left, right].spacing(16).height(Fill).into()
 }
 
@@ -1192,7 +1362,10 @@ fn overlay(s: &Shell) -> Option<Element<'_, Message>> {
         Focus::Confirm => confirm_card(s)?,
         Focus::Input(InputKind::MoveNote | InputKind::MoveNoteFolder) => move_card(s)?,
         Focus::Input(kind)
-            if !matches!(kind, InputKind::Filter | InputKind::Login | InputKind::MessageDraft) =>
+            if !matches!(
+                kind,
+                InputKind::Filter | InputKind::Login | InputKind::MessageDraft
+            ) =>
         {
             prompt_card(s)?
         }
@@ -1237,21 +1410,21 @@ fn palette_card(s: &Shell) -> Element<'_, Message> {
                     .width(Fill)
                     .height(PALETTE_ROW_H)
                     .padding([4, 8])
-                    .on_press(Message::Core(Msg::Batch(vec![
-                        Msg::Select(i),
-                        Msg::Submit,
-                    ])))
+                    .on_press(Message::Core(Msg::Batch(vec![Msg::Select(i), Msg::Submit])))
                     .style(style::row_button(c, r.selected)),
             );
         }
         col.into()
     };
     let body = column![
-        text_input("Type a command or a name", view_model::palette_query(&s.app))
-            .id("palette")
-            .on_input(set_text)
-            .padding(10)
-            .size(14),
+        text_input(
+            "Type a command or a name",
+            view_model::palette_query(&s.app)
+        )
+        .id("palette")
+        .on_input(set_text)
+        .padding(10)
+        .size(14),
         scrollable(list)
             .id("palette-list")
             .spacing(4)
@@ -1288,7 +1461,9 @@ fn help_card(s: &Shell) -> Element<'_, Message> {
     };
     container(
         column![
-            text(format!("Keyboard shortcuts · {}", s.app.section.label())).size(16).color(c.text),
+            text(format!("Keyboard shortcuts · {}", s.app.section.label()))
+                .size(16)
+                .color(c.text),
             row![column_of(left), column_of(right)].spacing(32),
             row![
                 space::horizontal(),
@@ -1437,4 +1612,3 @@ fn prompt_card(s: &Shell) -> Option<Element<'_, Message>> {
         .into(),
     )
 }
-

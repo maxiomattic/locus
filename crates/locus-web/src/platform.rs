@@ -39,7 +39,10 @@ impl Platform for WebPlatform {
         window
             .open_with_url_and_target(url.as_str(), "_blank")
             .map(|_| ())
-            .map_err(|e| e.as_string().unwrap_or_else(|| "the browser blocked the tab".into()))
+            .map_err(|e| {
+                e.as_string()
+                    .unwrap_or_else(|| "the browser blocked the tab".into())
+            })
     }
 }
 
@@ -118,40 +121,46 @@ pub fn open_section(section: locus_core::Section, target: Option<locus_core::Tar
 
 /// Every new URL hash, as it changes (another page sent a cross-link).
 pub fn hash_changes() -> impl iced::futures::Stream<Item = String> {
-    iced::stream::channel(8, async |sender: iced::futures::channel::mpsc::Sender<String>| {
-        use wasm_bindgen::JsCast;
-        use wasm_bindgen::closure::Closure;
-        let Some(window) = web_sys::window() else {
-            return;
-        };
-        let mut sender = sender;
-        let listener = Closure::<dyn FnMut()>::new(move || {
-            let hash = web_sys::window()
-                .and_then(|w| w.location().hash().ok())
-                .unwrap_or_default();
-            let _ = sender.try_send(hash);
-        });
-        let _ = window
-            .add_event_listener_with_callback("hashchange", listener.as_ref().unchecked_ref());
-        // Lives as long as the page.
-        listener.forget();
-        std::future::pending::<()>().await;
-    })
+    iced::stream::channel(
+        8,
+        async |sender: iced::futures::channel::mpsc::Sender<String>| {
+            use wasm_bindgen::JsCast;
+            use wasm_bindgen::closure::Closure;
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+            let mut sender = sender;
+            let listener = Closure::<dyn FnMut()>::new(move || {
+                let hash = web_sys::window()
+                    .and_then(|w| w.location().hash().ok())
+                    .unwrap_or_default();
+                let _ = sender.try_send(hash);
+            });
+            let _ = window
+                .add_event_listener_with_callback("hashchange", listener.as_ref().unchecked_ref());
+            // Lives as long as the page.
+            listener.forget();
+            std::future::pending::<()>().await;
+        },
+    )
 }
 
 /// A tick every `ms` milliseconds, for the page's timers. The stream ends
 /// when its subscription is dropped.
 pub fn ticks(ms: &u64) -> impl iced::futures::Stream<Item = ()> + use<> {
     let ms = (*ms).min(u64::from(u32::MAX)) as u32;
-    iced::stream::channel(1, async move |mut sender: iced::futures::channel::mpsc::Sender<()>| {
-        use iced::futures::SinkExt;
-        loop {
-            sleep_ms(ms).await;
-            if sender.send(()).await.is_err() {
-                break;
+    iced::stream::channel(
+        1,
+        async move |mut sender: iced::futures::channel::mpsc::Sender<()>| {
+            use iced::futures::SinkExt;
+            loop {
+                sleep_ms(ms).await;
+                if sender.send(()).await.is_err() {
+                    break;
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 /// One-shot timer on the JS event loop.
@@ -189,7 +198,11 @@ pub fn origin() -> Url {
 /// `true` when the browser asks for a light colour scheme.
 pub fn prefers_light() -> bool {
     web_sys::window()
-        .and_then(|w| w.match_media("(prefers-color-scheme: light)").ok().flatten())
+        .and_then(|w| {
+            w.match_media("(prefers-color-scheme: light)")
+                .ok()
+                .flatten()
+        })
         .map(|mql| mql.matches())
         .unwrap_or(false)
 }
@@ -227,9 +240,20 @@ pub fn system_accent() -> Option<(u8, u8, u8)> {
 
 /// `rgb(r, g, b)` or `rgba(r, g, b, a)` as computed styles print it.
 pub fn parse_rgb(css: &str) -> Option<(u8, u8, u8)> {
-    let inner = css.trim().strip_prefix("rgba(").or_else(|| css.trim().strip_prefix("rgb("))?;
-    let mut parts = inner.trim_end_matches(')').split(',').map(|p| p.trim().parse::<f32>());
-    let mut next = || parts.next()?.ok().map(|v| v.round().clamp(0.0, 255.0) as u8);
+    let inner = css
+        .trim()
+        .strip_prefix("rgba(")
+        .or_else(|| css.trim().strip_prefix("rgb("))?;
+    let mut parts = inner
+        .trim_end_matches(')')
+        .split(',')
+        .map(|p| p.trim().parse::<f32>());
+    let mut next = || {
+        parts
+            .next()?
+            .ok()
+            .map(|v| v.round().clamp(0.0, 255.0) as u8)
+    };
     Some((next()?, next()?, next()?))
 }
 
@@ -264,7 +288,6 @@ pub fn mime_for(name: &str) -> &'static str {
     }
 }
 
-
 thread_local! {
     /// Modifier keys held during the latest DOM keydown.
     static KEY_MODS: std::cell::Cell<Option<locus_core::Mods>> = const { std::cell::Cell::new(None) };
@@ -282,16 +305,17 @@ pub fn track_key_modifiers() {
     let Some(window) = web_sys::window() else {
         return;
     };
-    let listener = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
-        KEY_MODS.with(|m| {
-            m.set(Some(locus_core::Mods {
-                ctrl: e.ctrl_key(),
-                alt: e.alt_key(),
-                shift: e.shift_key(),
-                logo: e.meta_key(),
-            }))
+    let listener =
+        Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
+            KEY_MODS.with(|m| {
+                m.set(Some(locus_core::Mods {
+                    ctrl: e.ctrl_key(),
+                    alt: e.alt_key(),
+                    shift: e.shift_key(),
+                    logo: e.meta_key(),
+                }))
+            });
         });
-    });
     let options = web_sys::AddEventListenerOptions::new();
     options.set_capture(true);
     let _ = window.add_event_listener_with_callback_and_add_event_listener_options(

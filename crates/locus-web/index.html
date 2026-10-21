@@ -24,13 +24,18 @@
 <body>
   <script>
     // Browser shortcuts the app uses itself: Ctrl/Cmd+K (command palette),
-    // +S (save), +R (reload), +F (search the list), +O (upload), and F1
-    // (shortcuts). Capturing, so it runs first; the event still reaches the
-    // app. Ctrl+N stays the browser's, so the app also takes Alt+N.
+    // +S (save), +R (reload), +F (search the list), +O (upload), F1
+    // (shortcuts), and in Notes +E (formatted/source), +B, +I, +L, +` and
+    // Ctrl+Shift+X/H (formatting). Capturing, so it runs first; the event
+    // still reaches the app. Ctrl+N stays the browser's, so the app also
+    // takes Alt+N; Ctrl+1..3 stay the browser's tab keys.
     window.addEventListener("keydown", (e) => {
       const k = e.key.toLowerCase();
-      const mod = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
-      if ((mod && "ksrfo".includes(k) && k.length === 1) || e.key === "F1") {
+      const ctrl = (e.ctrlKey || e.metaKey) && !e.altKey;
+      const mod = ctrl && !e.shiftKey;
+      if ((mod && "ksrfoebil`".includes(k) && k.length === 1) ||
+          (ctrl && e.shiftKey && (k === "x" || k === "h")) ||
+          e.key === "F1") {
         e.preventDefault();
       }
     }, { capture: true });

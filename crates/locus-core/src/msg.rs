@@ -81,6 +81,17 @@ pub enum Msg {
     /// Files: open this folder (an absolute path), from the sidebar or the
     /// path bar.
     OpenDir(String),
+    /// Notes: switch the open note between rendered and source (Ctrl+E).
+    ToggleNoteSource,
+    /// Notes: show the source of the open note, cursor on this line (a click
+    /// on the rendered note).
+    EditNoteAt(usize),
+    /// Notes: tick or untick the task on this line of the open note.
+    ToggleTaskAt(usize),
+    /// Notes: follow a link in the rendered note.
+    FollowLink(crate::markdown::Link),
+    /// Notes: apply a format to the editor's selection (toolbar, Ctrl+B...).
+    FormatNote(crate::markdown::Format),
     /// Files: order the listing by a column. Clicking the column it is
     /// already ordered by reverses the direction.
     SortFilesBy(crate::state::FileSortKey),
@@ -662,6 +673,17 @@ pub enum Effect {
         token: u64,
     },
     CopyToClipboard(String),
+    /// Put the note editor's cursor at the start of this line and focus it
+    /// (shell-handled).
+    EditorCursor {
+        line: usize,
+    },
+    /// Apply a format to the note editor's selection (shell-handled: the
+    /// selection lives in the editor widget). The shell sends the new text
+    /// back as `EditorChanged`.
+    FormatEditor(crate::markdown::Format),
+    /// Open a web address in the browser (shell-handled).
+    OpenUrl(String),
     /// Open or focus the window (desktop) or tab (web) that is `section`'s
     /// own app, and show `target` there. Shell-handled; no result message.
     OpenSection(Section, Option<Target>),

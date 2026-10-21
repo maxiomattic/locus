@@ -107,6 +107,28 @@ fn command(app: &App, key: Key, mods: Mods) -> Option<Msg> {
         (Key::Char('s' | 'S'), true, false, _) => Msg::SaveNow,
         (Key::Char('o' | 'O'), true, false, _) if upload => Msg::Upload,
         (Key::Enter, true, false, _) => Msg::SaveForm,
+        (Key::Char('e' | 'E'), true, false, _)
+            if section == Section::Notes && app.editor.is_some() =>
+        {
+            Msg::ToggleNoteSource
+        }
+        (Key::Char(c), true, false, shift)
+            if section == Section::Notes && app.focus == Focus::Editor =>
+        {
+            use crate::markdown::Format;
+            Msg::FormatNote(match (c.to_ascii_lowercase(), shift) {
+                ('b', _) => Format::Bold,
+                ('i', _) => Format::Italic,
+                ('x', true) => Format::Strike,
+                ('h', true) => Format::Highlight,
+                ('`', _) => Format::Code,
+                ('l', _) => Format::Task,
+                ('1', _) => Format::Heading(1),
+                ('2', _) => Format::Heading(2),
+                ('3', _) => Format::Heading(3),
+                _ => return None,
+            })
+        }
         (Key::Left, false, true, _) if matches!(section, Section::Notes | Section::Files) => {
             Msg::Nav(Nav::Left)
         }
@@ -189,6 +211,18 @@ pub fn bindings(section: Section) -> Vec<(&'static str, &'static str)> {
             ("Backspace or Alt+Left", "up to the parent folder"),
             ("F2", "rename the note"),
             ("Ctrl+S", "save now (notes also save as you type)"),
+            (
+                "Ctrl+E, or click the text",
+                "edit the Markdown / show it formatted",
+            ),
+            ("Ctrl+B / Ctrl+I", "bold / italic"),
+            ("Ctrl+Shift+X / Ctrl+Shift+H", "strikethrough / highlight"),
+            ("Ctrl+`", "code"),
+            (
+                "Ctrl+1 / 2 / 3",
+                "heading (desktop; the browser keeps them for tabs)",
+            ),
+            ("Ctrl+L", "make the line a task"),
         ]),
         Section::Todo => out.extend([
             ("Space", "tick or untick the task"),

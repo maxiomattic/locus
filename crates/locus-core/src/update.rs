@@ -54,6 +54,15 @@ fn dispatch(app: &mut App, msg: Msg, now: Now, fx: &mut Vec<Effect>) {
         Msg::Nav(nav) => nav_key(app, fx, nav),
         Msg::Activate => activate(app, fx),
         Msg::OpenDir(path) => crate::files::open_dir(app, &path),
+        Msg::ToggleNoteSource => notes::toggle_source(app, fx),
+        Msg::EditNoteAt(line) => notes::edit_at(app, fx, line),
+        Msg::ToggleTaskAt(line) => notes::toggle_task_at(app, fx, line),
+        Msg::FollowLink(link) => notes::follow_link(app, fx, link),
+        Msg::FormatNote(format) => {
+            if app.editor.is_some() && app.notes.source {
+                fx.push(Effect::FormatEditor(format));
+            }
+        }
         Msg::SortFilesBy(key) => crate::files::sort_by(app, key),
         Msg::SortFilesDescending(d) => crate::files::set_descending(app, d),
         Msg::Edit => edit(app, fx),
@@ -512,6 +521,7 @@ fn escape(app: &mut App, fx: &mut Vec<Effect>) {
         }
         Focus::Editor => {
             notes::flush_editor(app, fx);
+            app.notes.source = false;
             app.focus = Focus::List;
         }
         Focus::Detail if app.section == Section::Notes => {

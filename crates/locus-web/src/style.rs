@@ -71,17 +71,30 @@ impl Colors {
         self.accent = Color::from_rgb8(r, g, b);
         let lum = |v: u8| {
             let c = f32::from(v) / 255.0;
-            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
         };
         let l = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
-        self.on_accent = if l > 0.18 { hex(0x0d1117) } else { hex(0xffffff) };
+        self.on_accent = if l > 0.18 {
+            hex(0x0d1117)
+        } else {
+            hex(0xffffff)
+        };
         self
     }
 
     /// The iced theme built from the same colours, so built-in widgets match.
     pub fn theme(&self) -> Theme {
         Theme::custom(
-            if self.light { "Locus Light" } else { "Locus Dark" }.to_string(),
+            if self.light {
+                "Locus Light"
+            } else {
+                "Locus Dark"
+            }
+            .to_string(),
             Palette {
                 background: self.bg,
                 text: self.text,
@@ -156,7 +169,11 @@ pub fn row_button(
             background: Some(Background::Color(bg)),
             text_color: c.text,
             border: Border {
-                color: if selected { with_alpha(c.accent, 0.5) } else { Color::TRANSPARENT },
+                color: if selected {
+                    with_alpha(c.accent, 0.5)
+                } else {
+                    Color::TRANSPARENT
+                },
                 width: 1.0,
                 radius: Radius::from(6.0),
             },
@@ -224,10 +241,18 @@ pub fn tile_button(c: Colors) -> impl Fn(&Theme, button::Status) -> button::Styl
     move |_, status| {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
-            background: Some(Background::Color(if hovered { c.selected_fill() } else { c.card })),
+            background: Some(Background::Color(if hovered {
+                c.selected_fill()
+            } else {
+                c.card
+            })),
             text_color: c.text,
             border: Border {
-                color: if hovered { with_alpha(c.accent, 0.5) } else { c.border },
+                color: if hovered {
+                    with_alpha(c.accent, 0.5)
+                } else {
+                    c.border
+                },
                 width: 1.0,
                 radius: Radius::from(10.0),
             },
@@ -244,7 +269,11 @@ pub fn row_fill(c: Colors, selected: bool) -> container::Style {
         text_color: Some(c.text),
         background: selected.then(|| Background::Color(c.selected_fill())),
         border: Border {
-            color: if selected { with_alpha(c.accent, 0.5) } else { Color::TRANSPARENT },
+            color: if selected {
+                with_alpha(c.accent, 0.5)
+            } else {
+                Color::TRANSPARENT
+            },
             width: 1.0,
             radius: Radius::from(6.0),
         },

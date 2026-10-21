@@ -431,6 +431,8 @@ pub struct NotesState {
     pub history: Option<NoteHistory>,
     /// A move of a note into another notebook on its way.
     pub moving: Option<NoteMove>,
+    /// The open note shows its Markdown source; otherwise it is rendered.
+    pub source: bool,
 }
 
 /// A note moving into another notebook.

@@ -276,9 +276,12 @@ fn n_creates_untitled_and_opens_it_in_the_editor() {
             note: created,
         },
     );
-    assert!(fx.is_empty());
+    // A new note opens in its source, ready to type.
+    assert_eq!(fx, vec![Effect::EditorCursor { line: 0 }]);
     assert_eq!(app.focus, Focus::Editor);
-    assert_eq!(view_model::editor(&app).unwrap().note_id, 2);
+    let ed = view_model::editor(&app).unwrap();
+    assert_eq!(ed.note_id, 2);
+    assert!(ed.source);
 }
 
 #[test]
@@ -360,4 +363,44 @@ fn bad_data_never_panics() {
     );
     send(&mut app, Msg::ConfirmAnswer(true));
     assert_eq!(app.focus, Focus::List);
+}
+
+#[test]
+fn rendered_notes_switch_to_source_tick_tasks_and_format() {
+    use locus_core::markdown::{Format, Link};
+    let mut app = loaded_notes(vec![note(5, "T", "# T\n- [ ] one\nsee [[Other]]", 3, 1)]);
+    open_first_note(&mut app);
+    let ed = view_model::editor(&app).unwrap();
+    assert!(!ed.source, "a note opens rendered");
+    assert_eq!(ed.blocks.len(), 3);
+
+    // A checkbox in the rendered note ticks the task and schedules a save.
+    let fx = send(&mut app, Msg::ToggleTaskAt(1));
+    assert_eq!(
+        app.editor.as_ref().unwrap().body,
+        "# T\n- [x] one\nsee [[Other]]"
+    );
+    assert!(fx.iter().any(|e| matches!(e, Effect::ScheduleSave { .. })));
+
+    // Formatting is for the source only.
+    assert!(send(&mut app, Msg::FormatNote(Format::Bold)).is_empty());
+    // A click on line 2 opens the source with the cursor there.
+    let fx = send(&mut app, Msg::EditNoteAt(2));
+    assert!(view_model::editor(&app).unwrap().source);
+    assert!(fx.contains(&Effect::EditorCursor { line: 2 }));
+    assert!(
+        send(&mut app, Msg::FormatNote(Format::Bold)).contains(&Effect::FormatEditor(Format::Bold))
+    );
+    // Ctrl+E goes back; so does Escape.
+    send(&mut app, Msg::ToggleNoteSource);
+    assert!(!view_model::editor(&app).unwrap().source);
+    send(&mut app, Msg::ToggleNoteSource);
+    send(&mut app, Msg::Escape);
+    assert!(!app.notes.source);
+
+    // A link to a missing note says so; a web link opens the browser.
+    send(&mut app, Msg::FollowLink(Link::Note("Other".into())));
+    assert!(app.status.text.contains("No note named Other"));
+    let fx = send(&mut app, Msg::FollowLink(Link::Url("https://x.y".into())));
+    assert!(fx.contains(&Effect::OpenUrl("https://x.y".into())));
 }

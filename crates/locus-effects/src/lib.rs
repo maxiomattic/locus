@@ -125,7 +125,12 @@ pub async fn run<P: Platform>(client: &Client, platform: &P, effect: Effect) -> 
     match effect {
         // Shell-handled: nothing to do here. The player is the shell's (native
         // or browser media), and it reports back with Msg::PlayerTick.
-        Effect::CopyToClipboard(_) | Effect::OpenSection(..) | Effect::Playback(_) => Vec::new(),
+        Effect::CopyToClipboard(_)
+        | Effect::OpenSection(..)
+        | Effect::Playback(_)
+        | Effect::EditorCursor { .. }
+        | Effect::FormatEditor(_)
+        | Effect::OpenUrl(_) => Vec::new(),
 
         Effect::LoadConversations => match client.list_all_conversations().await {
             Ok(conversations) => vec![Msg::ConversationsLoaded { conversations }],

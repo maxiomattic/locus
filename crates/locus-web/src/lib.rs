@@ -15,6 +15,7 @@ mod style;
 mod view;
 mod view_media;
 mod view_messages;
+mod view_note;
 
 use std::collections::{HashMap, HashSet};
 
@@ -198,14 +199,22 @@ impl Shell {
         ];
         // Timers only while something needs them: a player, or open Messages.
         if shell.app.player.is_some() {
-            subs.push(Subscription::run_with(PLAYER_POLL_MS, platform::ticks).map(|_| Message::PlayerPoll));
+            subs.push(
+                Subscription::run_with(PLAYER_POLL_MS, platform::ticks)
+                    .map(|_| Message::PlayerPoll),
+            );
         }
         // Frames only while the picture moves; a paused video keeps its last.
         if shell.player.is_video() && shell.app.player.as_ref().is_some_and(|p| p.playing) {
-            subs.push(Subscription::run_with(FRAME_MS, platform::ticks).map(|_| Message::PlayerFrame));
+            subs.push(
+                Subscription::run_with(FRAME_MS, platform::ticks).map(|_| Message::PlayerFrame),
+            );
         }
         if shell.logged_in && shell.app.section == Section::Messages {
-            subs.push(Subscription::run_with(MESSAGES_POLL_MS, platform::ticks).map(|_| Message::Core(Msg::Poll)));
+            subs.push(
+                Subscription::run_with(MESSAGES_POLL_MS, platform::ticks)
+                    .map(|_| Message::Core(Msg::Poll)),
+            );
         }
         Subscription::batch(subs)
     }
@@ -277,7 +286,9 @@ impl Shell {
             Message::PlayerPoll => {
                 let report = self.player.poll();
                 // A paused video gets no frame timer, so a seek shows here.
-                if !report.playing && let Some(frame) = self.player.frame() {
+                if !report.playing
+                    && let Some(frame) = self.player.frame()
+                {
                     self.frame = Some(frame);
                 }
                 let mut msgs = vec![Msg::PlayerTick {
@@ -294,10 +305,8 @@ impl Shell {
                 self.update(Message::Msgs(msgs))
             }
             Message::Scrolled(id, viewport) => {
-                self.viewports.insert(
-                    id,
-                    (viewport.absolute_offset().y, viewport.bounds().height),
-                );
+                self.viewports
+                    .insert(id, (viewport.absolute_offset().y, viewport.bounds().height));
                 self.sync()
             }
             Message::Thumb(key, result) => {
@@ -330,8 +339,7 @@ impl Shell {
             self.logged_in = false;
         }
         let effects = locus_core::update(&mut self.app, msg, platform::clock());
-        let mut tasks: Vec<Task<Message>> =
-            effects.into_iter().map(|e| self.effect(e)).collect();
+        let mut tasks: Vec<Task<Message>> = effects.into_iter().map(|e| self.effect(e)).collect();
         if !self.logged_in && self.app.focus != Focus::Input(InputKind::Login) {
             tasks.push(self.apply(Msg::BeginLogin));
         }
@@ -347,6 +355,14 @@ impl Shell {
                 return Task::none();
             }
             Effect::Playback(cmd) => return self.playback(cmd),
+            Effect::EditorCursor { line } => return self.editor_cursor(line),
+            Effect::FormatEditor(format) => return self.format_editor(format),
+            Effect::OpenUrl(url) => {
+                if let Some(w) = web_sys::window() {
+                    let _ = w.open_with_url_and_target(&url, "_blank");
+                }
+                return Task::none();
+            }
             _ => {}
         }
         let client = self.client.clone();
@@ -362,9 +378,11 @@ impl Shell {
             self.frame = None;
         }
         let uri = match &cmd {
-            PlayerCmd::Load { sha256, name, .. } => {
-                self.client.blob_url(sha256, Some(name)).ok().map(|u| u.to_string())
-            }
+            PlayerCmd::Load { sha256, name, .. } => self
+                .client
+                .blob_url(sha256, Some(name))
+                .ok()
+                .map(|u| u.to_string()),
             _ => None,
         };
         match self.player.command(cmd, uri.as_deref()) {
@@ -390,6 +408,41 @@ impl Shell {
         keymap(&self.app, key, mods)
     }
 
+    /// Cursor to the start of `line` of the note source, and focus there.
+    fn editor_cursor(&mut self, line: usize) -> Task<Message> {
+        let sync = self.sync();
+        let line = line.min(self.editor.line_count().saturating_sub(1));
+        self.editor.move_to(text_editor::Cursor {
+            position: text_editor::Position { line, column: 0 },
+            selection: None,
+        });
+        self.focused = Some("editor");
+        Task::batch([sync, operation::focus::<Message>("editor")])
+    }
+
+    /// Apply a toolbar format to the editor's selection, then tell the core.
+    fn format_editor(&mut self, format: locus_core::markdown::Format) -> Task<Message> {
+        let cursor = self.editor.cursor();
+        let a = cursor.selection.unwrap_or(cursor.position);
+        let b = cursor.position;
+        let out = locus_core::markdown::apply_format(
+            &self.editor.text(),
+            (a.line, a.column),
+            (b.line, b.column),
+            format,
+        );
+        self.editor = text_editor::Content::with_text(&out.text);
+        let pos = |(line, column): (usize, usize)| text_editor::Position { line, column };
+        self.editor.move_to(text_editor::Cursor {
+            position: pos(out.end),
+            selection: (out.start != out.end).then(|| pos(out.start)),
+        });
+        self.editor_synced = out.text.clone();
+        let changed = self.apply(Msg::EditorChanged(out.text));
+        self.focused = Some("editor");
+        Task::batch([changed, operation::focus::<Message>("editor")])
+    }
+
     fn editor_action(&mut self, action: text_editor::Action) -> Task<Message> {
         let edit = action.is_edit();
         let mut tasks = Vec::new();
@@ -412,7 +465,9 @@ impl Shell {
     fn sync(&mut self) -> Task<Message> {
         match &self.app.editor {
             Some(ed) => {
-                if self.editor_note.as_deref() != Some(ed.uid().as_str()) || self.editor_synced != ed.body {
+                if self.editor_note.as_deref() != Some(ed.uid().as_str())
+                    || self.editor_synced != ed.body
+                {
                     self.editor = text_editor::Content::with_text(&ed.body);
                     self.editor_synced = ed.body.clone();
                     self.editor_note = Some(ed.uid());
@@ -488,7 +543,9 @@ impl Shell {
     fn selection_rect(&self) -> Option<(&'static str, f32, f32)> {
         let app = &self.app;
         if app.focus == Focus::Palette {
-            let i = view_model::palette_rows(app).iter().position(|r| r.selected)?;
+            let i = view_model::palette_rows(app)
+                .iter()
+                .position(|r| r.selected)?;
             return Some(("palette-list", i as f32 * PALETTE_ROW_H, PALETTE_ROW_H));
         }
         if let Some(picker) = view_model::move_picker(app) {
@@ -497,13 +554,18 @@ impl Shell {
         }
         match app.section {
             Section::Notes => {
-                let i = view_model::notes_list(app).iter().position(|r| r.selected)?;
+                let i = view_model::notes_list(app)
+                    .iter()
+                    .position(|r| r.selected)?;
                 Some(("notes", i as f32 * ROW_H, ROW_H))
             }
             Section::Todo => {
                 let mut y = 0.0;
                 // Empty groups are not drawn.
-                for group in view_model::todo_groups(app).into_iter().filter(|g| g.count > 0) {
+                for group in view_model::todo_groups(app)
+                    .into_iter()
+                    .filter(|g| g.count > 0)
+                {
                     y += HEADER_H;
                     for task in &group.items {
                         if task.selected {
@@ -546,7 +608,11 @@ impl Shell {
             Section::Movies | Section::Music => {
                 let rows = view_model::media_rows(app, app.section);
                 let i = rows.iter().position(|r| r.selected)?;
-                let id = if app.section == Section::Movies { "movies" } else { "music" };
+                let id = if app.section == Section::Movies {
+                    "movies"
+                } else {
+                    "music"
+                };
                 Some((id, i as f32 * MEDIA_ROW_H, MEDIA_ROW_H))
             }
             Section::Messages => {
@@ -555,7 +621,9 @@ impl Shell {
                 Some(("conversations", i as f32 * CONVERSATION_H, CONVERSATION_H))
             }
             Section::Contacts => {
-                let i = view_model::contact_rows(app).iter().position(|r| r.selected)?;
+                let i = view_model::contact_rows(app)
+                    .iter()
+                    .position(|r| r.selected)?;
                 Some(("contacts", i as f32 * ROW_H, ROW_H))
             }
         }
@@ -581,7 +649,12 @@ impl Shell {
                 let row_h = tile_px(self.pane_w()) + GAP;
                 let first = (offset / row_h).floor().max(0.0) as usize;
                 let last = ((offset + view_h) / row_h).ceil() as usize + 1;
-                for row in grid.rows.iter().skip(first).take(last.saturating_sub(first)) {
+                for row in grid
+                    .rows
+                    .iter()
+                    .skip(first)
+                    .take(last.saturating_sub(first))
+                {
                     for cell in row {
                         if let Some(hash) = &cell.hash {
                             wanted.push((format!("{hash}@256"), hash.clone(), 256));
@@ -710,6 +783,10 @@ pub fn run() -> iced::Result {
         .title(|s: &Shell| view_model::window_title(&s.app))
         .theme(Shell::theme)
         .subscription(Shell::subscription)
+        .font(view_note::FONTS[0])
+        .font(view_note::FONTS[1])
+        .font(view_note::FONTS[2])
+        .font(view_note::FONTS[3])
         .run()
 }
 

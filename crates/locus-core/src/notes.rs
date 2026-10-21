@@ -458,6 +458,7 @@ pub fn open_editor(app: &mut App, fx: &mut Vec<Effect>, key: &NbKey, id: u64) {
         conflict: false,
         moving: is_moving,
     }));
+    app.notes.source = false;
     app.focus = Focus::Editor;
 }
 
@@ -616,6 +617,8 @@ pub fn note_created(app: &mut App, fx: &mut Vec<Effect>, nb: NotebookSummary, no
     if app.notes.open_on_create {
         app.notes.open_on_create = false;
         goto_note(app, fx, &NbKey::of(&nb), id);
+        app.notes.source = true;
+        fx.push(Effect::EditorCursor { line: 0 });
         app.info("Created note");
     } else if title == crate::todo::INBOX_TITLE {
         app.info("Added task to Inbox");
@@ -1702,5 +1705,75 @@ fn drop_history_if_gone(app: &mut App) {
         .is_some_and(|h| find(app, &h.note.nb, h.note.id).is_none());
     if gone {
         close_history(app);
+    }
+}
+
+// ----- rendered notes -----
+
+/// Ctrl+E: between the rendered note and its source.
+pub fn toggle_source(app: &mut App, fx: &mut Vec<Effect>) {
+    if app.editor.is_none() {
+        return;
+    }
+    app.notes.source = !app.notes.source;
+    if app.notes.source {
+        app.focus = Focus::Editor;
+        fx.push(Effect::EditorCursor { line: 0 });
+    } else {
+        flush_editor(app, fx);
+    }
+}
+
+/// A click on the rendered note: its source, with the cursor on `line`.
+pub fn edit_at(app: &mut App, fx: &mut Vec<Effect>, line: usize) {
+    if app.editor.is_none() {
+        return;
+    }
+    app.notes.source = true;
+    app.focus = Focus::Editor;
+    fx.push(Effect::EditorCursor { line });
+}
+
+/// A checkbox in the rendered note: tick or untick that task and save.
+pub fn toggle_task_at(app: &mut App, fx: &mut Vec<Effect>, line: usize) {
+    let Some(body) = app.editor.as_ref().map(|e| e.body.clone()) else {
+        return;
+    };
+    match crate::markdown::toggle_task_line(&body, line) {
+        Some(new) => editor_changed(app, new, fx),
+        None => app.info("That line is not a task"),
+    }
+}
+
+/// A link in the rendered note. A note link opens the note with that title,
+/// looked for in the open note's notebook first, then in every notebook. A
+/// tag searches the notes for it.
+pub fn follow_link(app: &mut App, fx: &mut Vec<Effect>, link: crate::markdown::Link) {
+    use crate::markdown::Link;
+    match link {
+        Link::Url(url) => fx.push(Effect::OpenUrl(url)),
+        Link::Tag(tag) => {
+            app.filter = format!("#{tag}");
+            app.info(format!("Notes with #{tag}"));
+        }
+        Link::Note(title) => {
+            let want = title.trim().to_lowercase();
+            let want = want.trim_end_matches(".md");
+            let here = app.editor.as_ref().map(|e| NbKey::of(&e.nb));
+            let found = here
+                .iter()
+                .filter_map(|k| app.notes.book(k))
+                .chain(app.notes.books.iter())
+                .find_map(|b| {
+                    b.notes
+                        .iter()
+                        .find(|n| n.title.trim().to_lowercase() == want)
+                        .map(|n| (b.key(), n.id))
+                });
+            match found {
+                Some((key, id)) => goto_note(app, fx, &key, id),
+                None => app.info(format!("No note named {title}")),
+            }
+        }
     }
 }

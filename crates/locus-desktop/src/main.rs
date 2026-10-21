@@ -13,6 +13,7 @@ mod player;
 mod view;
 mod view_media;
 mod view_messages;
+mod view_note;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -319,6 +320,14 @@ impl App {
             Effect::Login { code } => self.login(code),
             Effect::OpenSection(section, target) => self.open_section(section, target),
             Effect::Playback(cmd) => self.playback(cmd),
+            Effect::EditorCursor { line } => self.editor_cursor(line),
+            Effect::FormatEditor(format) => self.format_editor(format),
+            Effect::OpenUrl(url) => {
+                if let Err(e) = open::that_detached(&url) {
+                    eprintln!("locus: cannot open {url}: {e}");
+                }
+                Task::none()
+            }
             other => match self.client.clone() {
                 Some(client) => run_effect(client, other),
                 None => Task::none(),
@@ -653,6 +662,41 @@ impl App {
             Some(msg) => self.dispatch(msg),
             None => Task::none(),
         }
+    }
+
+    /// Cursor to the start of `line` of the note source, and focus there.
+    fn editor_cursor(&mut self, line: usize) -> Task<Message> {
+        self.sync_editor();
+        let line = line.min(self.content.line_count().saturating_sub(1));
+        self.content.move_to(text_editor::Cursor {
+            position: text_editor::Position { line, column: 0 },
+            selection: None,
+        });
+        self.focused = Some(view::EDITOR_ID.into());
+        widget::text_input::focus(self.editor_id.clone())
+    }
+
+    /// Apply a toolbar format to the editor's selection, then tell the core.
+    fn format_editor(&mut self, format: locus_core::markdown::Format) -> Task<Message> {
+        let cursor = self.content.cursor();
+        let a = cursor.selection.unwrap_or(cursor.position);
+        let b = cursor.position;
+        let out = locus_core::markdown::apply_format(
+            &self.content.text(),
+            (a.line, a.column),
+            (b.line, b.column),
+            format,
+        );
+        self.content = text_editor::Content::with_text(&out.text);
+        let pos = |(line, column): (usize, usize)| text_editor::Position { line, column };
+        self.content.move_to(text_editor::Cursor {
+            position: pos(out.end),
+            selection: (out.start != out.end).then(|| pos(out.start)),
+        });
+        self.synced_body = out.text.clone();
+        let changed = self.dispatch(Msg::EditorChanged(out.text));
+        self.focused = Some(view::EDITOR_ID.into());
+        Task::batch([changed, widget::text_input::focus(self.editor_id.clone())])
     }
 
     fn on_editor(&mut self, action: text_editor::Action) -> Task<Message> {

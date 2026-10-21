@@ -37,6 +37,7 @@ stdenv.mkDerivation {
       (web + "/Cargo.lock")
       (web + "/index.html")
       (web + "/src")
+      (web + "/fonts")
       (root + "/crates/locus-core")
       (root + "/crates/locus-client")
       (root + "/crates/locus-effects")

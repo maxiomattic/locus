@@ -14,6 +14,7 @@
 
 pub mod date;
 pub mod keymap;
+pub mod markdown;
 pub mod media;
 pub mod messages;
 pub mod msg;

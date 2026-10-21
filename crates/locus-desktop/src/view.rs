@@ -728,20 +728,27 @@ pub(crate) fn editor_pane(app: &App, editor: EditorView) -> Element<'_, Message>
     };
     // Rename and Delete live in the toolbar: they act on the selected row,
     // which need not be the open note.
-    let header = widget::row::with_capacity(2)
+    let (mode, tip) = if editor.source {
+        ("Done", "Show the note formatted (Ctrl+E)")
+    } else {
+        ("Edit", "Edit the Markdown (Ctrl+E, or click the text)")
+    };
+    let header = widget::row::with_capacity(3)
         .spacing(s.space_xs)
         .align_y(Alignment::Center)
         .push(widget::text::title4(editor.title).width(Length::Fill))
-        .push(status);
-    let text = widget::text_editor::text_editor(&app.content)
-        .id(app.editor_id.clone())
-        .on_action(Message::Editor)
-        .padding(s.space_s)
-        .height(Length::Fill);
+        .push(status)
+        .push(tool(mode, tip, Some(Msg::ToggleNoteSource)));
+    let body = if editor.source {
+        crate::view_note::source(app)
+    } else {
+        let last_line = editor.body.lines().count().saturating_sub(1);
+        crate::view_note::rendered(&editor.blocks, last_line)
+    };
     widget::column::with_capacity(2)
         .spacing(s.space_xs)
         .push(header)
-        .push(text)
+        .push(body)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
