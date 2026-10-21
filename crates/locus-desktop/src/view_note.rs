@@ -136,8 +136,8 @@ fn toolbar<'a>() -> Element<'a, Message> {
         gap(),
         b("•", "Bulleted list", Format::Bullet),
         b("1.", "Numbered list", Format::Numbered),
-        b("☐", "Task (Ctrl+L)", Format::Task),
-        b("❝", "Quote", Format::Quote),
+        b("[ ]", "Task (Ctrl+L)", Format::Task),
+        b(">", "Quote", Format::Quote),
         b("{ }", "Code block", Format::CodeBlock),
         gap(),
         b("[[ ]]", "Link to a note", Format::WikiLink),
@@ -146,6 +146,27 @@ fn toolbar<'a>() -> Element<'a, Message> {
     .spacing(s.space_xxxs)
     .align_y(Alignment::Center)
     .into()
+}
+
+/// The editor's own key handling, minus Ctrl+letter: those are app
+/// shortcuts (Ctrl+B, Ctrl+E...), and some browsers deliver their letter
+/// as text too. Copy, cut, paste, select all and undo stay the editor's.
+fn editor_keys(
+    press: cosmic::iced::widget::text_editor::KeyPress,
+) -> Option<cosmic::iced::widget::text_editor::Binding<Message>> {
+    use cosmic::iced::keyboard::Key;
+    let ctrl = press.modifiers.control() || press.modifiers.logo();
+    if ctrl && !press.modifiers.alt() {
+        if let Key::Character(c) = &press.key {
+            if !matches!(
+                c.as_str(),
+                "c" | "x" | "v" | "a" | "z" | "y" | "C" | "X" | "V" | "A" | "Z" | "Y"
+            ) {
+                return None;
+            }
+        }
+    }
+    cosmic::iced::widget::text_editor::Binding::from_key_press(press)
 }
 
 /// The source editor and its toolbar.
@@ -157,6 +178,7 @@ pub(crate) fn source(app: &App) -> Element<'_, Message> {
         .padding(s.space_s)
         .size(BODY)
         .height(Length::Fill)
+        .key_binding(editor_keys)
         .highlight_with::<MarkdownHighlighter>((), source_format);
     widget::column::with_capacity(2)
         .spacing(s.space_xs)

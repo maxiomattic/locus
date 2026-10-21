@@ -152,8 +152,8 @@ fn toolbar<'a>(c: Colors) -> Element<'a, Message> {
         gap(),
         b("•", "Bulleted list", Format::Bullet),
         b("1.", "Numbered list", Format::Numbered),
-        b("☐", "Task (Ctrl+L)", Format::Task),
-        b("❝", "Quote", Format::Quote),
+        b("[ ]", "Task (Ctrl+L)", Format::Task),
+        b(">", "Quote", Format::Quote),
         b("{ }", "Code block", Format::CodeBlock),
         gap(),
         b("[[ ]]", "Link to a note", Format::WikiLink),
@@ -162,6 +162,27 @@ fn toolbar<'a>(c: Colors) -> Element<'a, Message> {
     .spacing(2)
     .align_y(iced::Center)
     .into()
+}
+
+/// The editor's own key handling, minus Ctrl+letter: those are app
+/// shortcuts (Ctrl+B, Ctrl+E...), and some browsers deliver their letter
+/// as text too. Copy, cut, paste, select all and undo stay the editor's.
+fn editor_keys(
+    press: iced::widget::text_editor::KeyPress,
+) -> Option<iced::widget::text_editor::Binding<Message>> {
+    use iced::keyboard::Key;
+    let ctrl = press.modifiers.control() || press.modifiers.logo();
+    if ctrl && !press.modifiers.alt() {
+        if let Key::Character(c) = &press.key {
+            if !matches!(
+                c.as_str(),
+                "c" | "x" | "v" | "a" | "z" | "y" | "C" | "X" | "V" | "A" | "Z" | "Y"
+            ) {
+                return None;
+            }
+        }
+    }
+    iced::widget::text_editor::Binding::from_key_press(press)
 }
 
 /// The source editor and its toolbar.
@@ -173,6 +194,7 @@ pub fn source(s: &Shell) -> Element<'_, Message> {
         .padding(12)
         .size(BODY)
         .height(Fill)
+        .key_binding(editor_keys)
         .highlight_with::<MarkdownHighlighter>((), source_format);
     column![toolbar(c), editor].spacing(8).height(Fill).into()
 }
