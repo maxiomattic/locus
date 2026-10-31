@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Locus command plane</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Locus command plane</h1>
+
+<p>Clan identity, named functions, OS-mutating commands behind human approval, append-only audit. Notes stay in <code>%notes</code>; Gall <code>%locus</code> lives on Clay desk <code>%locus</code> (same desk as <code>%notes</code> / <code>%calendar</code> / <code>%photos</code> / <code>%contacts</code>).
+
+<p><strong>Done when:</strong> a second principal exists on the ship; <code>os.rebuild</code> from an agent queues and cannot approve; an owner/member can approve; <code>history.purge</code> is denied and the audit log still has entries; <code>locus</code> CLI talks to the same functions.
+
+<h2>Functions</h2>
+
+<table>
+<tr><th>Name<th>Who
+<tr><td><code>household.list</code> / <code>household.add</code> / <code>household.grant</code><td>list: any member; add/grant: owner
+<tr><td><code>household.issue-key</code><td>owner — mint/rotate a member <code>X-Api-Key</code> (shown once)
+<tr><td><code>os.rebuild</code> / <code>os.rollback</code><td>any member (including agent) — <strong>queues</strong>, does not run
+<tr><td><code>os.approve</code> / <code>os.deny</code> / <code>os.executed</code><td>owner or member, <strong>never agent</strong>
+<tr><td><code>audit.list</code><td>any member
+<tr><td><code>history.purge</code> / <code>zfs.destroy</code><td>always denied
+</table>
+
+<p><code>GET /locus/~/v1/whoami</code> returns the authenticated principal. Cookie or the owner <code>api-key</code> is the ship owner; a member key in the <code>keys</code> map is that ship. Agents must call with their own key. <code>--as</code> is owner-only (Hoon tests / running a worker from the owner session).
+
+<p>On init the ship (<code>our</code>) is the owner. Add moons/planets as <code>member</code> or <code>agent</code>. <code>household.add</code> returns <code>apiKey</code> once; <code>household.issue-key</code> rotates it.
+
+<p>The Gall agent does <strong>not</strong> run <code>nixos-rebuild</code>. Host-side <code>locus execute &lt;id></code> dry-activates unless <code>LOCUS_OS_EXECUTE=1</code>.
+
+<h2>Check on the bring-up VM</h2>
+
+<p>On the bring-up VM, rsync + OCC + this check is one command:
+
+<pre><code>./scripts/server-vm.sh locus
+</code></pre>
+
+<p>Or after the desk is already committed: <code>EYRE_URL=http://127.0.0.1 ./scripts/locus-check.sh</code> on the guest (host Eyre is <code>http://127.0.0.1:8080</code>).
+
+<p>On the laptop, after a session exists:
+
+<pre><code>nix develop
+cargo run -p locus-command --bin locus -- help
+# pipe +code or a 600 file:
+locus login /path/to/code
+locus add ~dev worker agent          # prints apiKey once
+locus call os.rebuild '{"flake":".#server"}'   # owner session
+# agent calls use X-Api-Key from add / issue-key, not --as
+locus approve 1
+# mutating switch is opt-in:
+# LOCUS_OS_EXECUTE=1 locus execute 1
+</code></pre>
+
+<p>Default Eyre URL is <code>http://127.0.0.1:8080</code> (<code>LOCUS_EYRE_URL</code> or <code>NOTES_EYRE_URL</code>).

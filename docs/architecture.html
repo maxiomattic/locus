@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Locus: architecture</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Locus: architecture</h1>
+
+<p>High-level decisions that serve <a href="intent.md">intent.md</a>. These are expected to change. Details belong in the code.
+
+<p>This is the target design, decided 2026-10-30. The running system still keeps its data in Urbit agents and uses Ames, as described in <a href="status.html">status.html</a> and <a href="urbit.html">urbit.html</a>. Nothing below has been built yet.
+
+<h2>Decisions</h2>
+
+<ol>
+<li><strong>Clan identity.</strong> Each clan has one Urbit planet as its root identity, with one administrator. Urbit is used for identity only: no ship runs. The planet's authentication key, published in Azimuth, signs a certificate for each server, device and agent key. These replace moons. Ethereum is read only to look up a key, such as when meeting another clan.
+<li><strong>Server stack.</strong> NixOS for a declarative system with rollback, ZFS for snapshots, and the Locus store for the clan's state. A server can be restored from a snapshot, which a ship could not do. Heavy software (AI inference, games, 3D, video) runs on the host and is launched through Locus operations.
+<li><strong>Data.</strong> Everything is built from six primitives, listed below. The store is one SQLite database on each machine, plus blobs on disk.
+<li><strong>One action layer.</strong> Every action is an operation. Keyboard, mouse and agents all call the same operations. Permissions are per member and per agent, and everything is audited. An agent's proposal is a branch of unapplied operations, reviewed as a diff.
+<li><strong>Safety.</strong> Deletions and overwrites can always be recovered (the operation log, ZFS snapshots). The exception is an explicit purge, for something like a leaked password. Changes to the operating system need a human's approval and can be rolled back.
+<li><strong>Sync.</strong> Every object has one home server, which orders its operations and checks their permissions. Clients keep a partial copy, apply operations at once, then replay them on top of the server's order. They keep working offline, but their changes stay provisional until the server accepts them, and devices do not sync with each other directly. A conflict keeps both versions. Nothing is ever silently overwritten. Text bodies use a CRDT, because a person and an agent will often edit the same one at once.
+<li><strong>Interfaces.</strong> Built in Rust as standard point-and-click GUIs, with keyboard shortcuts, from one framework-agnostic core (state, keymap, update logic) shared by thin shells. Android comes later. Views attach to traits, not to apps. The shells (libcosmic on the desktop, iced in the browser) need review, because full HTML pages need a real HTML engine.
+<li><strong>Components.</strong> Small parts that each do one thing. Outside code is taken as hard forks of small pieces, never as soft forks of large projects.
+<li><strong>Distribution.</strong> Locus ships as a Nix flake. A clan follows upstream or points at its own fork. Every update can be rolled back.
+<li><strong>Feedback.</strong> A request carries its context (app, version, recent actions), becomes an issue, an agent drafts a change and a preview, and the administrator approves it before it ships.
+<li><strong>Reachability.</strong> Clans and devices reach each other over iroh: QUIC connections dialled by public key, with hole punching and relays that see only encrypted packets. Keys are tied to Urbit IDs by the certificates in decision 1. Ames is dropped. A relay or tunnel is an acceptable pipe, but never a place where data is stored or identity is managed.
+<li><strong>Gateway.</strong> A small host process serves the browser app and blobs over HTTPS and WebSocket, so the browser sees one origin. It checks every request against the clan's permissions.
+</ol>
+
+<h2>Data primitives</h2>
+
+<table>
+<tr><th>Primitive<th>What it is
+<tr><td>Object<td>A stable ID, a type, fields and an optional body. Notes, meetings, people, photos and messages all have this shape. Names and locations are fields, so renames and moves break nothing.
+<tr><td>Type<td>Declares an object's fields, its operations and how concurrent edits merge. Types implement shared traits such as timed, located or titled.
+<tr><td>Operation<td>The only way anything changes. The log of operations is the source of truth. An entry records who acted, on whose behalf, what they intended and the resulting change.
+<tr><td>Reference<td>A pointer to an object's ID, in a field or inline in text. It can pin a version. The graph is an index built from references.
+<tr><td>Blob<td>Immutable bytes addressed by BLAKE3 hash. An object points to them.
+<tr><td>View<td>A live query over the rest. It is derived and can always be rebuilt. A reaction invokes an operation when a view's result changes.
+</table>
+
+<p>Members, agents and permissions are ordinary objects, so changing a permission is an audited operation.
+
+<h2>Formats</h2>
+
+<p>A format is used internally only if it adds no structure the primitives have to work around. Everything else is a compatibility layer.
+
+<ul>
+<li><strong>Internal:</strong> HTML for text, SQLite, BLAKE3, and media and documents as their original bytes.
+<li><strong>Import and export only:</strong> Markdown, iCalendar and JSCalendar, vCard and JSContact.
+<li><strong>Generated:</strong> JSON Schema, for agent tools over MCP. Types use our own definitions.
+</ul>
+
+<p>A text body is a tree of blocks with stable IDs, written as HTML:
+
+<pre><code>&lt;h2 id="b1">Prep for Tuesday&lt;/h2>
+&lt;p id="b2">Confirm the room with &lt;a href="locus:01J…">Lauren&lt;/a>.&lt;/p>
+&lt;img id="b3" src="blob:…" alt="Floor plan">
+</code></pre>
+
+<p>The CRDT holds the tree, and agents read and write HTML. Bodies are a strict subset: semantic elements, tables, images, MathML and sanitized SVG, with no scripts, styles or event handlers. This is enforced on every write.
+
+<p>Interactive pages are a separate type. A <code>page</code> object holds full HTML as a blob and renders in a sandbox with no network or Locus access. It can only request operations, which go through the normal permission check.
+
+<h2>Compatibility</h2>
+
+<ul>
+<li><strong>Export</strong> is a View that renders objects into a foreign format.
+<li><strong>Import</strong> is a batch of Operations, so it is attributed and can be undone.
+<li><strong>A live file mount</strong> for legacy tools is both.
+<li><strong>A lossless archive</strong> (the full log and blobs) is the backup and migration format. Interoperable exports (<code>.html</code>, <code>.md</code>, <code>.ics</code>, <code>.vcf</code>) declare what they drop.
+</ul>
+
+<h2>Open questions</h2>
+
+<ul>
+<li>Which CRDT library? It needs a benchmark on real notes, covering tree moves and marks.
+<li>Which HTML engine renders pages on the desktop, and do the shells change?
+<li>Which runtime should serve local AI inference?
+<li>Are tasks still lines of text inside notes, or their own objects?
+</ul>

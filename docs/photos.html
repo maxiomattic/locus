@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Photo library and contacts</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Photo library and contacts</h1>
+
+<p>Catalog (albums, tags, relative paths, OCC) lives in Gall on <strong>our</strong> <code>%locus</code> desk. JPEG/PNG <strong>bytes</strong> stay on ZFS at <code>/var/lib/locus/photos</code>. The client thumbnail cache is not a second library. Parent plan: <a href="plan.html">plan.html</a>.
+
+<p><strong>Done when (this slice):</strong> create/list/<code>expectedRevision</code> conflict pass for a photo and a contact against <strong>our</strong> desk; <code>..</code> and absolute catalog paths are rejected; Disko has <code>rpool/locus/photos</code>; first paint of a grid can hit SQLite thumbs without talking to Eyre.
+
+<h2>Layout</h2>
+
+<table>
+<tr><th>Path<th>Role
+<tr><td><code>desk/app/photos.hoon</code><td>Gall catalog (<code>/photos</code>)
+<tr><td><code>desk/app/contacts.hoon</code><td>Gall contacts (<code>/contacts</code>)
+<tr><td><code>nix/disko.nix</code><td><code>rpool/locus/photos</code> → <code>/var/lib/locus/photos</code>
+<tr><td><code>crates/photos-protocol</code><td>HTTP client + path rules
+<tr><td><code>crates/photos-sync</code><td>SQLite thumbnail cache
+<tr><td><code>scripts/photos-p4.sh</code><td>Live OCC
+</table>
+
+<p>Auth is the Eyre cookie or <code>X-Api-Key</code> (scry <code>/~/scry/photos/v0/api-key.json</code>).
+
+<p>A catalog <code>path</code> is ZFS-relative (<code>holidays/pier.jpg</code>). The agent refuses <code>/...</code> and <code>..</code>. Copy bytes onto the dataset separately; the ship never stores the file.
+
+<h2>Check</h2>
+
+<p>Automated (no ship): <code>./scripts/check.sh</code> (cargo + Disko photos dataset).
+
+<p>On the bring-up VM, after the desk is committed:
+
+<pre><code>./scripts/server-vm.sh p4
+</code></pre>
+
+<p>Or on the guest: <code>EYRE_URL=http://127.0.0.1 ./scripts/photos-p4.sh</code>
+
+<p>A libcosmic photo grid is a later slice. Instant grid means the thumb cache; this pass proves the cache and the catalog, not a window.

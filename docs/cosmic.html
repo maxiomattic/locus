@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>COSMIC client</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>COSMIC client</h1>
+
+<p>Thoroughly customized COSMIC desktop; <strong>the compositor stays <code>cosmic-comp</code></strong>. Tiling and modal/keyboard density are settings and overlays on that compositor — not Sway, niri, or Hyprland. The browser is ordinary client software declared in Nix; it does not live in Urbit.
+
+<p><strong>Done when:</strong> <code>nixosConfigurations.client</code> enables COSMIC + cosmic-greeter; <code>pkgs.cosmic-comp</code> is still <code>cosmic-comp</code>; autotile is on globally via <code>share/cosmic</code>; Firefox is <code>programs.firefox</code>; Sway/Hyprland/niri stay off. Check: <a href="../scripts/cosmic-check.sh">scripts/cosmic-check.sh</a>.
+
+<p>This module does <strong>not</strong> switch the GNOME laptop. Import it on a machine (or VM) that should run the Locus desktop. Do not <code>nixos-rebuild switch --flake .#client</code> at a disk that holds another OS.
+
+<h2>Layout</h2>
+
+<table>
+<tr><th>Path<th>Role
+<tr><td><code>nix/modules/client.nix</code><td><code>locus.client</code> — COSMIC, greeter, browser, tiling defaults
+<tr><td><code>nix/overlays/cosmic.nix</code><td>Patchset overlay (keep cosmic-comp; empty until we have patches)
+<tr><td><code>nix/cosmic-defaults.nix</code><td>System <code>share/cosmic</code> autotile / active hint
+<tr><td><code>nixosConfigurations.client</code><td>Evaluable example (placeholder root disk)
+</table>
+
+<p><code>~/.config/cosmic</code> on a live session still overrides system defaults.
+
+<h2>Check (no laptop rebuild)</h2>
+
+<pre><code>./scripts/cosmic-check.sh
+</code></pre>
+
+<p>That is <code>nix eval</code> / <code>nix build</code> of the example client, not <code>nixos-rebuild</code>.
+
+<h2>Browser</h2>
+
+<p><code>programs.firefox.enable</code> plus <code>locus.client.browser</code> (default <code>pkgs.firefox</code>). Wrap flags if you need them; do not hot-swap browser internals. Do not add a Gall “browser” agent.
+
+<h2>Later slices (not this pass)</h2>
+
+<ul>
+<li>Keyboard map: tiling-WM motions on cosmic-comp shortcuts (not a compositor swap)
+<li>Apply the overlay when cosmic-comp needs a real patch
+<li>Session that launches notes-app / <code>locus</code> as first-class clients
+</ul>

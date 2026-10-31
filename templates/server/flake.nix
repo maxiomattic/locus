@@ -9,7 +9,7 @@
   outputs =
     { locus, nixpkgs, ... }:
     {
-      # The disk formatter, pinned with Locus (docs/install.md step 3).
+      # The disk formatter, pinned with Locus (docs/install.html step 3).
       packages.x86_64-linux.disko = locus.inputs.disko.packages.x86_64-linux.disko;
 
       nixosConfigurations.server = nixpkgs.lib.nixosSystem {

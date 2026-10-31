@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ZFS on the clan server</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>ZFS on the clan server</h1>
+
+<p>Disko in this flake is the source of truth. Do not <code>zfs create</code> by hand. Ship boot: <a href="urbit.html">urbit.html</a>.
+
+<h2>Datasets</h2>
+
+<p>Pool <code>rpool</code> on the <strong>server</strong> disk only:
+
+<table>
+<tr><th>Dataset<th>Mount<th>Snapshots
+<tr><td><code>rpool/root</code><td><code>/</code><td>yes
+<tr><td><code>rpool/nix</code><td><code>/nix</code><td>no
+<tr><td><code>rpool/urbit</code><td>(not mounted)<td>no
+<tr><td><code>rpool/urbit/pier</code><td><code>/var/lib/urbit/pier</code><td>yes
+</table>
+
+<p>Set <code>locus.server.diskDevice</code> to that machine’s <code>/dev/disk/by-id/...</code> before any Disko format. The flake’s example configuration uses a placeholder path so it will not match a real disk.
+
+<p>Disko only lists that one disk. It will not format other disks. Format <strong>will</strong> wipe <code>diskDevice</code>.
+
+<h2>Apply (server, empty/dedicated disk)</h2>
+
+<ol>
+<li>Point <code>diskDevice</code> at the real server disk in the NixOS config that imports <code>nixosModules.server</code>.
+<li>On <strong>that</strong> machine, install/rebuild. First-time partition + pool:
+</ol>
+
+<p>   ``<code>bash
+   sudo nix run github:nix-community/disko -- --mode format,mount --flake .#server
+   sudo nixos-rebuild switch --flake .#server
+   </code>``
+
+<p>   Use <code>--mode format,mount</code> (create if missing). Do <strong>not</strong> pass <code>destroy</code> unless the disk is expendable and you intend to wipe it.
+
+<ol>
+<li>Confirm:
+</ol>
+
+<p>   ``<code>bash
+   zfs list -o name,mountpoint rpool/urbit/pier
+   findmnt /var/lib/urbit/pier
+   </code>``
+
+<p><code>nixos-rebuild</code> does not format disks; it mounts what Disko declared. The pier dataset exists after the Disko format/mount (or a later format that creates missing datasets) plus rebuild.
+
+<h2>Snapshots</h2>
+
+<p><code>services.zfs.autoSnapshot</code> takes 15-minute / hourly / daily / weekly / monthly snapshots on datasets with <code>com.sun:auto-snapshot=true</code> (<code>rpool/root</code>, <code>rpool/urbit/pier</code>).
+
+<p>Manual snapshot:
+
+<pre><code>sudo zfs snapshot rpool/urbit/pier@before-change
+</code></pre>
+
+<p>List:
+
+<pre><code>zfs list -t snapshot -o name,creation rpool/urbit/pier
+</code></pre>
+
+<h2>Rollback</h2>
+
+<p><code>zfs rollback</code> moves a dataset back to a snapshot. It does not delete newer snapshots unless you pass <code>-r</code>. Prefer keeping newer snapshots until you know you do not need them.
+
+<p>Do not roll back <code>rpool/urbit/pier</code> and boot the ship on the network: the network refuses a ship that went back in time, and the only remedy is a new identity. Read old pier snapshots offline instead, and move data with <code>locus backup</code>. See <a href="urbit.html#rollback-and-why-the-pier-must-not-go-back-in-time">urbit.html</a>.
+
+<h2>notes-app must not destroy snapshots</h2>
+
+<p>Unprivileged processes cannot <code>zfs destroy</code>. Do not <code>zfs allow destroy</code> for the notes app or its user. Do not give it sudo. Snapshot from autoSnapshot / an admin; never from the GUI.

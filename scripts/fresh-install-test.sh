@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run docs/install.md in a VM, from a blank disk to a working server, and
+# Run docs/install.html in a VM, from a blank disk to a working server, and
 # check the result.
 #
 # The VM boots a stock NixOS minimal installer (plus an SSH key so this
@@ -62,7 +62,7 @@ say "source: git archive of $(git -C "$ROOT" rev-parse --short HEAD)"
 rm -rf "$W/locus" && mkdir -p "$W/locus"
 git -C "$ROOT" archive HEAD | tar -x -C "$W/locus"
 
-say "host flake from the template (docs/install.md step 2)"
+say "host flake from the template (docs/install.html step 2)"
 rm -rf "$W/clan"
 "${NIX[@]}" flake new -t "path:$W/locus#server" "$W/clan" >/dev/null
 render() { # render LOCUS_PATH: fill in the EDIT lines the way an operator would
@@ -236,7 +236,7 @@ PY
   echo "backup import: every note and file arrived"
 fi
 
-say "PASS: a blank disk reached a working server through docs/install.md"
+say "PASS: a blank disk reached a working server through docs/install.html"
 if [ "${FRESH_KEEP:-0}" != 1 ]; then
   vm_ssh admin 'sudo poweroff' 2>/dev/null || true
   vm_stop

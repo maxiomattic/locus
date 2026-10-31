@@ -12,7 +12,7 @@ Locus is a digital ecosystem focused on sovereignty, optimization, and seamlessn
 - Instant performance
 - High-efficiency interfaces
 
-A **clan** (a group with one administrator, across any number of homes and machines) runs Locus as its own local cloud, and eventually on its own devices. See [docs/intent.md](docs/intent.md), [docs/architecture.md](docs/architecture.md) and [docs/plan.md](docs/plan.md).
+A **clan** (a group with one administrator, across any number of homes and machines) runs Locus as its own local cloud, and eventually on its own devices. See [docs/intent.md](docs/intent.md), [docs/architecture.html](docs/architecture.html) and [docs/plan.html](docs/plan.html).
 
 ## Status
 
@@ -57,7 +57,7 @@ The window talks to the ship over Eyre, at `http://127.0.0.1:8080` on the bring-
 
 ## Server
 
-Set `locus.server.diskDevice` to the server's `/dev/disk/by-id/...` before formatting. For snapshots and rollback, see [docs/zfs.md](docs/zfs.md). For the ship, see [docs/urbit.md](docs/urbit.md).
+Set `locus.server.diskDevice` to the server's `/dev/disk/by-id/...` before formatting. For snapshots and rollback, see [docs/zfs.html](docs/zfs.html). For the ship, see [docs/urbit.html](docs/urbit.html).
 
 ```bash
 nix build .#server && ./result/bin/urbit --help

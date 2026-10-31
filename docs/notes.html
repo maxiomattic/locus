@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Notes desk</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Notes desk</h1>
+
+<p>Hard fork of Tlon <code>%notes</code> (MIT, tloncorp/tlon-apps) onto <strong>our</strong> desk. This repo does not install Tlon Messenger or <code>%groups</code>.
+
+<p>Live check: <a href="../scripts/notes-occ.sh">scripts/notes-occ.sh</a> — create personal notebook, folder, note; list; save with matching <code>expectedRevision</code>; stale save must return <code>%conflict</code>. <code>+vats</code> / the desk set must not include <code>%groups</code>.
+
+<h2>Layout</h2>
+
+<table>
+<tr><th>Path<th>Role
+<tr><td><code>desk/app/notes.hoon</code><td>Gall agent (groups / activity / mcp-proxy / Tlon UI stripped)
+<tr><td><code>desk/sur/notes.hoon</code><td>Types, including <code>expectedRevision</code> / <code>%conflict</code>
+<tr><td><code>desk/lib/notes/json.hoon</code><td>JSON
+<tr><td><code>desk/mar/notes/</code><td>Marks
+<tr><td><code>desk/app/notes/openapi.json</code><td>v1 HTTP spec
+<tr><td><code>desk/desk.bill</code><td>starts <strong><code>%notes</code></strong>, <strong><code>%locus</code></strong>, <strong><code>%calendar</code></strong>, <strong><code>%photos</code></strong>, <strong><code>%contacts</code></strong>
+<tr><td><code>desk/NOTICE</code><td>Tlon MIT pin + urbit 408k helpers
+</table>
+
+<p>Desk name on the ship: <code>%locus</code> (Gall agents <code>%notes</code>, <code>%locus</code>, <code>%calendar</code>, <code>%photos</code>, <code>%contacts</code>). Kelvin <code>[%zuse 408]</code>.
+
+<h2>Apply on the server</h2>
+
+<p>Eyre must already be on the LAN (<code>docs/urbit.html</code>). Pier stays on <code>rpool/urbit/pier</code>. Do not boot a fake ship on a non-ZFS disk.
+
+<pre><code># on the server, from this repo
+EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh
+</code></pre>
+
+<p>The script <code>|merge</code>s <code>%locus</code> from <code>%base</code>, mounts, copies <code>desk/</code>, <code>|commit</code>s, <code>|install</code>s, then logs in with <code>sudo -u urbit urbit-code</code> (not <code>/~/login</code> HTML) and runs the OCC curls.
+
+<p>Khan/<code>urbit eval</code> prints loobeans as <code>0</code> (<code>%.y</code>) and <code>1</code> (<code>%.n</code>). The OCC waiter looks for <code>%notes-hoon-yes</code>, not the literal <code>%.y</code>.
+
+<p>From another LAN host, only after that commit:
+
+<pre><code>EYRE_URL=http://&lt;server-lan-ip> SKIP_COMMIT=1 ./scripts/notes-occ.sh
+</code></pre>
+
+<p><code>SKIP_COMMIT=1</code> still needs +code via <code>urbit-code</code> or <code>NOTES_CODE_FILE</code> (a 600 file, not in git).
+
+<h2>Client on this laptop</h2>
+
+<p>The COSMIC window on the NixOS host talks to the ship in the bring-up VM:
+
+<pre><code>nix develop
+# VM already up: ./scripts/server-vm.sh up
+cargo run --release -p notes-app
+</code></pre>
+
+<p>Default server URL is <code>http://127.0.0.1:8080</code>. <strong>Get code from VM</strong> SSHs into the guest for the login code. After the first successful sign-in, the window stores the API key under <code>~/.local/share/org.digital-workspace.notes/</code> and reconnects without pasting the code again.
+
+<p>There is no Save. Typing a word (or pausing ~1s) writes a copy-on-write version into <code>cache.sqlite</code>. The ship keeps the latest head.
+
+<p>The editor styles GitHub Flavored Markdown in the source: <code># hello</code> shows a small dim hash and large heading text; <code>**bold**</code> keeps the stars. Spec is <a href="https://github.github.com/gfm/">GFM</a> plus <code>[[wikilinks]]</code> / <code>![[embed]]</code>. Optional Preview renders the same spec (including images and tables). Right-click a note to delete. Ctrl+Z / Ctrl+Shift+Z undo and redo typing; <strong>Note → Version history</strong> restores a local snapshot. A conflict dialog keeps both copies by default. Same functions: <code>cargo run -p notes-sync --bin notes -- help</code>. No tags.
+
+<h2>Vault testing (not the product)</h2>
+
+<p>The notes window’s source of truth is the ship plus <code>cache.sqlite</code>, not a folder, so a symlink of the Obsidian vault would not fill the sidebar. For real-world data, two-way sync maps <code>~/Documents/new</code> (or <code>NOTES_VAULT</code> / <code>OBSIDIAN_VAULT_PATH</code>) onto local note ids ≥ 1_000_000_000.
+
+<ul>
+<li>Poll ~1s in the window; or <code>notes vault-sync</code>.
+<li>App edits write back to the <code>.md</code> file; Obsidian edits appear in the list. Both dirty → keep-both + CoW snapshot.
+<li>Vault notes are <strong>not</strong> pushed to the ship. In-app delete does not remove vault files.
+<li>New notes created in the app stay ship-backed.
+</ul>

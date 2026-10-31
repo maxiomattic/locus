@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Install a clan server</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Install a clan server</h1>
+
+<p>One procedure takes a fresh x86-64 machine to a working Locus server. That means NixOS on ZFS, a new Urbit comet, the <code>%locus</code> desk, and the browser app at <code>http://&lt;server>:8090/app/</code>. It erases one disk. Allow about an hour, most of it waiting.
+
+<p><code>scripts/fresh-install-test.sh</code> runs these same steps in a VM and checks the result.
+
+<h2>You need</h2>
+
+<ul>
+<li>The machine, with a disk it can erase, at least 4 GB of memory (the installer keeps its downloads in memory), and a network that reaches the internet.
+<li>A USB stick with the NixOS minimal installer (<a href="https://nixos.org/download">nixos.org/download</a>, "Minimal ISO image").
+<li>An SSH key on the computer you administer from (<code>ssh-keygen -t ed25519</code> if you have none).
+</ul>
+
+<h2>1. Boot the installer</h2>
+
+<p>Boot the machine from the USB stick. At the prompt, become root and check the network:
+
+<pre><code>sudo -i
+ping -c1 nixos.org        # Wi-Fi: nmtui, then retry
+</code></pre>
+
+<h2>2. Describe the machine</h2>
+
+<pre><code>nix --extra-experimental-features 'nix-command flakes' \
+  flake new -t github:maxiomattic/locus#server /root/clan
+ls -l /dev/disk/by-id/                         # find the disk to erase
+head -c4 /dev/urandom | od -A none -t x4 | tr -d ' '   # a hostId
+nano /root/clan/host.nix
+</code></pre>
+
+<p>In <code>host.nix</code>, fill in every line marked <code>EDIT</code>. These are the disk, the host name, the host id and your SSH public key.
+
+<h2>3. Install</h2>
+
+<p>Formatting erases the disk named in <code>host.nix</code>:
+
+<pre><code>cd /root/clan
+nix --extra-experimental-features 'nix-command flakes' run .#disko -- \
+  --mode destroy,format,mount --flake .#server
+nixos-install --flake .#server --no-root-passwd
+mkdir -p /mnt/etc/clan && cp -r /root/clan/. /mnt/etc/clan/
+reboot
+</code></pre>
+
+<p>Remove the USB stick when the machine restarts.
+
+<h2>4. First boot</h2>
+
+<p>The machine starts the ship by itself. A new comet mines its identity and syncs, and then <code>locus-desk.service</code> installs the <code>%locus</code> desk. That takes 5 to 30 minutes. From your computer:
+
+<pre><code>ssh admin@&lt;server> systemctl is-active urbit locus-gateway locus-desk
+</code></pre>
+
+<p>When all three print <code>active</code>, the server works. Get the ship's login code:
+
+<pre><code>ssh admin@&lt;server> sudo urbit-code
+</code></pre>
+
+<p>Open <code>http://&lt;server>:8090/app/</code> and sign in with that code. The desktop apps and the <code>locus</code> command line use the same address and code: <code>locus connect http://&lt;server>:8090 --code-file &lt;file></code>.
+
+<h2>5. Bring data in (optional)</h2>
+
+<ul>
+<li>From another Locus ship: <code>locus backup export &lt;dir></code> there, then <code>locus backup import &lt;dir></code> here. See <a href="urbit.html#reset-to-a-new-identity-keeping-the-data">urbit.html</a>.
+<li>From an Obsidian vault: <code>locus import-obsidian --url http://&lt;server>:8090 --code-file &lt;file> --notebook &lt;title> &lt;vault></code>.
+</ul>
+
+<h2>Later changes</h2>
+
+<p>The machine's configuration is in <code>/etc/clan</code>. Edit it, then:
+
+<pre><code>sudo nixos-rebuild switch --flake /etc/clan#server
+</code></pre>
+
+<p>To take a newer Locus: <code>cd /etc/clan && sudo nix flake update locus</code>, then rebuild. The desk updates itself after the rebuild, and it snapshots the pier first.
+
+<p>Snapshots and recovery: <a href="zfs.html">zfs.html</a>. Never boot an old copy of the pier on the network; see <a href="urbit.html#rollback-and-why-the-pier-must-not-go-back-in-time">urbit.html</a>.

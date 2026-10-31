@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Deploy and test</title>
+<link rel="stylesheet" href="docs.css">
+
+<h1>Deploy and test</h1>
+
+<p>How to put this code on a machine and prove it. Do <strong>not</strong> <code>nixos-rebuild switch</code> a daily-driver desktop with <code>nixosConfigurations.client</code> unless that machine should become the Locus COSMIC client. The example server config in this flake is a placeholder.
+
+<h2>Automated checks</h2>
+
+<pre><code>nix flake check --no-build          # flake eval checks
+nix develop -c cargo test --workspace --release
+./scripts/check.sh                  # photos crates + photos dataset eval
+./scripts/cosmic-check.sh           # COSMIC client eval
+</code></pre>
+
+<p>Hoon <code>test-agent</code> files under <code>desk/tests/</code> run <strong>on the ship</strong> after <code>|commit</code>, not in <code>cargo test</code>.
+
+<h2>Bring-up VM</h2>
+
+<p>If the VM sits in UEFI Shell: <code>FS0:\></code> then <code>EFI\systemd\systemd-bootx64.efi</code>.
+
+<pre><code>./scripts/server-vm.sh up          # SSH 127.0.0.1:22221, Eyre :8080
+./scripts/server-vm.sh occ         # rsync repo, |commit desk %locus, OCC checks
+./scripts/server-vm.sh locus       # locus command-plane check
+./scripts/server-vm.sh photos      # photos + contacts check
+./scripts/server-vm.sh ssh         # shell on the guest
+./scripts/server-vm.sh down        # graceful poweroff
+</code></pre>
+
+<p><code>notes-occ.sh</code> waits for the <code>/notes</code>, <code>/locus</code>, <code>/calendar</code>, <code>/photos</code> and <code>/contacts</code> openapi endpoints before it finishes.
+
+<h2>Dedicated server</h2>
+
+<p>Import <code>nixosModules.server</code> from a <strong>separate</strong> host flake (operator accounts, CalDAV, and binary caches live there, not in this repository). Set these in that host configuration:
+
+<pre><code>{
+  imports = [ locus.nixosModules.server ];
+
+  locus.server = {
+    enable = true;
+    diskDevice = "/dev/disk/by-id/...";   # Disko formats this disk only
+  };
+
+  locus.server.urbit = {
+    ship = "planet";
+    name = "sampel-palnet";                # @p without the leading ~
+    keyFile = "/var/lib/urbit/keys/sampel-palnet.key";
+  };
+}
+</code></pre>
+
+<ol>
+<li>Set <code>locus.server.diskDevice</code> to that machine's <code>/dev/disk/by-id/...</code>. Disko formats <strong>that disk only</strong>.
+<li>Put the ship's key file on the server before the first boot, at the <code>keyFile</code> path. The file must be readable by the <code>urbit</code> user only (owner <code>urbit</code>, mode <code>0400</code>). Do not put it in the Nix store, in a git repo, or in a <code>nix</code> expression as a path literal.
+<li>Apply with <code>nixos-rebuild</code> on that host (or <code>nixos-install</code> from the host flake).
+<li>After the first successful boot (<code>systemctl status urbit</code> shows the ship running), delete the key file: <code>sudo rm /var/lib/urbit/keys/sampel-palnet.key</code>. The unit still starts without it.
+<li>On the server: <code>EYRE_URL=http://127.0.0.1 ./scripts/notes-occ.sh</code>, then <code>./scripts/locus-check.sh</code> and <code>./scripts/photos-check.sh</code> as needed.
+</ol>
+
+<h2>COSMIC client</h2>
+
+<p>Import <code>nixosModules.client</code> on a machine whose disk is the Locus desktop. Prove with <code>./scripts/cosmic-check.sh</code> first. Firefox is declared there; it is not an Urbit app.
+
+<h2>Deploy to a real server</h2>
+
+<ol>
+<li>In the clan flake, update the Locus input and switch: <code>nix flake update locus && sudo nixos-rebuild switch --flake .#&lt;host></code>. This installs the gateway, which serves the browser app on port 8090.
+<li>On the server, from a checkout of this repo: <code>EYRE_URL=http://127.0.0.1 ./scripts/desk-deploy.sh</code>. It snapshots the pier dataset, commits the desk, and waits for every agent. It never wipes or uninstalls anything.
+  <p>New ships come with Tlon's <code>%groups</code> desk, which runs agents named <code>%notes</code> and <code>%contacts</code>. Gall runs an agent name from one desk only, so the script stops and names the clashing desk. Suspend it in the dojo, then rerun: <code>|suspend %groups</code>.
+  <p>Gall keeps a suspended agent's state under its name and hands it to the next agent of that name, so Locus's <code>%notes</code> and <code>%contacts</code> then fail to load (<code>%load-failed</code>). On a new ship that state is Tlon's and empty: <code>|nuke %notes</code>, <code>|nuke %contacts</code>, <code>|revive %locus</code>. Do not nuke on a ship whose <code>%notes</code> or <code>%contacts</code> already run from <code>%locus</code>; that deletes the data.
+<li>To move data from another ship (an old comet, or a comet before a planet): <code>locus backup export &lt;dir></code> against the old one and <code>locus backup import &lt;dir></code> against the new one. See <a href="urbit.html#reset-to-a-new-identity-keeping-the-data">urbit.html</a>.
+<li>Open <code>http://&lt;server>:8090/app/</code> and sign in with the ship's code (<code>sudo urbit-code</code>).
+<li>Import Obsidian vaults (safe to rerun; never overwrites a note edited in Locus): <code>locus import-obsidian --url http://&lt;server>:8090 --code-file &lt;file> --notebook &lt;title> &lt;vault></code>. Add <code>--dry-run</code> to preview.
+</ol>

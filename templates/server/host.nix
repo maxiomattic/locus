@@ -1,4 +1,4 @@
-# This machine. Fill in every line marked EDIT, then follow docs/install.md.
+# This machine. Fill in every line marked EDIT, then follow docs/install.html.
 { ... }:
 {
   locus.server = {
