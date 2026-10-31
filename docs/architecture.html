@@ -18,7 +18,7 @@
 <li><strong>One action layer.</strong> Every action is an operation. Keyboard, mouse and agents all call the same operations. Permissions are per member and per agent, and everything is audited. An agent's proposal is a branch of unapplied operations, reviewed as a diff.
 <li><strong>Safety.</strong> Deletions and overwrites can always be recovered (the operation log, ZFS snapshots). The exception is an explicit purge, for something like a leaked password. Changes to the operating system need a human's approval and can be rolled back.
 <li><strong>Sync.</strong> Every object has one home server, which orders its operations and checks their permissions. Clients keep a partial copy, apply operations at once, then replay them on top of the server's order. They keep working offline, but their changes stay provisional until the server accepts them, and devices do not sync with each other directly. A conflict keeps both versions. Nothing is ever silently overwritten. Text bodies use a CRDT, because a person and an agent will often edit the same one at once.
-<li><strong>Interfaces.</strong> Built in Rust as standard point-and-click GUIs, with keyboard shortcuts, from one framework-agnostic core (state, keymap, update logic) shared by thin shells. Android comes later. Views attach to traits, not to apps. The shells (libcosmic on the desktop, iced in the browser) need review, because full HTML pages need a real HTML engine.
+<li><strong>Interfaces.</strong> Being redesigned from first principles. The earlier point-and-click design was a placeholder and is discarded, and the shells (libcosmic on the desktop, iced in the browser) are no longer assumed. Built in Rust, from one framework-agnostic core. Android comes later.
 <li><strong>Components.</strong> Small parts that each do one thing. Outside code is taken as hard forks of small pieces, never as soft forks of large projects.
 <li><strong>Distribution.</strong> Locus ships as a Nix flake. A clan follows upstream or points at its own fork. Every update can be rolled back.
 <li><strong>Feedback.</strong> A request carries its context (app, version, recent actions), becomes an issue, an agent drafts a change and a preview, and the administrator approves it before it ships.
@@ -39,6 +39,13 @@
 </table>
 
 <p>Members, agents and permissions are ordinary objects, so changing a permission is an audited operation.
+
+<ul>
+<li><strong>Reactions</strong> propose by default. Policy can let one apply automatically, per operation and per actor. Sending a message always needs approval.
+<li><strong>A reference to another clan's object</strong> is a cached copy kept current by a subscription, and its staleness is visible.
+<li><strong>Agent permissions</strong> are the intersection of the agent's own and those of the person who invoked it. An automation with no invoker runs as a named agent with its own grant.
+<li><strong>An operation's signature is separate from its implementation,</strong> which can be code, an agent, or code with an agent fallback. Policy answers two questions: may this actor invoke this operation on this object, and which implementations may it use, by model and effort.
+</ul>
 
 <h2>Formats</h2>
 
