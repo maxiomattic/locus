@@ -1,0 +1,12 @@
+[package]
+name = "locus-model"
+description = "Locus data primitives: objects, types, operations, references, blobs, views and policy. Pure: no I/O."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+getrandom = "0.3"

@@ -3630,6 +3630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "locus-model"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "locus-protocol"
 version = "0.1.0"
 dependencies = [
