@@ -80,7 +80,7 @@ CREATE TABLE purged_blobs (hash TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT R
 
 -- Server side: what each replica holds.
 CREATE TABLE replica_view (client TEXT NOT NULL, object TEXT NOT NULL, PRIMARY KEY (client, object)) WITHOUT ROWID;
-CREATE TABLE replica_epoch (client TEXT PRIMARY KEY, epoch INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TABLE replica_state (client TEXT PRIMARY KEY, key TEXT NOT NULL) WITHOUT ROWID;
 
 -- Client side.
 CREATE TABLE pending (

@@ -3552,6 +3552,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "locus-cli"
+version = "0.1.0"
+dependencies = [
+ "locus-model",
+ "locus-store",
+ "locus-sync",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "locus-client"
 version = "0.1.0"
 dependencies = [
@@ -3675,6 +3687,19 @@ dependencies = [
  "blake3",
  "locus-model",
  "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "locus-sync"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "locus-model",
+ "locus-store",
  "serde",
  "serde_json",
  "tempfile",

@@ -147,7 +147,8 @@ impl Store {
         Ok(false)
     }
 
-    pub(crate) fn purge_blob(&self, h: &BlobHash) -> Result<()> {
+    /// Drop the local bytes. The address is not refused afterwards.
+    pub(crate) fn forget_blob(&self, h: &BlobHash) -> Result<()> {
         match std::fs::remove_file(self.blob_path(h)) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -155,6 +156,11 @@ impl Store {
         }
         self.conn()
             .execute("DELETE FROM blobs WHERE hash=?1", [h.to_string()])?;
+        Ok(())
+    }
+
+    pub(crate) fn purge_blob(&self, h: &BlobHash) -> Result<()> {
+        self.forget_blob(h)?;
         self.conn().execute(
             "INSERT OR REPLACE INTO purged_blobs (hash, at) VALUES (?1, ?2)",
             params![h.to_string(), locus_model::now_ms()],

@@ -926,6 +926,11 @@ impl Store {
         if self.duplicate(e.op.id)?.is_some() {
             return Ok(());
         }
+        // A snapshot already holds everything up to its revision.
+        let snapshot = e.effects.iter().any(|x| matches!(x, Effect::Snapshot(_)));
+        if !snapshot && self.get(e.op.object)?.is_some_and(|d| d.rev >= e.rev) {
+            return Ok(());
+        }
         self.conn.execute_batch("BEGIN IMMEDIATE")?;
         let result = (|| {
             let doc = self.get(e.op.object)?;
