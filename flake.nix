@@ -196,7 +196,7 @@
           cargoDeps = rustPlatform.fetchCargoVendor {
             src = rustSrc;
             name = "locus-cargo-deps";
-            hash = "sha256-bAL5J3vtF1kt2casrS5QR8+Ew4BOC0FGyYp3c+e4p+U=";
+            hash = "sha256-jpj8KiJ1pxfj42iF263dnDeXVQpJzCKJR3LByozSMYY=";
           };
 
           # Vere (urbit runtime) pin: nixpkgs-unstable `pkgs.urbit` 4.6

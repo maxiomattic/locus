@@ -5,6 +5,7 @@
 pub mod id;
 pub mod op;
 pub mod policy;
+pub mod proposal;
 pub mod types;
 pub mod value;
 pub mod view;

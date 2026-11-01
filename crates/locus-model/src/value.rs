@@ -95,12 +95,21 @@ impl Value {
                 *self = Value::Redacted;
                 true
             }
-            Value::List(l) => l.iter_mut().fold(false, |c, v| v.scrub_blob(hash) || c),
-            Value::Map(m) => m.values_mut().fold(false, |c, v| v.scrub_blob(hash) || c),
+            Value::List(l) => l.iter_mut().map(|v| v.scrub_blob(hash)).any_changed(),
+            Value::Map(m) => m.values_mut().map(|v| v.scrub_blob(hash)).any_changed(),
             _ => false,
         }
     }
 }
+
+/// Consumes a whole iterator, unlike `any`, which would stop at the first hit.
+trait AnyChanged: Iterator<Item = bool> + Sized {
+    fn any_changed(self) -> bool {
+        self.filter(|c| *c).count() > 0
+    }
+}
+
+impl<I: Iterator<Item = bool>> AnyChanged for I {}
 
 impl From<&str> for Value {
     fn from(s: &str) -> Self {

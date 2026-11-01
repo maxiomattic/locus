@@ -823,12 +823,7 @@ pub fn field_values(field: &str, effects: &[Effect]) -> Vec<Value> {
 /// Remove purged content from one log entry of the purged object, or from any
 /// entry for a blob. `secrets` are the values the field has ever held, which
 /// also catches them in arguments under other names. Returns true if changed.
-pub fn scrub_entry(
-    op: &mut Op,
-    effects: &mut Vec<Effect>,
-    scope: &Purge,
-    secrets: &[Value],
-) -> bool {
+pub fn scrub_entry(op: &mut Op, effects: &mut [Effect], scope: &Purge, secrets: &[Value]) -> bool {
     match scope {
         Purge::Object => {
             op.args.clear();
