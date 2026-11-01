@@ -376,3 +376,36 @@ test('a learned tool appears as one key on what it applies to', () => {
   assert.equal(s.out[0].do, 'tool')
   assert.equal(s.out[0].id, 'tool:t')
 })
+
+test('both versions of the command bar stay built, and the choice syncs', () => {
+  let s = type(init(), '; floating ent')
+  assert.equal(s.store.prefs.bar, 'float')
+  s = type(s, '; top ent')
+  assert.equal(s.store.prefs.bar, 'line')
+})
+
+test('history lists changes and u undoes one through the ship', () => {
+  let s = type(init(), '; history ent')
+  assert.equal(s.out[0].do, 'history')
+  s = { ...s, out: [], history: [{ seq: 7, actor: 'human', intent: 'x', ops: [], at: 1 }] }
+  s = type(s, 'u')
+  assert.deepEqual(s.out, [{ do: 'revert', seq: 7 }])
+})
+
+test('trash lists trashed objects and restores them', () => {
+  let s = applyRemote(init(), [{ id: 'old', type: 'note', title: 'Old', items: [], $trashed: true }])
+  s = type(s, '; trash ent')
+  assert.equal(items(s, frame(s)).length, 1)
+  s = type(s, 'u')
+  assert.deepEqual(s.out, [{ do: 'restore', id: 'old' }])
+})
+
+test('a clash on what you are in can be settled either way', () => {
+  let s = type(init(), 'n sp')
+  const id = items(s, frame(s))[0]
+  s = applyRemote(s, [{ ...s.store[id], $clashes: [{ field: 'text', theirs: 'yours', actor: 'human', seq: 3 }] }])
+  s = type(s, 'sp')
+  assert.ok(viewActions(s).some(([k]) => k === 'O'))
+  s = type(s, 'O')
+  assert.deepEqual(s.out, [{ do: 'resolve', id, field: 'text', keep: true }])
+})

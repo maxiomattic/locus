@@ -81,8 +81,8 @@ export function connect(initial, ship) {
       if (store === synced) return
       const ops = diff(synced, store, revs).flatMap((op) => {
         if (op.do === 'trash') binned.add(op.id)
-        if (op.do !== 'make' || !binned.delete(op.id)) return [op]
-        return [{ do: 'restore', id: op.id }, { do: 'set', id: op.id, base: 0, fields: op.fields }]
+        if (op.do === 'make' && binned.delete(op.id)) return [{ do: 'restore', id: op.id }, { do: 'set', id: op.id, base: 0, fields: op.fields }]
+        return [op]
       })
       if (!ops.length) { synced = store; return }
       busy = true
@@ -110,12 +110,9 @@ export function connect(initial, ship) {
           const d = await r.json()
           if (ver) {
             const local = get().store
-            const trashed = d.objects.filter((o) => o.trashed).map((o) => o.id)
-            trashed.forEach((id) => binned.add(id))
-            d.gone.push(...trashed)
             // A change to something with unsent edits stays out, so those edits
             // go home against the revision they were made on and can clash.
-            const fresh = d.objects.filter((o) => !o.trashed).map(toLocal).filter((o) => o.$rev > (revs[o.id] ?? 0))
+            const fresh = d.objects.map(toLocal).filter((o) => o.$rev > (revs[o.id] ?? 0))
             const clean = fresh.filter((o) => !local[o.id] || !synced[o.id] || plain(local[o.id]) === plain(synced[o.id]))
             synced = { ...synced }
             clean.forEach((o) => { synced[o.id] = o; revs[o.id] = o.$rev })
@@ -156,6 +153,14 @@ export function connect(initial, ship) {
           const r = await post(`${API}/do`, { do: e.ok ? 'approve' : 'reject', id: e.id }).catch(() => null)
           if (!r?.ok) return ui.say('The ship refused that.')
           if (e.ok) follow([...new Set((o.ops ?? []).map((op) => op.id))])
+        } else if (e.do === 'history') {
+          const log = await fetch(`${API}/log?since=0`).then((r) => r.json()).catch(() => [])
+          ui.history(log.reverse().slice(0, 200))
+        } else if (e.do === 'revert' || e.do === 'restore' || e.do === 'resolve') {
+          const body = e.do === 'revert' ? e
+            : { do: 'batch', intent: e.do, ops: [e.do === 'restore' ? { do: 'restore', id: e.id } : { do: 'resolve', id: e.id, field: e.field, keep: e.keep }] }
+          const r = await post(`${API}/do`, body).catch(() => null)
+          if (!r?.ok) ui.say(r?.data.error ?? 'That failed.')
         }
       },
     }

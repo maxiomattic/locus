@@ -8,6 +8,6 @@ const root = createRoot(document.getElementById('root'))
 if (!state?.objects?.length) {
   root.render(<p style={{ padding: '2rem' }}>This ship has nothing in its store yet, or it can’t be reached.</p>)
 } else {
-  const store = Object.fromEntries(state.objects.filter((o) => !o.trashed).map((o) => [o.id, toLocal(o)]))
+  const store = Object.fromEntries(state.objects.map((o) => [o.id, toLocal(o)]))
   root.render(<App store={store} sync={connect(store, state.ship)} />)
 }

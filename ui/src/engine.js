@@ -34,6 +34,7 @@ export function init(store = seedStore()) {
     msg: '',
     out: [],
     working: null,
+    history: [],
     handled: false,
   }
 }
@@ -44,6 +45,7 @@ export const frame = (s, pane = s.active) => s.panes[pane].stack.at(-1)
 
 export function kind(s, f) {
   if (f.view === 'info') return 'info'
+  if (f.view === 'history') return 'history'
   const o = s.store[f.id]
   if (o.type === 'collection') return o.layout
   return { note: 'blocks', block: 'chars', photo: 'photo', track: 'player', movie: 'player', proposal: 'proposal', tool: 'tool' }[o.type]
@@ -67,6 +69,7 @@ function backlinks(s, id) {
 
 export function items(s, f) {
   if (f.view === 'info') return backlinks(s, f.id)
+  if (f.view === 'history') return s.history.map((e) => e.seq)
   const o = s.store[f.id]
   const list = o.query ? matching(s, o.query) : o.items
   if (!list) return []
@@ -77,12 +80,12 @@ export function items(s, f) {
 // A collection with a query is a View: derived, never stored.
 function matching(s, q) {
   return Object.values(s.store)
-    .filter((o) => !o.$trashed && Object.entries(q).every(([k, v]) => o[k] === v))
+    .filter((o) => !!o.$trashed === !!q.$trashed && Object.entries(q).every(([k, v]) => o[k] === v))
     .sort((a, b) => (b.$at ?? 0) - (a.$at ?? 0))
     .map((o) => o.id)
 }
 
-const isList = (k) => ['grid', 'list', 'blocks', 'info'].includes(k)
+const isList = (k) => ['grid', 'list', 'blocks', 'info', 'history'].includes(k)
 export const queryItems = matching
 const pos = (s, f, k) => (k === 'chars' ? f.cursor : k === 'photo' ? { ...f.cell } : k === 'player' ? playerOf(s, f).t : f.focus)
 export const playerOf = (s, f) => (s.player.id === f.id ? s.player : { ...s.player, t: 0, playing: false })
@@ -117,6 +120,7 @@ export function targetLabel(s) {
   const f = frame(s)
   const k = kind(s, f)
   const r = range(s, f)
+  if (k === 'history') return `Change ${items(s, f)[f.focus] ?? ''}`
   if (k === 'chars' && r) return plural(r.to - r.from, 'character')
   if (k === 'photo' && r) return `Part of ${titleOf(s, f.id)}`
   if (k === 'player' && r) return `${clock(r.from)} to ${clock(r.to)} of ${titleOf(s, f.id)}`
@@ -142,6 +146,7 @@ export function clock(t) {
 
 // A verb belongs to a type, and acts on objects of that type within reach.
 function typeTargets(s, type) {
+  if (frame(s).view === 'history') return []
   const f = frame(s)
   const k = kind(s, f)
   if (s.store[f.id].type === type && !isList(k)) return [f.id]
@@ -170,6 +175,11 @@ export function rootMenu(s) {
   }
   if (k === 'proposal' && s.store[f.id].status === 'open') {
     out.push({ key: 'y', label: 'Approve', run: 'approve' }, { key: 'r', label: 'Reject', run: 'reject' })
+  }
+  if (k === 'history' && s.history.length) out.push({ key: 'u', label: 'Undo this change', run: 'revert' })
+  if (s.store[f.id]?.id === 'trash' && k === 'list' && items(s, f).length) out.push({ key: 'u', label: 'Restore', run: 'restore' })
+  if (s.store[f.id]?.$clashes?.length) {
+    out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'M', label: 'Keep this version', run: 'keepMine' })
   }
   out.push(...toolEntries(s, out))
   out.push({ key: 'I', label: 'Info', run: 'info' })
@@ -232,9 +242,14 @@ export function completions(s) {
     { label: 'Close tile', run: 'closeTile' },
     { label: 'Undo', run: 'undo' },
     { label: 'Redo', run: 'redo' },
+    { label: 'History', run: 'history' },
+    { label: 'Trash', run: 'trash' },
+    { label: 'Inbox', run: 'inbox' },
+    { label: `Command bar: ${pref(s, 'bar') === 'line' ? 'floating' : 'in the top line'}`, run: 'toggleBar' },
+    { label: `Notices: ${pref(s, 'notices') === 'line' ? 'toasts' : 'in the top line'}`, run: 'toggleNotices' },
   ]
   const opens = Object.values(s.store)
-    .filter((o) => o.title && o.id !== 'home')
+    .filter((o) => o.title && o.id !== 'home' && !o.$trashed)
     .map((o) => ({ label: `Open ${o.title}`, name: o.title, open: o.id }))
   if (!q) return commands.slice(0, 6)
   const hit = [...commands, ...opens].filter((c) => (c.name ?? c.label).toLowerCase().includes(q))
@@ -246,7 +261,49 @@ export function completions(s) {
 
 const dirty = (s, label) => { s._dirty = label }
 
+// Both versions of an open design question stay built. Prefs sync like any
+// other object, so a choice follows you across devices.
+const PREFS = { bar: 'line', notices: 'line' }
+export const pref = (s, k) => s.store.prefs?.[k] ?? PREFS[k]
+function setPref(s, k, v) {
+  s.store.prefs = { ...(s.store.prefs ?? { id: 'prefs', type: 'prefs' }), [k]: v }
+}
+
 const VERBS = {
+  toggleBar(s) {
+    setPref(s, 'bar', pref(s, 'bar') === 'line' ? 'float' : 'line')
+    return `The command bar is now ${pref(s, 'bar') === 'line' ? 'in the top line' : 'floating'}.`
+  },
+  toggleNotices(s) {
+    setPref(s, 'notices', pref(s, 'notices') === 'line' ? 'toast' : 'line')
+    return `Notices are now ${pref(s, 'notices') === 'line' ? 'in the top line' : 'toasts'}.`
+  },
+  history(s) {
+    s.out.push({ do: 'history' })
+    s.panes[s.active].stack.push(newFrame(frame(s).id, { view: 'history' }))
+    return ''
+  },
+  trash(s) { open(s, 'trash'); return '' },
+  inbox(s) { launch(s, 'd'); return '' },
+  revert(s) {
+    const f = frame(s)
+    s.out.push({ do: 'revert', seq: s.history[f.focus].seq })
+    return 'Undoing that change.'
+  },
+  restore(s) {
+    targets(s, frame(s)).forEach((id) => s.out.push({ do: 'restore', id }))
+    return 'Restored.'
+  },
+  keepTheirs(s) {
+    const f = frame(s)
+    s.store[f.id].$clashes.forEach((c) => s.out.push({ do: 'resolve', id: f.id, field: c.field, keep: true }))
+    return 'Kept the other version.'
+  },
+  keepMine(s) {
+    const f = frame(s)
+    s.store[f.id].$clashes.forEach((c) => s.out.push({ do: 'resolve', id: f.id, field: c.field, keep: false }))
+    return 'Kept this version.'
+  },
   approve(s) {
     s.out.push({ do: 'decide', id: frame(s).id, ok: true })
     return 'Approved.'

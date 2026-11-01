@@ -133,3 +133,5 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 @media (prefers-reduced-motion: no-preference) {
   .fill, .head { transition: left .1s linear, width .1s linear; }
 }
+.floating { position: fixed; z-index: 5; top: 22vh; left: 50%; transform: translateX(-50%); width: min(44rem, 90vw); flex-wrap: wrap; white-space: normal; padding: 1rem 1.2rem; background: var(--deep); outline: 2px solid var(--focus); }
+.toast { position: fixed; z-index: 5; right: 1rem; bottom: 2.4rem; max-width: 28rem; padding: .5rem .9rem; background: var(--deep); outline: 2px solid var(--mark); }

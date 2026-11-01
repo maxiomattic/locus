@@ -103,6 +103,7 @@ const notes = coll('Notes', 'list', [lisbon, reading, review], { accepts: 'note'
 
 const inbox = coll('Inbox', 'list', [], { id: 'inbox', fixed: true, query: { type: 'proposal', status: 'open' } })
 const tools = coll('Tools', 'list', [], { id: 'tools', fixed: true, query: { type: 'tool' } })
+const trash = coll('Trash', 'list', [], { id: 'trash', fixed: true, query: { $trashed: true } })
 Object.entries({ n: notes, p: photos, m: music, w: movies, e: people, d: inbox, D: tools }).forEach(([key, id]) => { s[id].launch = key })
 add({ id: 'home', type: 'collection', title: 'Home', layout: 'grid', fixed: true, items: [notes, photos, music, movies, people, inbox, tools, keys] })
 

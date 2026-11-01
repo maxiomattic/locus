@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   init, press, tick, point, setCols, frame, kind, items, titleOf, targetLabel,
   menuEntries, completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
-  applyRemote, say, watch,
+  applyRemote, say, watch, pref,
 } from './engine.js'
 import { describe } from './sync.js'
 import { Bars, Film, Photo, Poster } from './Art.jsx'
@@ -46,6 +46,7 @@ export function App({ store, sync }) {
       say: (msg, extra) => set((p) => say(p, msg, extra)),
       watch: (id) => set((p) => watch(p, id)),
       status: (net) => setNet(net),
+      history: (history) => set((p) => ({ ...p, history })),
     })
     return () => link.current.stop()
   }, [set])
@@ -70,6 +71,7 @@ export function App({ store, sync }) {
       <Bar s={s} />
       <main className="tiles"><Layout s={s} t={s.layout} set={set} /></main>
       <Status s={s} net={net} />
+      {pref(s, 'notices') === 'toast' && s.mode === 'normal' && s.msg && <div className="toast">{s.msg}</div>}
     </div>
   )
 }
@@ -82,7 +84,7 @@ function Bar({ s }) {
       <span className="target">{targetLabel(s) || 'Empty'}</span>
       <span className="sep">›</span>
       {s.mode === 'bar' && (
-        <span className="line">
+        <span className={pref(s, 'bar') === 'float' ? 'line floating' : 'line'}>
           <span className="input">{s.bar.text}<i className="caret" /></span>
           {list.map((c, i) => <span key={c.label} className={i === s.bar.i ? 'pick on' : 'pick'}>{c.label}</span>)}
           {s.bar.text && !list.length && <span className="hint">Enter asks the agent</span>}
@@ -99,7 +101,7 @@ function Bar({ s }) {
       )}
       {s.mode === 'find' && <span className="line"><span className="input">/{f.filter}<i className="caret" /></span></span>}
       {s.mode === 'typing' && <span className="line hint">Typing. Esc to stop.</span>}
-      {s.mode === 'normal' && <span className="line hint">{s.msg || 'f for the menu, ; to type a command or ask the agent'}</span>}
+      {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || 'f for the menu, ; to type a command or ask the agent'}</span>}
     </header>
   )
 }
@@ -161,7 +163,7 @@ function Tile({ s, pane, set }) {
 
   const pick = (i) => set((p) => point(p, pane, i))
   const props = { s, f, active, pick, cols }
-  const crumbs = s.panes[pane].stack.map((x) => (x.view === 'info' ? `About ${titleOf(s, x.id)}` : titleOf(s, x.id)))
+  const crumbs = s.panes[pane].stack.map((x) => (x.view === 'info' ? `About ${titleOf(s, x.id)}` : x.view === 'history' ? 'History' : titleOf(s, x.id)))
   return (
     <section className={active ? 'tile active' : 'tile'}>
       <div className="tilehead">
@@ -184,6 +186,7 @@ function Tile({ s, pane, set }) {
         {k === 'info' && <Info {...props} />}
         {k === 'proposal' && <Proposal o={s.store[f.id]} s={s} />}
         {k === 'tool' && <ToolView o={s.store[f.id]} />}
+        {k === 'history' && <History {...props} />}
       </div>
     </section>
   )
@@ -254,6 +257,29 @@ function Grid({ s, f, active, pick, cols = 1 }) {
       </div>
       {!list.length && <Empty f={f}>This is empty. Press o to make something, or v to paste.</Empty>}
     </>
+  )
+}
+
+function Clashes({ o }) {
+  return (
+    <>
+      <h3>Two versions</h3>
+      <dl>{o.$clashes.map((c) => <div key={c.seq + c.field}><dt>{c.actor}</dt><dd>{String(c.theirs)}</dd></div>)}</dl>
+    </>
+  )
+}
+
+function History({ s, f, active, pick }) {
+  if (!s.history.length) return <Empty f={f}>Nothing yet.</Empty>
+  return (
+    <div className="list">
+      {s.history.map((e, i) => (
+        <div key={e.seq} className={itemClass(f, active, i, e.seq, 'row')} onClick={() => pick(i)}>
+          <span className="grow">{e.intent || e.ops.map((op) => describe(op, s.store)).join(', ')}</span>
+          <span className="dim">{e.actor} · {e.ops.length} · {new Date(e.at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -447,6 +473,7 @@ function Info({ s, f, active, pick }) {
   return (
     <div className="info">
       <dl>{rows.map(([a, b]) => <div key={a}><dt>{a}</dt><dd>{b}</dd></div>)}</dl>
+      {o.$clashes?.length > 0 && <Clashes o={o} />}
       <h3>Linked from</h3>
       <div className="list">
         {list.map((id, i) => (
