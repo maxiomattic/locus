@@ -17,7 +17,7 @@ const LANGUAGE = `Operations (JSON):
 {"do":"set","id":"<id>","fields":{...}}  (null removes a field)
 {"do":"splice","id":"<id>","field":"items","del":[...],"add":[{"after":<id or null>,"val":<id>}]}
 {"do":"trash","id":"<id>"}
-A note has items, a list of block ids. A block has text and style (p, h, todo) and done for a to-do.
+To add at the end of a list, "after" is its last id. A note has items, a list of block ids. A block has text and style (p, h, todo) and done for a to-do.
 A collection has title, layout and items. A photo has title and rot (degrees).`
 
 const TOOL_LANGUAGE = `A tool program is a JSON list of steps:
@@ -64,8 +64,8 @@ export function stubModel() {
 const json = (t) => JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1))
 const flat = (o) => ({ ...o.fields, id: o.id, type: o.type })
 const brief = (o) => {
-  const { items, ops, program, chapters, ...rest } = o
-  return { ...rest, ...(items ? { count: items.length } : {}) }
+  const { ops, program, chapters, before, ...rest } = o
+  return rest
 }
 
 // Same plan shape: same kinds of change to the same fields of the same types,
@@ -98,7 +98,7 @@ export function explain(field, samples, x) {
   const said = samples.some((s) => String(s.run?.text ?? '').includes(String(vals[0])))
   if (constant && (typeof vals[0] !== 'number' || said)) return { ok: true, expr: typeof vals[0] === 'object' ? { lit: vals[0] } : vals[0] }
   if (vals.every((v) => typeof v === 'number')) {
-    for (const m of [0, 360]) {
+    for (const m of field === 'rot' ? [360, 0] : [0, 360]) {
       for (const d of [...new Set(samples.map((s) => (s.value - (s.before ?? 0) + (m || 1e9)) % (m || 1e9)))]) {
         if (samples.every((s) => (m ? ((s.before ?? 0) + d) % m : (s.before ?? 0) + d) === s.value)) {
           const sum = { plus: [was, d] }

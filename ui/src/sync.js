@@ -20,7 +20,7 @@ function splice(id, field, was, now) {
 }
 
 // The operations that turn one store into another.
-export function diff(prev, next) {
+export function diff(prev, next, revs = {}) {
   const ops = []
   for (const id in next) {
     const a = prev[id]
@@ -39,7 +39,7 @@ export function diff(prev, next) {
       else fields[k] = b[k] ?? null
     }
     for (const k in a) if (!META(k) && !(k in b)) fields[k] = null
-    if (Object.keys(fields).length) ops.push({ do: 'set', id, base: a.$rev ?? 0, fields })
+    if (Object.keys(fields).length) ops.push({ do: 'set', id, base: revs[id] ?? a.$rev ?? 0, fields })
   }
   for (const id in prev) if (!(id in next)) ops.push({ do: 'trash', id })
   return ops
@@ -61,6 +61,8 @@ const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-typ
 export function connect(initial, ship) {
   return (get, ui) => {
     let synced = initial
+    const revs = Object.fromEntries(Object.values(initial).map((o) => [o.id, o.$rev]))
+    const plain = (o) => o && JSON.stringify(Object.keys(o).filter((k) => !k.startsWith('$')).sort().map((k) => [k, o[k]]))
     let ver = 0
     let timer = null
     let busy = false
@@ -77,7 +79,7 @@ export function connect(initial, ship) {
       if (busy) return void (timer = setTimeout(flush, 100))
       const store = get().store
       if (store === synced) return
-      const ops = diff(synced, store).flatMap((op) => {
+      const ops = diff(synced, store, revs).flatMap((op) => {
         if (op.do === 'trash') binned.add(op.id)
         if (op.do !== 'make' || !binned.delete(op.id)) return [op]
         return [{ do: 'restore', id: op.id }, { do: 'set', id: op.id, base: 0, fields: op.fields }]
@@ -88,9 +90,8 @@ export function connect(initial, ship) {
       const r = await post(`${API}/do`, { do: 'batch', cid, intent: get().undo.at(-1)?.label ?? 'edit', ops }).catch(() => null)
       busy = false
       if (r?.ok) {
-        const next = { ...store }
-        for (const op of ops) if (next[op.id]) next[op.id] = { ...next[op.id], $rev: (next[op.id].$rev ?? 0) + 1 }
-        synced = next
+        for (const op of ops) revs[op.id] = (revs[op.id] ?? 0) + 1
+        synced = store
         net.state = 'online'
       } else if (r) {
         synced = store
@@ -112,10 +113,12 @@ export function connect(initial, ship) {
             const trashed = d.objects.filter((o) => o.trashed).map((o) => o.id)
             trashed.forEach((id) => binned.add(id))
             d.gone.push(...trashed)
-            const fresh = d.objects.filter((o) => !o.trashed).map(toLocal).filter((o) => !synced[o.id] || o.$rev !== synced[o.id].$rev)
-            const clean = fresh.filter((o) => local[o.id] === synced[o.id] || !local[o.id])
+            // A change to something with unsent edits stays out, so those edits
+            // go home against the revision they were made on and can clash.
+            const fresh = d.objects.filter((o) => !o.trashed).map(toLocal).filter((o) => o.$rev > (revs[o.id] ?? 0))
+            const clean = fresh.filter((o) => !local[o.id] || !synced[o.id] || plain(local[o.id]) === plain(synced[o.id]))
             synced = { ...synced }
-            fresh.forEach((o) => { if (clean.includes(o)) synced[o.id] = o })
+            clean.forEach((o) => { synced[o.id] = o; revs[o.id] = o.$rev })
             d.gone.forEach((id) => delete synced[id])
             ui.remote(clean, d.gone)
           }

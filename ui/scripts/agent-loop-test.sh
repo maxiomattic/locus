@@ -4,9 +4,9 @@ U=http://127.0.0.1:${1:-5281}; FAILS=0
 post() { curl -s -H 'content-type: application/json' --data "$2" "$U$1"; }
 stat() { curl -s "$U/agent/stats" | python3 -c "import json,sys; print(json.load(sys.stdin)['calls'])"; }
 objs() { curl -s "$U/store/~/v1/state" | python3 -c "import json,sys
-d=json.load(sys.stdin); print(len([o for o in d['objects'] if $1]))"; }
+d=json.load(sys.stdin); print(len([o for o in d['objects'] if not o['trashed'] and ($1)]))"; }
 pick() { curl -s "$U/store/~/v1/state" | python3 -c "import json,sys
-d=json.load(sys.stdin); print([o['id'] for o in d['objects'] if $1][-1])"; }
+d=json.load(sys.stdin); print([o['id'] for o in d['objects'] if not o['trashed'] and ($1)][-1])"; }
 rot() { curl -s "$U/store/~/v1/state" | python3 -c "import json,sys
 d=json.load(sys.stdin); print([o['fields'].get('rot') for o in d['objects'] if o['id']=='$1'][0])"; }
 ok() { if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1 (want $3, got $2)"; FAILS=$((FAILS+1)); fi; }

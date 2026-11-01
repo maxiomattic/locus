@@ -28,7 +28,8 @@ test('a number the request names is a constant, one it doesn’t is relative', (
   const said = { text: 'set volume to 70' }
   const quiet = { text: 'rotate this' }
   assert.equal(explain('f', [{ value: 70, before: 0, run: said }, { value: 70, before: 0, run: said }], 'x').expr, 70)
-  assert.deepEqual(explain('f', [{ value: 90, before: 0, run: quiet }, { value: 90, before: 0, run: quiet }], 'x').expr, { mod: [{ plus: [{ get: [{ var: 'x' }, 'f'] }, 90] }, 360] })
+  assert.deepEqual(explain('rot', [{ value: 90, before: 0, run: quiet }, { value: 90, before: 0, run: quiet }], 'x').expr, { mod: [{ plus: [{ get: [{ var: 'x' }, 'rot'] }, 90] }, 360] })
+  assert.deepEqual(explain('n', [{ value: 5, before: 2, run: quiet }, { value: 5, before: 2, run: quiet }], 'x').expr, { plus: [{ get: [{ var: 'x' }, 'n'] }, 3] })
 })
 
 test('one differing word becomes a parameter', () => {
