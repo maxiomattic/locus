@@ -148,6 +148,19 @@
     =/  who=@t  (rap 3 ~['tool:' id.u.o])
     (submit [(t 'cid') ?:(=('' (t 'actor')) 'human' (t 'actor')) (rap 3 ~[(field-text u.o 'name') ' (' who ')']) p.r])
   ::
+      %try-tool
+    =/  prog=json  (~(gut by m) 'program' ~)
+    =/  over  (over-reach (~(gut by m) 'can' ~) prog)
+    ?^  over  [[%| (cat 3 'program exceeds what it declares: ' i.over)] cor]
+    =/  r  (run-tool objects prog (mk (~(gut by m) 'args' ~)) 'try')
+    ?:  ?=(%| -.r)  [[%| p.r] cor]
+    :_  cor
+    :-  %&
+    %-  pairs:enjs:format
+    :~  ops+[%a (turn p.r op-j:enjs)]
+        can+[%a (turn ~(tap in (effects prog)) |=(e=@t s+e))]
+    ==
+  ::
       %check-tool
     =/  o  (~(get by objects) (t 'id'))
     ?~  o  [[%| 'no such tool'] cor]

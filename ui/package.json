@@ -1,0 +1,15 @@
+{
+  "name": "locus-ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5180",
+    "build": "vite build",
+    "host": "node server/host.mjs",
+    "seed": "node scripts/seed.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": { "@vitejs/plugin-react": "^5.0.0", "vite": "^7.0.0" }
+}
