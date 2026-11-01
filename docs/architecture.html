@@ -7,22 +7,22 @@
 
 <p>High-level decisions that serve <a href="intent.md">intent.md</a>. These are expected to change. Details belong in the code.
 
-<p>This is the target design, decided 2026-10-30. The running system still keeps its data in Urbit agents and uses Ames, as described in <a href="status.html">status.html</a> and <a href="urbit.html">urbit.html</a>. Nothing below has been built yet.
+<p>This is the target design. On 2026-10-31 the backend decision was reversed: the plan to keep Urbit for identity only and rebuild on Rust, SQLite and iroh is dropped. Urbit is the backend, and a ship runs on every client. The running system already keeps its data in Urbit agents and uses Ames, as described in <a href="status.html">status.html</a> and <a href="urbit.html">urbit.html</a>. The primitives below are not built yet.
 
 <h2>Decisions</h2>
 
 <ol>
-<li><strong>Clan identity.</strong> Each clan has one Urbit planet as its root identity, with one administrator. Urbit is used for identity only: no ship runs. The planet's authentication key, published in Azimuth, signs a certificate for each server, device and agent key. These replace moons. Ethereum is read only to look up a key, such as when meeting another clan.
-<li><strong>Server stack.</strong> NixOS for a declarative system with rollback, ZFS for snapshots, and the Locus store for the clan's state. A server can be restored from a snapshot, which a ship could not do. Heavy software (AI inference, games, 3D, video) runs on the host and is launched through Locus operations.
-<li><strong>Data.</strong> Everything is built from six primitives, listed below. The store is one SQLite database on each machine, plus blobs on disk.
+<li><strong>Clan identity.</strong> Each clan has one Urbit planet as its root identity, with one administrator. The planet runs on a server. Other servers and devices are moons of it, so every client runs a ship.
+<li><strong>Server stack.</strong> NixOS for a declarative system with rollback, ZFS for snapshots, and Urbit ships for the clan's state. Software that does not belong in a ship runs beside it on the same machine. Heavy software (AI inference, games, 3D, video) runs on the host and is launched through Locus operations.
+<li><strong>Data.</strong> Everything is built from six primitives, listed below. They live in ship state, with large blobs on disk beside the ship.
 <li><strong>One action layer.</strong> Every action is an operation. Keyboard, mouse and agents all call the same operations. Permissions are per member and per agent, and everything is audited. An agent's proposal is a branch of unapplied operations, reviewed as a diff.
 <li><strong>Safety.</strong> Deletions and overwrites can always be recovered (the operation log, ZFS snapshots). The exception is an explicit purge, for something like a leaked password. Changes to the operating system need a human's approval and can be rolled back.
-<li><strong>Sync.</strong> Every object has one home server, which orders its operations and checks their permissions. Clients keep a partial copy, apply operations at once, then replay them on top of the server's order. They keep working offline, but their changes stay provisional until the server accepts them, and devices do not sync with each other directly. A conflict keeps both versions. Nothing is ever silently overwritten. Text bodies use a CRDT, because a person and an agent will often edit the same one at once.
-<li><strong>Interfaces.</strong> Being redesigned from first principles. The earlier point-and-click design was a placeholder and is discarded, and the shells (libcosmic on the desktop, iced in the browser) are no longer assumed. Built in Rust, from one framework-agnostic core. Android comes later.
+<li><strong>Sync.</strong> Every object has one home server, which orders its operations and checks their permissions. Client ships keep a partial copy, apply operations at once, then replay them on top of the server's order. They keep working offline, but their changes stay provisional until the server accepts them, and devices do not sync with each other directly. A conflict keeps both versions. Nothing is ever silently overwritten. Text bodies use a CRDT, because a person and an agent will often edit the same one at once.
+<li><strong>Interfaces.</strong> Being redesigned from first principles. The earlier point-and-click design was a placeholder and is discarded, and the shells (libcosmic on the desktop, iced in the browser) are no longer assumed. An interface talks to the ship on its own device. Android comes later.
 <li><strong>Components.</strong> Small parts that each do one thing. Outside code is taken as hard forks of small pieces, never as soft forks of large projects.
 <li><strong>Distribution.</strong> Locus ships as a Nix flake. A clan follows upstream or points at its own fork. Every update can be rolled back.
 <li><strong>Feedback.</strong> A request carries its context (app, version, recent actions), becomes an issue, an agent drafts a change and a preview, and the administrator approves it before it ships.
-<li><strong>Reachability.</strong> Clans and devices reach each other over iroh: QUIC connections dialled by public key, with hole punching and relays that see only encrypted packets. Keys are tied to Urbit IDs by the certificates in decision 1. Ames is dropped. A relay or tunnel is an acceptable pipe, but never a place where data is stored or identity is managed.
+<li><strong>Reachability.</strong> Clans and devices reach each other over Ames. A relay or tunnel is an acceptable pipe, but never a place where data is stored or identity is managed.
 <li><strong>Gateway.</strong> A small host process serves the browser app and blobs over HTTPS and WebSocket, so the browser sees one origin. It checks every request against the clan's permissions.
 </ol>
 
@@ -52,7 +52,7 @@
 <p>A format is used internally only if it adds no structure the primitives have to work around. Everything else is a compatibility layer.
 
 <ul>
-<li><strong>Internal:</strong> HTML for text, SQLite, BLAKE3, and media and documents as their original bytes.
+<li><strong>Internal:</strong> HTML for text, ship state, BLAKE3, and media and documents as their original bytes.
 <li><strong>Import and export only:</strong> Markdown, iCalendar and JSCalendar, vCard and JSContact.
 <li><strong>Generated:</strong> JSON Schema, for agent tools over MCP. Types use our own definitions.
 </ul>
@@ -80,7 +80,12 @@
 <h2>Open questions</h2>
 
 <ul>
-<li>Which CRDT library? It needs a benchmark on real notes, covering tree moves and marks.
+<li>What else must run on a client beside its ship, and how are they supervised together?
+<li>How does a ship run on a phone, and what does it cost in storage, memory and battery?
+<li>How do large blobs move between ships? Ames may be too slow for them.
+<li>How are ships backed up? A restored ship with an old event log cannot simply rejoin the network, so ZFS snapshots alone are not enough.
+<li>Should the app layer move to %gnat once it is published?
+<li>How do text CRDTs work in ship state? They need a benchmark on real notes, covering tree moves and marks.
 <li>Which HTML engine renders pages on the desktop, and do the shells change?
 <li>Which runtime should serve local AI inference?
 <li>Are tasks still lines of text inside notes, or their own objects?
