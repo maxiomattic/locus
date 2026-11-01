@@ -13,7 +13,7 @@
 
 <ul>
 <li><strong>Running:</strong> <code>%store</code> on the live comet, and <code>ui/</code> served by the <code>locus-host</code> service at port 5180 on the Surface. It replaces the Vite prototype.
-<li><strong>Works, seen in Brave on the live ship:</strong> Home, notebooks and notes, and an agent request that became a proposal. Seen on test ships with the same data: History, undo, Trash, clash resolution, proposals, typing that survives a reload, and both command bar and notice designs (chosen from the command bar).
+<li><strong>Works, seen in Brave on the live ship:</strong> Home, notebooks and notes, and an agent request that became a proposal. Seen earlier on a test ship with sample data: History, undo, Trash, clash resolution, proposals, typing that survives a reload, and both command bar and notice designs (chosen from the command bar).
 <li><strong>Works on two test ships with 16,000 objects:</strong> a client ship with its own host, offline both ways, conflicts, reactions, revert and purge (<code>scripts/store-two-ship-test.sh</code>, <code>ui/scripts/client-test.py</code>).
 <li><strong>Data:</strong> 246 notes in 9 notebooks: the Obsidian vault <code>new</code> as of 2026-11-01, and the rest from the export of 2026-10-20. Rerunning <code>ui/scripts/import-notes.mjs</code> adds new files but does not update notes already imported.
 <li><strong>Not built:</strong> Calendar, Files, Messages and Contacts surfaces. Those agents hold 0 events, 0 contacts and 0 messages on the live ship; its files stay in <code>%files</code>.
