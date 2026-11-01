@@ -35,6 +35,18 @@
   ;<  o=json  bind:m  (show 'a')
   (ex-equal !>((field o 'title')) !>(`json`s+'x'))
 ::
+++  test-reaction-on-its-own-view-ends
+  %-  eval-mare
+  =/  m  (mare ,~)
+  ^-  form:m
+  ;<  ~  bind:m  init
+  ;<  *  bind:m  (act '{"do":"batch","intent":"setup","ops":[{"do":"make","id":"t","type":"tool","fields":{"name":"stamp","can":["set"],"program":[{"for":{"var":"view"},"as":"x","do":[{"set":{"id":{"var":"x"},"fields":{"obj":{"seen":"yes"}}}}]}]}},{"do":"make","id":"g","type":"grant","fields":{"actor":"tool:t","ops":["set"],"types":["note"]}},{"do":"make","id":"v","type":"view","fields":{"query":{"type":"note"},"react":"t"}}]}')
+  ;<  *  bind:m  (act '{"do":"batch","intent":"new","ops":[{"do":"make","id":"a","type":"note","fields":{"title":"x"}}]}')
+  ;<  o=json  bind:m  (show 'a')
+  ;<  ~  bind:m  (ex-equal !>((field o 'seen')) !>(`json`s+'yes'))
+  ?>  ?=([%o *] o)
+  (ex-equal !>((~(got by p.o) 'rev')) !>(`json`n+'2'))
+::
 ++  test-proposal-then-approve
   %-  eval-mare
   =/  m  (mare ,~)

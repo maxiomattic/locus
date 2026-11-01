@@ -255,6 +255,13 @@
 ++  commit
   |=  [who=ship =batch]
   ^-  (pair (each @ud @t) _cor)
+  =/  r  (record who batch)
+  ?:  ?=(%| -.p.r)  r
+  [p.r react:q.r]
+::
+++  record
+  |=  [who=ship =batch]
+  ^-  (pair (each @ud @t) _cor)
   =/  ok  (allowed objects =(who our.bowl) actor.batch ops.batch)
   ?:  ?=(%| -.ok)  [[%| p.ok] cor]
   =/  next  +(seq)
@@ -267,7 +274,7 @@
   =.  log  (purged log ops.batch)
   =.  cor  (touch ops.batch)
   =.  cor  (publish [%entry entry])
-  [[%& next] react]
+  [[%& next] cor]
 ::
 ++  purged
   |=  [l=^log ops=(list op)]
@@ -284,22 +291,21 @@
   =/  vs=(list object)  (reactions objects)
   =/  c=_cor  cor
   |-
-  ?~  vs  c
-  =/  h  (view-hash objects i.vs)
-  =/  old  (~(get by reacted) id.i.vs)
-  =.  reacted  (~(put by reacted) id.i.vs h)
-  =.  reacted.c  reacted
+  ?~  vs  quiet:c
+  =/  h  (view-hash objects.c i.vs)
+  =/  old  (~(get by reacted.c) id.i.vs)
+  =.  reacted.c  (~(put by reacted.c) id.i.vs h)
   ?:  |(?=(~ old) =(u.old h))  $(vs t.vs)
-  =/  tool  (~(get by objects) (field-text i.vs 'react'))
+  =/  tool  (~(get by objects.c) (field-text i.vs 'react'))
   ?~  tool  $(vs t.vs)
-  ?^  (check-tool objects u.tool)  $(vs t.vs)
+  ?^  (check-tool objects.c u.tool)  $(vs t.vs)
   =/  args=fields
-    (fs ~[['view' [%a (turn (query objects (~(gut by fields.i.vs) 'query' ~)) |=(o=object [%s id.o]))]]])
-  =/  r  (run-tool objects (~(gut by fields.u.tool) 'program' ~) args (scot %uv (end [3 6] eny.bowl)))
+    (fs ~[['view' [%a (turn (query objects.c (~(gut by fields.i.vs) 'query' ~)) |=(o=object [%s id.o]))]]])
+  =/  r  (run-tool objects.c (~(gut by fields.u.tool) 'program' ~) args (scot %uv (end [3 6] eny.bowl)))
   ?:  ?=(%| -.r)  $(vs t.vs)
   ?~  p.r  $(vs t.vs)
   =/  actor=@t  (rap 3 ~['tool:' id.u.tool])
-  =/  ok  (allowed objects & actor p.r)
+  =/  ok  (allowed objects.c & actor p.r)
   =/  ops=(list op)
     ?:  ?=(%& -.ok)  p.r
     :_  ~
@@ -310,8 +316,18 @@
         ['ops' [%a (turn p.r op-j:enjs)]]
         ['status' s+'open']
     ==
-  =/  done  (commit:c our.bowl ['' actor (field-text u.tool 'name') ops])
+  =/  done  (record:c our.bowl ['' actor (field-text u.tool 'name') ops])
   $(vs t.vs, c q.done)
+::  What reactions just wrote cannot set off another reaction, so a reaction
+::  always ends, even one whose tool changes the view it watches.
+::
+++  quiet
+  ^+  cor
+  =/  vs=(list object)  (reactions objects)
+  |-
+  ?~  vs  cor
+  =.  reacted  (~(put by reacted) id.i.vs (view-hash objects i.vs))
+  $(vs t.vs)
 ::
 ++  touch
   |=  ops=(list op)

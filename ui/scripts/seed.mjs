@@ -9,6 +9,17 @@ const state = await fetch(`${url}/store/~/v1/state`).then((r) => r.json())
 if (state.objects.some((o) => o.id === 'home')) { console.log('already seeded'); process.exit(0) }
 const manifest = await fetch(`${url}/media/manifest.json`).then((r) => (r.ok ? r.json() : null), () => null)
 const store = manifest ? withMedia(seedStore(), manifest) : seedStore()
+// LOCUS_REAL=1: a store for real data, without the sample notes and people.
+if (process.env.LOCUS_REAL) {
+  for (const key of ['n', 'e']) {
+    const tile = Object.values(store).find((o) => o.launch === key)
+    for (const id of tile.items) {
+      for (const b of store[id].items ?? []) delete store[b]
+      delete store[id]
+    }
+    tile.items = []
+  }
+}
 const ops = Object.values(store).map(({ id, type, ...fields }) => ({ do: 'make', id, type, fields }))
 const KIND = (fields) => ({ do: 'make', id: `type:${fields.name}`, type: 'type', fields })
 ops.push(

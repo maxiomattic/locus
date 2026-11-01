@@ -368,7 +368,7 @@
   ^-  @uv
   %-  sham
   %+  turn  (query objs (~(gut by fields.v) 'query' ~))
-  |=(o=object [id.o rev.o])
+  |=(o=object id.o)
 ::
 ::  ---- tools ----
 ::
