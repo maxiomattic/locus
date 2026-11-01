@@ -5,7 +5,21 @@
 
 <h1>Locus: status</h1>
 
-<p>Where the work stands against <a href="plan.html">plan.html</a>. The plan says what to do and <a href="intent.md">intent.md</a> says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-10-20.
+<p>Where the work stands against <a href="plan.html">plan.html</a>. The plan says what to do and <a href="intent.md">intent.md</a> says why. This file only tracks progress, so update it when a stage moves. Last updated 2026-11-01.
+
+<h2>Now: the interface runs on the ship (2026-11-01)</h2>
+
+<p>Earlier sections below describe the first, point-and-click version. Its agents and data are still on the ship and were not changed.
+
+<ul>
+<li><strong>Running:</strong> <code>%store</code> on the live comet, and <code>ui/</code> served by the <code>locus-host</code> service at port 5180 on the Surface. It replaces the Vite prototype.
+<li><strong>Works, seen in Brave on the live ship:</strong> Home, notebooks and notes, and an agent request that became a proposal. Seen on test ships with the same data: History, undo, Trash, clash resolution, proposals, typing that survives a reload, and both command bar and notice designs (chosen from the command bar).
+<li><strong>Works on two test ships with 16,000 objects:</strong> a client ship with its own host, offline both ways, conflicts, reactions, revert and purge (<code>scripts/store-two-ship-test.sh</code>, <code>ui/scripts/client-test.py</code>).
+<li><strong>Data:</strong> 246 notes in 9 notebooks: the Obsidian vault <code>new</code> as of 2026-11-01, and the rest from the export of 2026-10-20. Rerunning <code>ui/scripts/import-notes.mjs</code> adds new files but does not update notes already imported.
+<li><strong>Not built:</strong> Calendar, Files, Messages and Contacts surfaces. Those agents hold 0 events, 0 contacts and 0 messages on the live ship; its files stay in <code>%files</code>.
+<li><strong>Not done:</strong> no client ship on the laptop or phone yet.
+<li><strong>Unexplained:</strong> the old <code>%notes</code> agent on the live comet is empty, though this file says 242 notes were imported on 2026-10-20. The journal shows no wipe after that import. The export on here-nor-there is intact and is what was imported.
+</ul>
 
 <h2>Now: stages 1 and 2, a first version to try</h2>
 

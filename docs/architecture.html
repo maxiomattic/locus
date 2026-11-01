@@ -7,7 +7,7 @@
 
 <p>High-level decisions that serve <a href="intent.md">intent.md</a>. These are expected to change. Details belong in the code.
 
-<p>This is the target design. On 2026-10-31 the backend decision was reversed: the plan to keep Urbit for identity only and rebuild on Rust, SQLite and iroh is dropped. Urbit is the backend, and a ship runs on every client. The running system already keeps its data in Urbit agents and uses Ames, as described in <a href="status.html">status.html</a> and <a href="urbit.html">urbit.html</a>. The primitives below are not built yet.
+<p>This is the target design. On 2026-10-31 the backend decision was reversed: the plan to keep Urbit for identity only and rebuild on Rust, SQLite and iroh is dropped. Urbit is the backend, and a ship runs on every client. The primitives below are built in the <code>%store</code> agent (<code>desk/app/store.hoon</code>), with the interface in <code>ui/</code>. <a href="status.html">status.html</a> says what runs today.
 
 <h2>Decisions</h2>
 
@@ -35,8 +35,10 @@
 <tr><td>Operation<td>The only way anything changes. The log of operations is the source of truth. An entry records who acted, on whose behalf, what they intended and the resulting change.
 <tr><td>Reference<td>A pointer to an object's ID, in a field or inline in text. It can pin a version. The graph is an index built from references.
 <tr><td>Blob<td>Immutable bytes addressed by BLAKE3 hash. An object points to them.
-<tr><td>View<td>A live query over the rest. It is derived and can always be rebuilt. A reaction invokes an operation when a view's result changes.
+<tr><td>View<td>A live query over the rest. It is derived and can always be rebuilt. A reaction invokes a tool when the set of objects in a view changes. What reactions write cannot set off another reaction, so they always end.
 </table>
+
+<p>A <strong>tool</strong> is an object too: a JSON program in a small language with no unbounded loops, run by the ship with a fuel limit. It can only produce operations, it declares what it can do, and that is checked statically. When the agent does the same kind of thing twice, it writes a tool and offers it as a proposal. From then on the request runs without a model.
 
 <p>Members, agents and permissions are ordinary objects, so changing a permission is an audited operation.
 
@@ -77,6 +79,16 @@
 <li><strong>A lossless archive</strong> (the full log and blobs) is the backup and migration format. Interoperable exports (<code>.html</code>, <code>.md</code>, <code>.ics</code>, <code>.vcf</code>) declare what they drop.
 </ul>
 
+<h2>Where the build differs from this design</h2>
+
+<ul>
+<li>Text conflicts are per block, not a CRDT. A stale write is kept as a clash for a person to resolve.
+<li>A client ship keeps a full copy of the metadata, not a partial one, and follows one home ship.
+<li>The host states which actor is calling, and the browser's access to it relies on Tailscale. It has no login of its own.
+<li>A comet cannot have moons, so a client ship is a member its home allows, until the clan has a planet.
+<li>The model-written path for tools has not been tried with a real model. The heuristic path has.
+</ul>
+
 <h2>Open questions</h2>
 
 <ul>
@@ -85,7 +97,6 @@
 <li>How do large blobs move between ships? Ames may be too slow for them.
 <li>How are ships backed up? A restored ship with an old event log cannot simply rejoin the network, so ZFS snapshots alone are not enough.
 <li>Should the app layer move to %gnat once it is published?
-<li>How do text CRDTs work in ship state? They need a benchmark on real notes, covering tree moves and marks.
 <li>Which HTML engine renders pages on the desktop, and do the shells change?
 <li>Which runtime should serve local AI inference?
 <li>Are tasks still lines of text inside notes, or their own objects?

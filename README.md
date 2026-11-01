@@ -38,6 +38,7 @@ This repository is the product flake. Configuration for a particular clan's mach
 - `desk/`: the `%locus` Urbit desk.
 - `crates/`: `locus-core` (app logic), `locus-client` (async API client), `locus-effects` (runs core effects), `locus-web` / `locus-desktop` (shells), `locus-gateway`, plus older blocking clients and CLIs (`notes-*`, `locus-*`, `photos-*`).
 - `scripts/`: `desk-deploy.sh` (deploy the desk to a real ship; never wipes data), `web-build.sh`, and test harnesses for the bring-up VM (`server-vm.sh`, `notes-occ.sh`, `locus-check.sh`, `photos-check.sh`).
+- `ui/`: the interface, its host and agent (`npm test`, `npm run build`, `npm run host`).
 - `docs/`: intent, architecture, plan, deploy, and one doc per component.
 
 Notes don't install Tlon Messenger or `%groups`.
