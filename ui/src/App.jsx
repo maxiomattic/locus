@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   init, press, tick, point, setCols, frame, kind, items, titleOf, targetLabel,
   menuEntries, completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
-  applyRemote, say, watch, pref,
+  applyRemote, say, watch, pref, pointAt, unsend,
 } from './engine.js'
+import { addDays, dayName, dayStart, lanes, minuteOfDay, occurrences, weekStart, whenName } from './calendar.js'
 import { describe } from './sync.js'
 import { Bars, Film, Photo, Poster } from './Art.jsx'
 
@@ -14,7 +15,7 @@ function toKey(e) {
     key = e.shiftKey ? key.toUpperCase() : key.toLowerCase()
   }
   if (e.altKey && /^Key[A-Z]$/.test(e.code)) key = e.code[3].toLowerCase()
-  return { key, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey }
+  return { key, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey, now: Date.now() / 1000 }
 }
 
 export function App({ store, sync }) {
@@ -44,6 +45,7 @@ export function App({ store, sync }) {
     link.current = sync(() => latest.current, {
       remote: (objects, gone) => set((p) => applyRemote(p, objects, gone)),
       say: (msg, extra) => set((p) => say(p, msg, extra)),
+      unsend: (id) => set((p) => unsend(p, id)),
       watch: (id) => set((p) => watch(p, id)),
       status: (net) => setNet(net),
       history: (history) => set((p) => ({ ...p, history })),
@@ -93,14 +95,14 @@ function Bar({ s }) {
       {s.mode === 'menu' && (
         <span className="line">
           {menuEntries(s).map((e) => (
-            <span key={e.key} className={e.off ? 'entry off' : 'entry'}>
-              <kbd>{e.key}</kbd>{e.label}{e.children ? '…' : ''}
+            <span key={e.key ?? e.label} className={e.off ? 'entry off' : 'entry'}>
+              {e.key && <kbd>{e.key}</kbd>}{e.label}{e.children ? '…' : ''}
             </span>
           ))}
         </span>
       )}
       {s.mode === 'find' && <span className="line"><span className="input">/{f.filter}<i className="caret" /></span></span>}
-      {s.mode === 'typing' && <span className="line hint">Typing. Esc to stop.</span>}
+      {s.mode === 'typing' && <span className="line hint">{s.typing?.note ? `${s.typing.note} ` : ''}Typing. Esc to stop.</span>}
       {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || 'f for the menu, ; to type a command or ask the agent'}</span>}
     </header>
   )
@@ -179,7 +181,9 @@ function Tile({ s, pane, set }) {
       <div className="body" ref={ref}>
         {k === 'grid' && <Grid {...props} />}
         {k === 'list' && <List {...props} />}
+        {k === 'calendar' && <Week {...props} pane={pane} set={set} />}
         {k === 'blocks' && <Note {...props} />}
+        {k === 'thread' && <Thread {...props} />}
         {k === 'chars' && <Chars {...props} />}
         {k === 'photo' && <PhotoView {...props} />}
         {k === 'player' && <Player {...props} set={set} />}
@@ -302,7 +306,7 @@ function ToolView({ o }) {
     <article className="info">
       <dl>
         <div><dt>Name</dt><dd>{o.name}</dd></div>
-        <div><dt>Key</dt><dd><kbd>{o.key}</kbd></dd></div>
+        <div><dt>Key</dt><dd>{o.key ? <kbd>, {o.key}</kbd> : 'By name, from the command bar'}</dd></div>
         <div><dt>Works on</dt><dd>{o.appliesTo}</dd></div>
         <div><dt>Runs</dt><dd>{o.uses ?? 0}, with no model calls</dd></div>
         <div><dt>Version</dt><dd>{o.version ?? 1}</dd></div>
@@ -316,8 +320,12 @@ function ToolView({ o }) {
 
 function Row({ s, id }) {
   const o = s.store[id]
+  if (o.type === 'thread') {
+    const last = o.items.map((x) => s.store[x]).filter(Boolean).at(-1)
+    return <><span className="grow"><Title s={s} id={id} /></span><span className="grow dim">{last?.text ?? ''}</span><span className="dim">{o.unread ? `${o.unread} new` : o.peer || 'No ship yet'}</span></>
+  }
   if (o.type === 'proposal') return <><span className="grow">{o.intent}</span><span className="dim">{(o.ops ?? []).length} changes</span></>
-  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim"><kbd>{o.key}</kbd> {o.uses ?? 0} runs</span></>
+  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim">{o.key && <kbd>, {o.key}</kbd>} {o.uses ?? 0} runs</span></>
   if (o.type === 'track') return <><span className="grow">{o.title}</span><span className="dim">{s.player.id === id ? (s.player.playing ? 'Playing' : 'Paused') : clock(o.dur)}</span></>
   const sub = o.type === 'note' ? `${o.items.length} ${o.items.length === 1 ? 'block' : 'blocks'}` : ''
   return <><span className="grow"><Title s={s} id={id} /></span><span className="dim">{sub}</span></>
@@ -335,11 +343,86 @@ function List({ s, f, active, pick }) {
   )
 }
 
+const SLOTS = Array.from({ length: 48 }, (_, i) => i)
+const hourName = (i) => new Date(2000, 0, 1, i / 2).toLocaleTimeString([], { hour: 'numeric' })
+
+function Week({ s, f, active, pane, set }) {
+  const o = s.store[f.id]
+  const events = o.items.map((id) => s.store[id]).filter((e) => e?.type === 'event')
+  const shown = new Set(items(s, f))
+  const start = weekStart(f.at)
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  const all = occurrences(events, start, addDays(start, 7))
+  const cursorDay = dayStart(f.at)
+  const now = Date.now() / 1000
+  const r = range(s, f)
+  const on = s.mode === 'normal' ? targetsHere(s, f, all) : null
+  // Part of a time span that falls within one day, in slots.
+  const span = (day, a, b) => {
+    const next = addDays(day, 1)
+    if (a >= next || b <= day) return null
+    return { top: a <= day ? 0 : minuteOfDay(a) / 30, bottom: b >= next ? 48 : minuteOfDay(b) / 30 || 48 }
+  }
+  return (
+    <div className="week">
+      <div className="weekhead">
+        <span />
+        {days.map((d) => <span key={d} className={dayStart(now) === d ? 'today' : ''}>{dayName(d)}</span>)}
+      </div>
+      <div className="weekbody">
+        <div className="hours">{SLOTS.filter((i) => i % 2 === 0).map((i) => <span key={i}>{hourName(i)}</span>)}</div>
+        {days.map((d) => {
+          const segs = lanes(all.flatMap((e) => {
+            const p = span(d, e.start, e.end)
+            return p ? [{ ...p, id: e.id, from: e.start, to: e.end }] : []
+          }))
+          const sel = r && span(d, r.from, r.to)
+          return (
+            <div key={d} className="day" onClick={(e) => {
+              const rows = (e.clientY - e.currentTarget.getBoundingClientRect().top) / e.currentTarget.offsetHeight * 48
+              const t = new Date(d * 1000)
+              t.setMinutes(Math.floor(rows) * 30)
+              set((p) => pointAt(p, pane, t / 1000))
+            }}>
+              {segs.map((g) => {
+                const pct = 100 / g.lanes
+                const name = `event${f.marks.includes(g.id) ? ' marked' : ''}${on === g.id ? ' on' : ''}${f.filter && !shown.has(g.id) ? ' faint' : ''}`
+                return (
+                  <div key={g.id + g.from} className={name} title={whenName(g.from, g.to)} style={{
+                    top: `${(g.top / 48) * 100}%`, height: `${((g.bottom - g.top) / 48) * 100}%`,
+                    left: `${g.lane * pct}%`, width: `${pct}%`,
+                  }} onClick={(e) => {
+                    e.stopPropagation()
+                    set((p) => pointAt(p, pane, Math.max(g.from, d), g.id))
+                  }}>
+                    <Title s={s} id={g.id} />
+                    {s.store[g.id].repeat && <span className="dim"> {s.store[g.id].repeat}</span>}
+                  </div>
+                )
+              })}
+              {sel && <div className="span" style={{ top: `${(sel.top / 48) * 100}%`, height: `${((sel.bottom - sel.top) / 48) * 100}%` }} />}
+              {dayStart(now) === d && <div className="nowline" style={{ top: `${(minuteOfDay(now) / 1440) * 100}%` }} />}
+              {cursorDay === d && <div className={active ? 'slotcursor focus' : 'slotcursor rest'} style={{ top: `${(minuteOfDay(f.at) / 1440) * 100}%` }} />}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function targetsHere(s, f, all) {
+  const hits = all.filter((e) => e.start < f.at + 1800 && e.end > f.at)
+  return (hits.find((e) => e.id === f.sel) ?? hits[0])?.id ?? null
+}
+
 function Block({ s, id }) {
   const o = s.store[id]
   if (o.ref) {
     const r = s.store[o.ref]
+    if (r.type === 'event') return <p className="link">{r.title}, {whenName(r.start, r.end)}</p>
     if (r.type === 'photo') return <figure className="embed"><Photo o={r} crop={o.crop} /><figcaption>{r.title}{o.crop ? ' (part)' : ''}</figcaption></figure>
+    if (r.type === 'message') return <p className="link">{r.text}</p>
     if (o.clip) return <p className="link">{r.title}, {clock(o.clip.from)} to {clock(o.clip.to)}</p>
     return <p className="link">{r.title}</p>
   }
@@ -377,6 +460,37 @@ function Chars({ s, f, active }) {
         {o.text.slice(b)}
       </p>
     </article>
+  )
+}
+
+const SHOWN = { draft: 'Draft', sending: 'Sending', pending: 'Sent', delivered: 'Delivered', failed: 'Failed, press A to send again' }
+const stamp = (at) => new Date(at * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+function Message({ s, id }) {
+  const o = s.store[id]
+  const mine = o.from === 'me'
+  const state = o.$sending ? 'Sending' : mine ? SHOWN[o.status] : null
+  const typing = s.typing?.objId === id
+  return (
+    <div className={`msg ${mine ? 'mine' : 'theirs'} ${o.status}`}>
+      <p>{typing ? <Caret text={o.text} at={s.typing.pos} /> : o.text}</p>
+      <span className="dim">{[o.at && stamp(o.at), state].filter(Boolean).join(' · ')}</span>
+    </div>
+  )
+}
+
+function Thread({ s, f, active, pick }) {
+  const o = s.store[f.id]
+  const t = s.typing
+  const list = items(s, f)
+  return (
+    <div className="thread">
+      <p className="dim">{t?.objId === f.id && t.field === 'peer' ? <>With <Caret text={o.peer ?? ''} at={t.pos} /></> : o.peer ? `With ${o.peer}` : 'No ship yet. Press P to set one.'}</p>
+      {list.map((id, i) => (
+        <div key={id} className={itemClass(f, active, i, id, 'turn')} onClick={() => pick(i)}><Message s={s} id={id} /></div>
+      ))}
+      {!list.length && <Empty f={f}>Nothing here yet. Press o to write.</Empty>}
+    </div>
   )
 }
 
@@ -464,9 +578,10 @@ function Player({ s, f, set }) {
 function Info({ s, f, active, pick }) {
   const o = s.store[f.id]
   const list = items(s, f)
-  const type = { photo: 'Photo', note: o.person ? 'Person' : 'Note', track: 'Track', movie: 'Movie', collection: 'Collection', block: 'Block' }[o.type]
+  const type = { photo: 'Photo', note: o.person ? 'Person' : 'Note', event: 'Event', track: 'Track', movie: 'Movie', collection: 'Collection', block: 'Block', thread: 'Thread' }[o.type]
   const rows = [['Kind', type]]
   if (o.dur) rows.push(['Length', clock(o.dur)])
+  if (o.type === 'event') rows.push(['When', whenName(o.start, o.end)], ['Repeats', o.repeat ?? 'No'])
   if (o.type === 'photo') rows.push(['Rotation', `${o.rot} degrees`], ['Cropped', o.crop ? 'Yes' : 'No'])
   if (o.author) rows.push(['Photographer', o.author], ['License', o.license])
   if (o.items) rows.push(['Contains', `${o.items.length}`])

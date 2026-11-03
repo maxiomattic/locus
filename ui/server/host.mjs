@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { mediaRoutes } from './media.mjs'
 import { claude, createAgent, stubModel } from './agent.mjs'
+import { createMessages, shipApi } from './messages.mjs'
 
 const PORT = Number(process.env.PORT ?? 5180)
 const SHIP = process.env.LOCUS_SHIP ?? 'http://127.0.0.1:8081'
@@ -38,6 +39,8 @@ const call = async (method, url, body) => {
 const model = process.env.LOCUS_LLM === 'stub' ? stubModel() : claude(process.env.LOCUS_MODEL)
 const agent = createAgent({ call, model })
 const media = mediaRoutes(PORT)
+const messages = createMessages({ call, api: shipApi(ship) })
+messages.start()
 
 const body = (req) => new Promise((done) => {
   const chunks = []
@@ -57,6 +60,11 @@ http.createServer(async (req, res) => {
     }
     if (url === '/agent/ask') return send(res, 200, await agent.ask(JSON.parse(await body(req))))
     if (url === '/agent/tool') return send(res, 200, await agent.tool(JSON.parse(await body(req))))
+    if (url === '/agent/send') {
+      const r = await messages.send(JSON.parse(await body(req)).id)
+      return send(res, r.ok ? 200 : 409, r)
+    }
+    if (url === '/agent/read') return send(res, 200, await messages.read(JSON.parse(await body(req)).id))
     if (url === '/agent/stats') return send(res, 200, { ...agent.stats, calls: model.calls })
     if (url.startsWith('/media/')) return media(req, res, () => send(res, 404, {}))
     const file = path.join(DIST, url.split('?')[0] === '/' ? 'index.html' : url.split('?')[0])

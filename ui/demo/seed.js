@@ -3,6 +3,7 @@
 import { seedStore } from '../src/data.js'
 import { withMedia } from '../src/media.js'
 import media from './media.json'
+import { messageSetup } from '../server/messages.mjs'
 
 const welcomeText = [
   ['h', 'Welcome to Locus'],
@@ -12,8 +13,8 @@ const welcomeText = [
   ['p', 'Locus is built for the keyboard. On a phone, use the buttons at the bottom: you can browse everything, but asking the agent needs a keyboard. Press Esc to go back, then h j k l to move and Space to open. Press f any time to see what you can do here.'],
   ['todo', 'Press p for Photos, open an album, and press r on a photo to rotate it', false],
   ['todo', 'Press z to undo it', false],
-  ['todo', 'Select a photo with s, press ; and ask “rotate this”. The change waits in the Inbox: press d, Space to open it, then y to approve', false],
-  ['todo', 'Do the same thing twice and the agent offers a tool, which then runs with no agent at all (press D)', false],
+  ['todo', 'Select a photo with s, press ; and ask “rotate this”. The change waits in the Inbox: press d, Space to open it, then A to approve', false],
+  ['todo', 'Do the same thing twice and the agent offers a tool, which then runs with no agent at all (press D to list them, or , on a photo)', false],
   ['p', 'The agent here is a short script, so it costs nothing and sends nothing anywhere. The rest is the real interface.'],
 ]
 
@@ -58,8 +59,10 @@ export function demoOps() {
   ops.push(
     kind({ name: 'block', fields: { text: 'text', style: 'text', done: 'bool', ref: 'ref' } }),
     kind({ name: 'note', fields: { title: 'text', items: 'refs' } }),
+    kind({ name: 'event', fields: { title: 'text', start: 'num', end: 'num', repeat: 'text', items: 'refs' } }),
     kind({ name: 'photo', fields: { title: 'text', rot: 'num', src: 'blob' } }),
     kind({ name: 'collection', fields: { title: 'text', items: 'refs' } }),
+    ...messageSetup(kind),
     { do: 'make', id: 'grant:host-runs', type: 'grant', fields: { actor: 'agent:host', ops: ['make', 'set'], types: ['run'] } },
     { do: 'make', id: 'grant:host-tools', type: 'grant', fields: { actor: 'agent:host', ops: ['set'], types: ['tool'] } },
   )

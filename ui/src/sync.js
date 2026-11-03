@@ -137,6 +137,17 @@ export function connect(initial, ship) {
       }
     }
 
+    // A message is sent as the ship has it, so unsent edits go first.
+    async function drain() {
+      for (let i = 0; i < 100; i++) {
+        if (!busy && get().store === synced) return true
+        if (!busy) { clearTimeout(timer); await flush() }
+        if (net.state === 'offline') return false
+        await new Promise((go) => setTimeout(go, 50))
+      }
+      return false
+    }
+
     return {
       stop() { stopped = true },
       changed() { if (!timer) timer = setTimeout(flush, 250) },
@@ -144,6 +155,14 @@ export function connect(initial, ship) {
         if (e.do === 'ask') {
           const r = await post('/agent/ask', e).catch(() => null)
           ui.say(r?.data.say ?? 'The agent can’t be reached.', { working: null })
+        } else if (e.do === 'send') {
+          const lost = 'The ship can’t be reached, so nothing was sent. Your draft is safe.'
+          if (!await drain()) { ui.unsend(e.id); return ui.say(lost) }
+          const r = await post('/agent/send', { id: e.id }).catch(() => null)
+          if (!r?.ok) ui.unsend(e.id)
+          ui.say(r?.data.say ?? lost)
+        } else if (e.do === 'read') {
+          await post('/agent/read', { id: e.id }).catch(() => null)
         } else if (e.do === 'tool') {
           const r = await post('/agent/tool', e).catch(() => null)
           ui.say(r?.data.say ?? 'That tool failed.')

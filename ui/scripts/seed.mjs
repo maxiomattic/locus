@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import { seedStore } from '../src/data.js'
 import { withMedia } from '../src/media.js'
+import { messageSetup } from '../server/messages.mjs'
 
 const url = process.env.LOCUS_URL ?? 'http://127.0.0.1:5180'
 const state = await fetch(`${url}/store/~/v1/state`).then((r) => r.json())
@@ -11,7 +12,7 @@ const manifest = await fetch(`${url}/media/manifest.json`).then((r) => (r.ok ? r
 const store = manifest ? withMedia(seedStore(), manifest) : seedStore()
 // LOCUS_REAL=1: a store for real data, without the sample notes and people.
 if (process.env.LOCUS_REAL) {
-  for (const key of ['n', 'e']) {
+  for (const key of ['n', 'e', 'C', 'M']) {
     const tile = Object.values(store).find((o) => o.launch === key)
     for (const id of tile.items) {
       for (const b of store[id].items ?? []) delete store[b]
@@ -25,8 +26,10 @@ const KIND = (fields) => ({ do: 'make', id: `type:${fields.name}`, type: 'type',
 ops.push(
   KIND({ name: 'block', fields: { text: 'text', style: 'text', done: 'bool', ref: 'ref' } }),
   KIND({ name: 'note', fields: { title: 'text', items: 'refs' } }),
+  KIND({ name: 'event', fields: { title: 'text', start: 'num', end: 'num', repeat: 'text', items: 'refs' } }),
   KIND({ name: 'photo', fields: { title: 'text', rot: 'num', src: 'blob' } }),
   KIND({ name: 'collection', fields: { title: 'text', items: 'refs' } }),
+  ...messageSetup(KIND),
   { do: 'make', id: 'grant:host-runs', type: 'grant', fields: { actor: 'agent:host', ops: ['make', 'set'], types: ['run'] } },
   { do: 'make', id: 'grant:host-tools', type: 'grant', fields: { actor: 'agent:host', ops: ['set'], types: ['tool'] } },
 )

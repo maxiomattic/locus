@@ -77,6 +77,13 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dim { color: var(--mist); font-size: .85rem; white-space: nowrap; }
 .empty { color: var(--mist); }
+.thread { display: flex; flex-direction: column; gap: .35rem; max-width: 46rem; margin: 0 auto; }
+.turn { display: flex; padding: .2rem .5rem; }
+.msg { max-width: 75%; display: flex; flex-direction: column; gap: .15rem; }
+.msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.mine { margin-left: auto; text-align: right; }
+.msg.draft p { color: var(--mist); }
+.msg.failed .dim { color: inherit; font-weight: 600; }
 
 .note { max-width: 38rem; margin: 0 auto; }
 .block { padding: .15rem .5rem; margin-bottom: .55rem; }
@@ -125,6 +132,22 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 .changes { margin: 0; padding-left: 1.2rem; }
 .program { font-size: .8rem; white-space: pre-wrap; color: var(--mist); }
 .info h3 { font-size: 1rem; font-weight: 500; margin: 0 0 .4rem; }
+
+/* The week: one column of half hours per day, and events laid over it. */
+.week { --slot: 1.4rem; min-width: 40rem; }
+.weekhead, .weekbody { display: grid; grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); }
+.weekhead { position: sticky; top: -.75rem; z-index: 3; background: var(--ink); color: var(--mist); font-size: .84rem; padding-bottom: .3rem; }
+.weekhead .today { color: var(--focus); }
+.hours { display: grid; grid-template-rows: repeat(24, calc(var(--slot) * 2)); color: var(--mist); font-size: .75rem; }
+.day { position: relative; height: calc(var(--slot) * 48); border-left: 1px solid var(--slate);
+  background: repeating-linear-gradient(to bottom, var(--slate) 0 1px, transparent 1px calc(var(--slot) * 2)); }
+.event { position: absolute; overflow: hidden; padding: 0 .3rem; font-size: .8rem; line-height: 1.3; background: var(--slate); border-left: 3px solid var(--mark); }
+.event.on { background: #3a4a75; }
+.event.marked { box-shadow: inset 0 0 0 2px var(--mark); }
+.event.faint { opacity: .3; }
+.span { position: absolute; left: 0; right: 0; background: #46d9c533; box-shadow: inset 0 0 0 2px var(--mark); pointer-events: none; }
+.slotcursor { position: absolute; left: 0; right: 0; height: var(--slot); pointer-events: none; z-index: 2; outline-offset: -2px; }
+.nowline { position: absolute; left: 0; right: 0; height: 2px; background: var(--type); z-index: 1; pointer-events: none; }
 
 @media (max-width: 640px) {
   .status .group:nth-child(2) { display: none; }

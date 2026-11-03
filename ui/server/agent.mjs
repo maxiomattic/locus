@@ -18,7 +18,9 @@ const LANGUAGE = `Operations (JSON):
 {"do":"splice","id":"<id>","field":"items","del":[...],"add":[{"after":<id or null>,"val":<id>}]}
 {"do":"trash","id":"<id>"}
 To add at the end of a list, "after" is its last id. A note has items, a list of block ids. A block has text and style (p, h, todo) and done for a to-do.
-A collection has title, layout and items. A photo has title and rot (degrees).`
+A collection has title, layout and items. A photo has title and rot (degrees).
+An event has title, start and end (Unix seconds), repeat (null, daily or weekly) and items (blocks). To add one, make it with the owner's time zone in mind, then splice its id into the items of the object with id calendar.
+A thread has title, peer and items, a list of message ids. A message has text, from and status. You can only draft: make a message with from "me" and status "draft" and add it to the end of the thread's items. Only the person can send it, and nothing you do can deliver it. Never set a message's status.`
 
 const TOOL_LANGUAGE = `A tool program is a JSON list of steps:
 {"let":"name","be":EXPR} {"for":EXPR,"as":"x","do":[steps]} {"when":EXPR,"do":[steps]}
@@ -78,14 +80,14 @@ export function signature(ops, selection, objs) {
   }))].sort().join('|')
 }
 
-const FREE = [...'BEFMNOPQRUVWXAHJKLGbdqtruy']
-const taken = new Set([...'rCutbqyYIT'])
+const FREE = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
 
+// Tools sit behind , so a key only has to differ from other tools' keys. With
+// none left a tool has no key, and the command bar still finds it by name.
 function freeKey(name, tools) {
-  const used = new Set([...taken, ...tools.map((t) => t.key)])
-  const reserved = new Set([...'hjklHJKLgGsSaioxcvzZ.fnpmwedD;/ '])
-  const letters = [...name.toUpperCase().replace(/[^A-Z]/g, ''), ...FREE]
-  return letters.find((c) => !used.has(c) && !reserved.has(c)) ?? letters.map((c) => c.toLowerCase()).find((c) => !used.has(c) && !reserved.has(c))
+  const used = new Set(tools.map((t) => t.key))
+  const letters = name.replace(/[^a-z0-9]/gi, '')
+  return [...letters.toUpperCase(), ...letters.toLowerCase(), ...FREE].find((c) => !used.has(c))
 }
 
 // How a value came from what was there before, across every example seen.
@@ -236,7 +238,7 @@ Answer with one JSON object and nothing else: {"program":[...]}. It must produce
       param: made.param,
       examples: [{ args: { selection: [] }, expect: b.selection.length ? [] : asKinds(b.ops) }],
     }
-    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
+    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key ? `, ${fields.key}` : 'by name'}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
     return true
   }
 

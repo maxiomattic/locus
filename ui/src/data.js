@@ -1,4 +1,6 @@
 // Everything is an object in one store. Views are only ways of looking at it.
+import { addDays, weekStart } from './calendar.js'
+
 const s = {}
 let n = 0
 const add = (o) => { const id = o.id ?? `o${++n}`; s[id] = { ...o, id }; return id }
@@ -91,20 +93,46 @@ const keys = note('Keys', [
   p('Verbs', 'h'),
   p('i edits. o makes a new item. x cuts, c copies, v pastes. z undoes, Z redoes. . repeats the last verb.'),
   p('Reaching everything else', 'h'),
-  p('Each view lists its own one-key actions at the top right, such as r to rotate a photo. f lists everything. ; opens the command bar, which is also where you talk to the agent.'),
+  p('Each view lists its own one-key actions at the top right, such as r to rotate a photo. Tools you have taught the agent are behind , then their key. f lists everything. ; opens the command bar, which is also where you talk to the agent.'),
   p('Apps', 'h'),
-  p('From anywhere: n Notes, p Photos, m Music, w Movies, e People, d Inbox, D Tools.'),
+  p('From anywhere: n Notes, p Photos, m Music, w Movies, e People, C Calendar, M Messages, d Inbox, D Tools.'),
+  p('Messages', 'h'),
+  p('M opens Messages. o in a thread writes your draft, and Enter or Esc stops typing and keeps it. Enter never sends. A sends, the same key that approves a proposal. P sets who a thread is with. A sent message can be copied but not unsent.'),
   p('The agent', 'h'),
-  p('; then a request asks the agent. What it wants to change waits in the Inbox: y approves, r rejects. Ask for the same thing twice and it offers a tool, which then has a key of its own and runs without the agent.'),
+  p('; then a request asks the agent. What it wants to change waits in the Inbox: A approves, R rejects. Ask for the same thing twice and it offers a tool, which then sits behind , and runs without the agent.'),
+  p('Calendar', 'h'),
+  p('C opens the week. j k move half an hour, h l a day, H L a week, J K the next or previous event, t today. S selects time, then o makes an event from it. x and v move an event, c and v copy it, < and > change its length, y repeats it. Changing a repeating event changes every repeat.'),
   p('Tiles', 'h'),
   p('Alt+h j k l moves between tiles. Alt+q closes a tile.'),
 ])
 const notes = coll('Notes', 'list', [lisbon, reading, review], { accepts: 'note', newType: 'note' })
 
+// Calendar, around the week the store was made.
+const week = weekStart(Date.now() / 1000)
+const at = (day, hour) => addDays(week, day) + hour * 3600
+const event = (title, day, hour, hours, items = [], extra = {}) => add({ type: 'event', title, start: at(day, hour), end: at(day, hour + hours), items, ...extra })
+const calendar = coll('Calendar', 'calendar', [
+  event('Trip planning with Lauren', 1, 10, 1, [ref(lauren), p('Agree the Sintra day.')]),
+  event('Call the dentist', 1, 10.5, 0.5),
+  event('Family dinner', 4, 18, 2, [ref(sam)]),
+  event('Weekly review', 4, 9, 1, [ref(review)], { repeat: 'weekly' }),
+], { id: 'calendar', accepts: 'event' })
+// Messages
+const said = (text, from, status, ago) => add({ type: 'message', text, from, status, at: Math.floor(Date.now() / 1000) - ago })
+const thread = add({
+  type: 'thread', title: 'Lauren Okafor', peer: '~sampel-palnet',
+  items: [
+    said('Did the tram tour open up for Tuesday?', '~sampel-palnet', 'received', 7200),
+    said('Not yet. I’ll book it tonight.', 'me', 'delivered', 6900),
+    said('Thanks. Mornings are best for me.', '~sampel-palnet', 'received', 6600),
+  ],
+})
+const messages = coll('Messages', 'list', [thread], { id: 'messages', accepts: 'thread', newType: 'thread' })
+
 const inbox = coll('Inbox', 'list', [], { id: 'inbox', fixed: true, query: { type: 'proposal', status: 'open' } })
 const tools = coll('Tools', 'list', [], { id: 'tools', fixed: true, query: { type: 'tool' } })
 const trash = coll('Trash', 'list', [], { id: 'trash', fixed: true, query: { $trashed: true } })
-Object.entries({ n: notes, p: photos, m: music, w: movies, e: people, d: inbox, D: tools }).forEach(([key, id]) => { s[id].launch = key })
-add({ id: 'home', type: 'collection', title: 'Home', layout: 'grid', fixed: true, items: [notes, photos, music, movies, people, inbox, tools, keys] })
+Object.entries({ n: notes, p: photos, m: music, w: movies, e: people, C: calendar, M: messages, d: inbox, D: tools }).forEach(([key, id]) => { s[id].launch = key })
+add({ id: 'home', type: 'collection', title: 'Home', layout: 'grid', fixed: true, items: [notes, photos, music, movies, people, inbox, tools, keys, calendar, messages] })
 
 export const seedStore = () => structuredClone(s)

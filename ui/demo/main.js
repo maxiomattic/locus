@@ -12,7 +12,7 @@ document.querySelector('.demo-touch').addEventListener('click', (e) => {
 })
 if (matchMedia('(pointer: coarse)').matches) {
   document.getElementById('root').addEventListener('click', (e) => {
-    if (e.target.closest('.item, .row, .block')) setTimeout(() => press(' '))
+    if (e.target.closest('.item, .row, .block, .event')) setTimeout(() => press(' '))
   })
 }
 

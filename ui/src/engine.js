@@ -1,9 +1,13 @@
 // The interaction primitive, with no UI in it: navigate, select, enter, verb.
 // Every key press is press(state, key) -> new state, so tests can drive it.
 import { seedStore } from './data.js'
+import { SLOT, addDays, dayName, dayStart, occurrences, occursIn, retime, slotOf, timeName, weekStart, whenName } from './calendar.js'
 
 export const CELLS = { x: 12, y: 8 }
-export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.fnpmwedD;/ '])
+export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.,fnpmwedDCM;/ '])
+// These commit something that can't be taken back with a keystroke. They are
+// never reused for anything else, so muscle memory can't fire one by accident.
+export const CONSEQUENTIAL = new Set([...'AR'])
 const NOTHING = 'Nothing selected here. Press Esc to act on this item from its list.'
 
 let nextId = 0
@@ -14,9 +18,10 @@ const newFrame = (id, extra = {}) => ({
   filter: '', cursor: 0, cell: { x: 6, y: 4 }, view: null, ...extra,
 })
 
-export function init(store = seedStore()) {
+export function init(store = seedStore(), now = Date.now() / 1000) {
   return {
     store,
+    now,
     layout: { pane: 'p1' },
     panes: { p1: { stack: [newFrame('home')] } },
     cols: { p1: 4 },
@@ -48,20 +53,21 @@ export function kind(s, f) {
   if (f.view === 'history') return 'history'
   const o = s.store[f.id]
   if (o.type === 'collection') return o.layout
-  return { note: 'blocks', block: 'chars', photo: 'photo', track: 'player', movie: 'player', proposal: 'proposal', tool: 'tool' }[o.type]
+  return { note: 'blocks', event: 'blocks', block: 'chars', photo: 'photo', track: 'player', movie: 'player', proposal: 'proposal', tool: 'tool', thread: 'thread' }[o.type]
 }
 
 export function titleOf(s, id) {
   const o = s.store[id]
   if (!o) return 'Missing'
   if (o.type === 'block') return o.ref ? titleOf(s, o.ref) : o.text
+  if (o.type === 'message') return o.text
   return o.title ?? o.name ?? o.intent ?? o.id
 }
 
 function backlinks(s, id) {
   const out = []
   for (const o of Object.values(s.store)) {
-    if (o.type === 'note' && o.items?.some((b) => s.store[b]?.ref === id)) out.push(o.id)
+    if ((o.type === 'note' || o.type === 'event') && o.items?.some((b) => s.store[b]?.ref === id)) out.push(o.id)
     else if (o.type === 'collection' && o.items?.includes(id)) out.push(o.id)
   }
   return out
@@ -85,9 +91,12 @@ function matching(s, q) {
     .map((o) => o.id)
 }
 
-const isList = (k) => ['grid', 'list', 'blocks', 'info', 'history'].includes(k)
+const isList = (k) => ['grid', 'list', 'blocks', 'info', 'history', 'thread'].includes(k)
+// Views where verbs act on chosen objects. A week isn't a list: its cursor is a
+// time, and what it picks comes from there.
+const picks = (k) => isList(k) || k === 'calendar'
 export const queryItems = matching
-const pos = (s, f, k) => (k === 'chars' ? f.cursor : k === 'photo' ? { ...f.cell } : k === 'player' ? playerOf(s, f).t : f.focus)
+const pos = (s, f, k) => (k === 'calendar' ? f.at : k === 'chars' ? f.cursor : k === 'photo' ? { ...f.cell } : k === 'player' ? playerOf(s, f).t : f.focus)
 export const playerOf = (s, f) => (s.player.id === f.id ? s.player : { ...s.player, t: 0, playing: false })
 
 // The current range in a frame's own units, or null.
@@ -103,17 +112,23 @@ export function range(s, f) {
   }
   const lo = Math.min(f.anchor, b)
   const hi = Math.max(f.anchor, b)
+  if (k === 'calendar') return { from: lo, to: hi + SLOT }
   return k === 'chars' ? { from: lo, to: hi + 1 } : { from: lo, to: hi }
 }
 
 // What local verbs will hit: marks if any, otherwise the focused item.
 function targets(s, f) {
+  if (kind(s, f) === 'calendar') {
+    if (f.marks.length) return f.marks.filter((id) => s.store[f.id].items.includes(id))
+    const id = underCursor(s, f)?.id
+    return id ? [id] : []
+  }
   const list = items(s, f)
   if (f.marks.length) return f.marks.filter((id) => list.includes(id))
   return list[f.focus] ? [list[f.focus]] : []
 }
 
-const NOUN = { photo: 'photo', note: 'note', track: 'track', movie: 'movie', block: 'block', collection: 'item' }
+const NOUN = { event: 'event', photo: 'photo', note: 'note', track: 'track', movie: 'movie', block: 'block', collection: 'item', message: 'message', thread: 'thread' }
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`
 
 export function targetLabel(s) {
@@ -123,6 +138,12 @@ export function targetLabel(s) {
   if (k === 'history') return `Change ${items(s, f)[f.focus] ?? ''}`
   if (k === 'chars' && r) return plural(r.to - r.from, 'character')
   if (k === 'photo' && r) return `Part of ${titleOf(s, f.id)}`
+  if (k === 'calendar') {
+    if (r) return whenName(r.from, r.to)
+    const t = targets(s, f)
+    if (t.length > 1) return plural(t.length, 'event')
+    return t.length ? titleOf(s, t[0]) || 'Untitled' : `${dayName(f.at)}, ${timeName(f.at)}`
+  }
   if (k === 'player' && r) return `${clock(r.from)} to ${clock(r.to)} of ${titleOf(s, f.id)}`
   if (isList(k)) {
     const t = targets(s, f)
@@ -150,7 +171,7 @@ function typeTargets(s, type) {
   const f = frame(s)
   const k = kind(s, f)
   if (s.store[f.id].type === type && !isList(k)) return [f.id]
-  if (!isList(k)) return []
+  if (!picks(k)) return []
   const ids = targets(s, f).map((id) => s.store[id].ref ?? id)
   return ids.filter((id) => s.store[id].type === type)
 }
@@ -161,10 +182,16 @@ export function rootMenu(s) {
   const f = frame(s)
   const k = kind(s, f)
   const out = []
+  if (k === 'calendar') {
+    out.push({ key: 't', label: 'Today', run: 'today' })
+    if (targets(s, f).length) {
+      out.push({ key: '<', label: 'Shorten', run: 'endLess' }, { key: '>', label: 'Lengthen', run: 'endMore' }, { key: 'y', label: 'Repeat', run: 'repeat' })
+    }
+  }
   const photos = typeTargets(s, 'photo')
   if (photos.length) {
     out.push({ key: 'r', label: 'Rotate', run: 'rotate' })
-    if (k === 'photo') out.push({ key: 'C', label: 'Crop', run: 'crop', off: !range(s, f) })
+    if (k === 'photo') out.push({ key: 'X', label: 'Crop', run: 'crop', off: !range(s, f) })
     if (photos.some((id) => s.store[id].crop)) out.push({ key: 'u', label: 'Remove crop', run: 'uncrop' })
   }
   if (k === 'blocks' && targets(s, f).some((id) => !s.store[id].ref)) {
@@ -174,30 +201,50 @@ export function rootMenu(s) {
     out.push({ key: 'y', label: 'Sort by name', run: 'sortName' }, { key: 'Y', label: 'Reverse order', run: 'sortReverse' })
   }
   if (k === 'proposal' && s.store[f.id].status === 'open') {
-    out.push({ key: 'y', label: 'Approve', run: 'approve' }, { key: 'r', label: 'Reject', run: 'reject' })
+    out.push({ key: 'A', label: 'Approve', run: 'approve' }, { key: 'R', label: 'Reject', run: 'reject' })
+  }
+  if (k === 'thread') {
+    const m = messageTarget(s, f)
+    if (m) out.push({ key: 'A', label: m.status === 'failed' ? 'Send again' : 'Send', run: 'send' })
+    out.push({ key: 'P', label: 'Set ship', run: 'setPeer' })
   }
   if (k === 'history' && s.history.length) out.push({ key: 'u', label: 'Undo this change', run: 'revert' })
   if (s.store[f.id]?.id === 'trash' && k === 'list' && items(s, f).length) out.push({ key: 'u', label: 'Restore', run: 'restore' })
   if (s.store[f.id]?.$clashes?.length) {
-    out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'M', label: 'Keep this version', run: 'keepMine' })
+    out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'V', label: 'Keep this version', run: 'keepMine' })
   }
-  out.push(...toolEntries(s, out))
+  const tools = toolEntries(s)
+  if (tools.length) out.push({ key: ',', label: 'Tools', children: tools })
   out.push({ key: 'I', label: 'Info', run: 'info' })
   out.push({ key: 'T', label: 'Open in a new tile', run: 'newTile' })
   return out
 }
 
-// Tools the agent has learned appear as one more key on what they apply to.
-function toolEntries(s, taken) {
-  const used = new Set([...taken.map((e) => e.key), ...RESERVED])
+// Tools the agent has learned live behind , so they can never take a key from
+// the interface, and there is room for as many as get learned. Two tools that
+// apply here may want one key: the first by id keeps it, the rest take another,
+// and past the last free key a tool is still reachable by name in the bar.
+const TOOL_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
+
+function toolEntries(s) {
   const f = frame(s)
   const k = kind(s, f)
   const here = k === 'photo' || k === 'chars' || k === 'player' || k === 'blocks' ? s.store[f.id]?.type : null
-  const ids = isList(k) ? targets(s, f) : [f.id]
+  const ids = picks(k) ? targets(s, f) : [f.id]
   const types = new Set([here, ...ids.map((id) => s.store[id]?.type)].filter(Boolean))
-  return Object.values(s.store)
-    .filter((o) => o.type === 'tool' && !o.$trashed && o.key && !used.has(o.key) && (o.appliesTo === '*' || types.has(o.appliesTo)))
-    .map((o) => ({ key: o.key, label: o.name, run: `tool:${o.id}` }))
+  const tools = Object.values(s.store)
+    .filter((o) => o.type === 'tool' && !o.$trashed && (o.appliesTo === '*' || types.has(o.appliesTo)))
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+  const keys = new Map()
+  const used = new Set()
+  for (const o of tools) if (o.key && !used.has(o.key)) { keys.set(o.id, o.key); used.add(o.key) }
+  for (const o of tools) {
+    if (keys.has(o.id)) continue
+    const letters = o.name.replace(/[^a-z0-9]/gi, '')
+    const key = [...letters.toUpperCase(), ...letters.toLowerCase(), ...TOOL_KEYS].find((c) => !used.has(c))
+    if (key) { keys.set(o.id, key); used.add(key) }
+  }
+  return tools.map((o) => ({ key: keys.get(o.id), label: o.name, run: `tool:${o.id}` }))
 }
 
 // What this view can do, with the keys that do it. Menu actions come straight
@@ -207,9 +254,13 @@ export function viewActions(s) {
   const k = kind(s, f)
   const o = s.store[f.id]
   const on = {
+    calendar: targets(s, f).length
+      ? [['Space', 'Open'], ['i', 'Rename'], ['s', 'Select']]
+      : [['o', 'New'], ['S', range(s, f) ? 'Finish time' : 'Select time']],
     grid: [['Space', 'Open'], ['s', 'Select'], ['o', 'New']],
     list: [['Space', 'Open'], ['s', 'Select'], ['o', 'New']],
     blocks: [['Space', 'Open'], ['i', 'Edit'], ['o', 'New line']],
+    thread: [['o', 'Write'], ['s', 'Select'], ['c', 'Copy']],
     chars: [['S', 'Select'], ['i', 'Type']],
     photo: f.extending
       ? [['h j k l', 'Resize part'], ['S', 'Finish part']]
@@ -312,9 +363,54 @@ const VERBS = {
     s.out.push({ do: 'decide', id: frame(s).id, ok: false })
     return 'Rejected.'
   },
+  today(s) {
+    const f = frame(s)
+    f.at = slotOf(s.now)
+    f.sel = null
+    return ''
+  },
+  endLess: (s) => resize(s, -SLOT),
+  endMore: (s) => resize(s, SLOT),
+  repeat(s) {
+    const ids = targets(s, frame(s))
+    dirty(s, 'repeat')
+    const next = { daily: 'weekly', weekly: null }[s.store[ids[0]].repeat] ?? (s.store[ids[0]].repeat ? null : 'daily')
+    for (const id of ids) s.store[id].repeat = next
+    return next ? `Repeats ${next}.` : 'Doesn’t repeat.'
+  },
+  send(s) {
+    const f = frame(s)
+    const m = messageTarget(s, f)
+    if (!m) return 'Nothing to send. Press o to write a message.'
+    const t = s.store[f.id]
+    if (!validPeer(t.peer)) return 'This thread has no ship to send to. Press P and type one, like ~sampel-palnet.'
+    if (new TextEncoder().encode(m.text).length > MAX_MESSAGE) return `That message is over the ${MAX_MESSAGE} byte limit.`
+    // Not an edit, so it never enters undo: what has left can't be taken back.
+    m.$sending = true
+    s.out.push({ do: 'send', id: m.id })
+    return `Sending to ${t.peer}…`
+  },
+  setPeer(s) {
+    startTyping(s, frame(s).id, 'peer')
+    return 'Type their ship, like ~sampel-palnet. Enter to finish.'
+  },
   cut(s) {
     const f = frame(s)
     const k = kind(s, f)
+    if (k === 'calendar') {
+      const ids = targets(s, f)
+      if (!ids.length) return 'Nothing to cut here.'
+      const starts = heldStarts(s, f, ids)
+      const label = labelFor(s, ids)
+      const series = ids.some((id) => s.store[id].repeat)
+      dirty(s, `cut ${label}`)
+      s.store[f.id].items = s.store[f.id].items.filter((id) => !ids.includes(id))
+      s.held = { kind: 'items', ids, cut: true, label, starts }
+      clearRange(f)
+      f.marks = []
+      return `Cut ${label}${series ? ', every repeat' : ''}. Press v to paste, or z to undo.`
+    }
+    if (k === 'thread' && targets(s, f).some((id) => s.store[id].status !== 'draft')) return 'A sent message can’t be unsent.'
     if (k === 'chars') {
       const o = s.store[f.id]
       const r = range(s, f) ?? { from: f.cursor, to: f.cursor + 1 }
@@ -357,6 +453,12 @@ const VERBS = {
       if (!r) return NOTHING
       s.held = { kind: 'clip', id: f.id, from: r.from, to: r.to, label: `a clip of ${titleOf(s, f.id)}` }
       clearRange(f)
+    } else if (k === 'calendar') {
+      const ids = targets(s, f)
+      if (!ids.length) return 'Nothing to copy here.'
+      s.held = { kind: 'items', ids, cut: false, label: labelFor(s, ids), starts: heldStarts(s, f, ids) }
+      f.marks = []
+      clearRange(f)
     } else {
       const ids = targets(s, f)
       if (!ids.length) return 'Nothing to copy here.'
@@ -371,6 +473,15 @@ const VERBS = {
     const k = kind(s, f)
     const h = s.held
     if (!h) return 'Nothing to paste. Copy something with c first.'
+    if (k === 'calendar') return pasteTimed(s, f, h)
+    if (k === 'thread') {
+      const m = ensureDraft(s, f)
+      const words = h.kind === 'text' ? h.text : h.kind === 'items' ? h.ids.map((id) => titleOf(s, id)).join(', ') : h.label
+      dirty(s, 'paste')
+      s.store[m.id] = { ...m, text: m.text + (m.text && !m.text.endsWith(' ') ? ' ' : '') + words }
+      f.focus = items(s, f).indexOf(m.id)
+      return 'Pasted into your draft. Messages carry text only.'
+    }
     if (k === 'chars') {
       const text = h.kind === 'text' ? h.text : h.label
       const o = s.store[f.id]
@@ -452,7 +563,7 @@ const VERBS = {
   info(s) {
     const f = frame(s)
     const k = kind(s, f)
-    const t = isList(k) ? targets(s, f).map((id) => s.store[id].ref ?? id)[0] : f.id
+    const t = k === 'calendar' ? targets(s, f)[0] ?? f.id : isList(k) ? targets(s, f).map((id) => s.store[id].ref ?? id)[0] : f.id
     if (!t) return 'Nothing to look at here.'
     s.panes[s.active].stack.push(newFrame(t, { view: 'info' }))
     return ''
@@ -467,7 +578,7 @@ const VERBS = {
   redo,
 }
 
-const REPEATABLE = new Set(['cut', 'copy', 'paste', 'rotate', 'kindP', 'kindH', 'kindT', 'uncrop'])
+const REPEATABLE = new Set(['endLess', 'endMore', 'cut', 'copy', 'paste', 'rotate', 'kindP', 'kindH', 'kindT', 'uncrop'])
 
 function runVerb(s, name) {
   if (name.startsWith('tool:')) {
@@ -478,6 +589,63 @@ function runVerb(s, name) {
   }
   s.msg = VERBS[name](s) ?? ''
   if (REPEATABLE.has(name)) s.last = name
+}
+
+// %messages takes up to this many bytes in one message.
+export const MAX_MESSAGE = 8192
+export const validPeer = (p) => /^~(?:[a-z]{3}|[a-z]{6})(?:-[a-z]{6})*(?:--[a-z]{6}(?:-[a-z]{6})*)?$/.test(p ?? '')
+
+export const draftOf = (s, t) => (t.items ?? []).map((id) => s.store[id]).find((m) => m?.status === 'draft')
+
+// What A would send here: the failed message under the cursor, or the draft.
+function messageTarget(s, f) {
+  const here = s.store[items(s, f)[f.focus]]
+  if (here?.status === 'failed' && !here.$sending) return here
+  const d = draftOf(s, s.store[f.id])
+  return d && d.text.trim() && !d.$sending ? d : null
+}
+
+function ensureDraft(s, f) {
+  const t = s.store[f.id]
+  const have = draftOf(s, t)
+  if (have) return have
+  dirty(s, 'new message')
+  const id = newId()
+  s.store[id] = { id, type: 'message', text: '', from: 'me', status: 'draft' }
+  t.items.push(id)
+  return s.store[id]
+}
+
+function compose(s, f) {
+  const fresh = !draftOf(s, s.store[f.id])
+  const m = ensureDraft(s, f)
+  f.filter = ''
+  f.focus = items(s, f).indexOf(m.id)
+  startTyping(s, m.id, 'text')
+  s.typing.endsBlock = false
+  s.typing.dirtied = fresh
+}
+
+// An empty draft is nothing, so it goes when you stop typing.
+function dropEmptyDraft(s, id) {
+  const m = s.store[id]
+  if (m?.type !== 'message' || m.status !== 'draft' || m.text.trim()) return
+  const t = Object.values(s.store).find((o) => o.type === 'thread' && o.items.includes(id))
+  if (t) t.items = t.items.filter((x) => x !== id)
+  delete s.store[id]
+}
+
+// Undo can't reach what has left this device or arrived from elsewhere: those
+// messages, and their place in a thread, stay as they are now.
+function keepDelivered(cur, next) {
+  const left = (o) => o?.type === 'message' && (o.status !== 'draft' || o.$sending)
+  for (const id in cur) if (left(cur[id])) next[id] = cur[id]
+  for (const id in cur) {
+    if (cur[id].type !== 'thread' || !next[id]) continue
+    const kept = cur[id].items.filter((x) => next[x])
+    next[id] = { ...next[id], items: [...kept, ...next[id].items.filter((x) => !kept.includes(x))] }
+  }
+  return next
 }
 
 function labelFor(s, ids) {
@@ -501,6 +669,134 @@ function setKind(s, style) {
     if (style === 'todo') s.store[id].done ??= false
   }
   return ''
+}
+
+// ---------- Calendar ----------
+
+const calendarEvents = (s, f) => s.store[f.id].items.map((id) => s.store[id]).filter((o) => o?.type === 'event')
+
+// The event under the cursor. sel tells apart two that share a slot.
+function underCursor(s, f) {
+  const hits = occurrences(calendarEvents(s, f), f.at, f.at + SLOT)
+  return hits.find((h) => h.id === f.sel) ?? hits[0] ?? null
+}
+
+// Where a repeating event was picked up, so it lands relative to that repeat.
+function heldStarts(s, f, ids) {
+  const here = underCursor(s, f)
+  const week = weekStart(f.at)
+  const out = {}
+  for (const id of ids) {
+    const o = s.store[id]
+    out[id] = (here?.id === id ? here.start : occursIn(o, week, addDays(week, 7))[0]?.start) ?? o.start
+  }
+  return out
+}
+
+const overlapNote = (s, f, id) => {
+  const o = s.store[id]
+  const other = occurrences(calendarEvents(s, f).filter((x) => x.id !== id), o.start, o.end)[0]
+  return other ? ` Overlaps ${titleOf(s, other.id) || 'Untitled'}.` : ''
+}
+
+function newEvent(s, f, fields) {
+  const id = newId()
+  s.store[id] = { id, type: 'event', title: '', items: [], ...fields }
+  s.store[f.id].items.push(id)
+  f.sel = id
+  return id
+}
+
+const copyBlocks = (s, ids) => ids.map((id) => block(s, { ...s.store[id], id: undefined }))
+
+function pasteTimed(s, f, h) {
+  const r = range(s, f)
+  const start = r?.from ?? f.at
+  const end = r?.to ?? start + 3600
+  const place = (fields) => {
+    dirty(s, 'paste')
+    const id = newEvent(s, f, { start, end, ...fields })
+    clearRange(f)
+    return `Pasted ${h.label}.${overlapNote(s, f, id)}`
+  }
+  if (h.kind === 'text') return place({ title: h.text })
+  if (h.kind !== 'items') return 'The calendar can’t hold that.'
+  const events = h.ids.filter((id) => s.store[id].type === 'event')
+  if (!events.length) {
+    const made = h.ids.map((id) => (s.store[id].type === 'block' && !s.store[id].ref ? copyBlocks(s, [id])[0] : block(s, { ref: s.store[id].ref ?? id })))
+    return place({ title: h.label, items: made })
+  }
+  dirty(s, 'paste')
+  const starts = events.map((id) => h.starts?.[id] ?? s.store[id].start)
+  const base = Math.min(...starts)
+  const placed = events.map((id, i) => {
+    const o = s.store[id]
+    const first = retime(o.start, base, start)
+    const moved = { start: first, end: first + o.end - o.start }
+    if (h.cut) {
+      Object.assign(o, moved)
+      s.store[f.id].items.push(id)
+      f.sel = id
+      return id
+    }
+    const { id: _, $rev, $at, $clashes, ...rest } = o
+    return newEvent(s, f, { ...rest, ...moved, items: copyBlocks(s, o.items) })
+  })
+  if (h.cut) s.held = { ...h, cut: false }
+  clearRange(f)
+  const series = events.some((id) => s.store[id].repeat)
+  return `Pasted ${h.label}${series ? ', every repeat' : ''}.${overlapNote(s, f, placed[0])}`
+}
+
+function resize(s, by) {
+  const ids = targets(s, frame(s))
+  if (!ids.length) return NOTHING
+  dirty(s, 'change length')
+  for (const id of ids) {
+    const o = s.store[id]
+    o.end = Math.max(o.start + SLOT, o.end + by)
+  }
+  return ids.some((id) => s.store[id].repeat) ? 'Changed every repeat.' : ''
+}
+
+// Next or previous occurrence, one at a time even when they share a start.
+function hop(s, f, dir) {
+  const shown = new Set(items(s, f))
+  const all = occurrences(calendarEvents(s, f).filter((o) => shown.has(o.id)), addDays(f.at, -400), addDays(f.at, 400))
+  const here = underCursor(s, f)
+  const at = here && shown.has(here.id) ? here : { start: f.at, id: dir > 0 ? '' : '\uffff' }
+  const later = (o) => o.start > at.start || (o.start === at.start && o.id > at.id)
+  const to = dir > 0 ? all.find(later) : all.findLast((o) => !later(o) && !(o.start === at.start && o.id === at.id))
+  if (!to) { s.msg = 'No more events.'; return }
+  f.at = slotOf(to.start)
+  f.sel = to.id
+}
+
+function moveCalendar(s, f, key) {
+  if (key === 'J') return hop(s, f, 1)
+  if (key === 'K') return hop(s, f, -1)
+  f.sel = null
+  if (key === 'j' || key === 'k') {
+    const to = f.at + (key === 'j' ? SLOT : -SLOT)
+    if (dayStart(to) === dayStart(f.at)) f.at = to
+    return
+  }
+  const week = weekStart(f.at)
+  const to = {
+    h: addDays(f.at, -1), l: addDays(f.at, 1), H: addDays(f.at, -7), L: addDays(f.at, 7),
+    g: retime(f.at, f.at, week) + f.at - dayStart(f.at),
+    G: retime(f.at, f.at, addDays(week, 6)) + f.at - dayStart(f.at),
+  }[key]
+  if (to !== undefined) f.at = to
+}
+
+// Pointing at the week: a slot, and the event there if there is one.
+export function pointAt(state, pane, at, id = null) {
+  const s = { ...state, active: pane, panes: structuredClone(state.panes) }
+  const f = frame(s, pane)
+  f.at = at
+  f.sel = id
+  return s
 }
 
 function clearRange(f) {
@@ -538,7 +834,7 @@ function undo(s) {
   if (!e) return 'Nothing to undo.'
   s.undo = s.undo.slice(0, -1)
   s.redo = [...s.redo, { store: s.store, label: e.label }]
-  s.store = copyStore(e.store)
+  s.store = keepDelivered(s.store, copyStore(e.store))
   return `Undid ${e.label}.`
 }
 
@@ -547,7 +843,7 @@ function redo(s) {
   if (!e) return 'Nothing to redo.'
   s.redo = s.redo.slice(0, -1)
   s.undo = [...s.undo, { store: s.store, label: e.label }]
-  s.store = copyStore(e.store)
+  s.store = keepDelivered(s.store, copyStore(e.store))
   return `Redid ${e.label}.`
 }
 
@@ -602,6 +898,7 @@ function seek(s, f, to) {
 function move(s, key) {
   const f = frame(s)
   const k = kind(s, f)
+  if (k === 'calendar') return moveCalendar(s, f, key)
   const n = items(s, f).length
   const cols = s.cols[s.active] ?? 4
 
@@ -613,7 +910,7 @@ function move(s, key) {
     }[key]
     return setFocus(s, f, k, to)
   }
-  if (k === 'list' || k === 'info') {
+  if (k === 'list' || k === 'info' || k === 'thread') {
     const to = { j: f.focus + 1, k: f.focus - 1, J: f.focus + 5, K: f.focus - 5, g: 0, G: n - 1 }[key]
     if (to !== undefined) setFocus(s, f, k, to)
     return
@@ -707,8 +1004,19 @@ function play(s, id, stack, from) {
 
 function open(s, id, opts = {}) {
   const stack = s.panes[s.active].stack
-  stack.push(newFrame(id))
   const o = s.store[id]
+  if (o.type === 'message') {
+    const t = Object.values(s.store).find((x) => x.type === 'thread' && x.items.includes(id))
+    if (!t) { s.msg = 'That message isn’t in a thread any more.'; return }
+    stack.push(newFrame(t.id, { focus: t.items.indexOf(id) }))
+    return
+  }
+  if (o.type === 'thread') {
+    stack.push(newFrame(id, { focus: Math.max(0, o.items.length - 1) }))
+    if (o.unread) s.out.push({ do: 'read', id })
+    return
+  }
+  stack.push(newFrame(id))
   if (o.type === 'track' || o.type === 'movie') play(s, id, stack, opts.from)
 }
 
@@ -720,6 +1028,12 @@ function activate(s) {
     else s.player.playing = !s.player.playing
     return
   }
+  if (k === 'calendar') {
+    const hit = underCursor(s, f)
+    if (hit) open(s, hit.id)
+    return
+  }
+  if (k === 'thread') return compose(s, f)
   if (!isList(k)) return
   const id = items(s, f)[f.focus]
   if (!id) return
@@ -748,7 +1062,7 @@ function launch(s, key) {
 export function selected(s) {
   const f = frame(s)
   const k = kind(s, f)
-  return isList(k) ? targets(s, f) : [f.id]
+  return picks(k) ? targets(s, f) : [f.id]
 }
 
 // Esc undoes one step, whatever the last step was.
@@ -765,6 +1079,18 @@ function back(s) {
 function select(s, key) {
   const f = frame(s)
   const k = kind(s, f)
+  if (k === 'calendar' && key === 'a') {
+    const week = weekStart(f.at)
+    f.marks = [...new Set(occurrences(calendarEvents(s, f), week, addDays(week, 7)).map((o) => o.id))]
+    clearRange(f)
+    return
+  }
+  if (k === 'calendar' && key === 's') {
+    const id = underCursor(s, f)?.id
+    if (!id) { s.msg = 'No event here. S selects time.'; return }
+    f.marks = f.marks.includes(id) ? f.marks.filter((x) => x !== id) : [...f.marks, id]
+    return
+  }
   if (key === 'a') {
     if (isList(k)) { f.marks = [...items(s, f)]; clearRange(f); return }
     if (k === 'chars') { f.anchor = 0; f.head = Math.max(0, s.store[f.id].text.length - 1); f.extending = false; return }
@@ -819,7 +1145,7 @@ function removeLeaf(t, pane) {
 function newTile(s) {
   const f = frame(s)
   const k = kind(s, f)
-  const raw = isList(k) ? items(s, f)[f.focus] : f.id
+  const raw = k === 'calendar' ? underCursor(s, f)?.id ?? f.id : isList(k) ? items(s, f)[f.focus] : f.id
   const id = raw ? (s.store[raw].ref ?? raw) : f.id
   const r = rects(s.layout)[s.active]
   const pane = `p${++s.paneSeq}`
@@ -872,6 +1198,14 @@ function edit(s) {
   const f = frame(s)
   const k = kind(s, f)
   if (k === 'chars') return startTyping(s, f.id, 'text', f.cursor)
+  if (k === 'calendar') {
+    const hit = underCursor(s, f)
+    if (!hit) { s.msg = 'No event here. Press o to make one.'; return }
+    startTyping(s, hit.id, 'title')
+    if (s.store[hit.id].repeat) s.typing.note = 'Renaming every repeat.'
+    return
+  }
+  if (k === 'thread') return compose(s, f)
   if (!isList(k) || k === 'info') { s.msg = NOTHING; return }
   const id = items(s, f)[f.focus]
   if (!id) return
@@ -889,6 +1223,17 @@ function create(s) {
     s.msg = ''
     return create(s)
   }
+  if (k === 'calendar') {
+    const r = range(s, f)
+    dirty(s, 'new event')
+    const id = newEvent(s, f, { start: r?.from ?? f.at, end: r?.to ?? f.at + 3600 })
+    clearRange(f)
+    startTyping(s, id, 'title')
+    s.typing.dirtied = true
+    s.typing.note = overlapNote(s, f, id).trim()
+    return
+  }
+  if (k === 'thread') return compose(s, f)
   if (k === 'blocks') {
     const note = s.store[f.id]
     const after = items(s, f)[f.focus]
@@ -907,6 +1252,7 @@ function create(s) {
     dirty(s, `new ${o.newType}`)
     const id = newId()
     if (o.newType === 'note') s.store[id] = { id, type: 'note', title: '', items: [] }
+    else if (o.newType === 'thread') s.store[id] = { id, type: 'thread', title: '', peer: '', items: [] }
     else {
       const layout = o.title === 'Music' ? 'list' : 'grid'
       const accepts = o.title === 'Music' ? 'track' : 'photo'
@@ -938,9 +1284,23 @@ function typeKey(s, k) {
     if (f.id === t.objId) f.cursor = Math.min(t.pos, text.length)
     s.mode = 'normal'
     s.typing = null
+    dropEmptyDraft(s, t.objId)
   } else if (k.key === 'Enter') {
+    if (t.field === 'peer' && text.trim()) {
+      const peer = `~${text.trim().toLowerCase().replace(/^~/, '')}`
+      if (!validPeer(peer)) { s.msg = 'That isn’t a ship name. It looks like ~sampel-palnet.'; return true }
+      o.peer = peer
+    }
     s.mode = 'normal'
     s.typing = null
+    dropEmptyDraft(s, t.objId)
+    // A thread needs someone to send to, so its name leads straight to that.
+    if (o.type === 'thread' && t.field === 'title' && !o.peer) {
+      startTyping(s, o.id, 'peer')
+      s.typing.dirtied = true
+      s.msg = 'Who is this with? Type their ship, like ~sampel-palnet. Esc to leave it for later.'
+      return true
+    }
     const f = frame(s)
     if (t.endsBlock) {
       if (f.id === t.objId) s.panes[s.active].stack.pop()
@@ -1010,12 +1370,13 @@ function findKey(s, k) {
     const at = s.store[f.id].text.toLowerCase().indexOf(f.filter.toLowerCase())
     if (at >= 0) f.cursor = at
   }
+  if (kd === 'calendar' && f.filter && !items(s, f).includes(underCursor(s, f)?.id)) hop(s, f, 1)
 }
 
 function menuKey(s, k) {
   if (k.key === 'Escape') {
-    if (s.menuPath.length) s.menuPath = s.menuPath.slice(0, -1)
-    else s.mode = 'normal'
+    if (s.menuPath.length > 1) s.menuPath = s.menuPath.slice(0, -1)
+    else { s.menuPath = []; s.mode = 'normal' }
     return
   }
   const e = menuEntries(s).find((x) => x.key === k.key)
@@ -1061,7 +1422,13 @@ function normalKey(s, k) {
       s.mode = 'menu'
       s.menuPath = []
       return true
-    case 'n': case 'p': case 'm': case 'w': case 'e': case 'd': case 'D':
+    case ',':
+      if (rootMenu(s).some((e) => e.key === ',')) {
+        s.mode = 'menu'
+        s.menuPath = [',']
+      } else s.msg = 'No tools work on this. D lists them all.'
+      return true
+    case 'n': case 'p': case 'm': case 'w': case 'e': case 'd': case 'D': case 'C': case 'M':
       launch(s, k.key)
       return true
     case ';':
@@ -1091,8 +1458,12 @@ function settle(s) {
       const k = kind(s, f)
       const n = items(s, f).length
       f.focus = Math.max(0, Math.min(n - 1, f.focus))
-      if (isList(k)) f.marks = f.marks.filter((id) => s.store[id])
+      if (picks(k)) f.marks = f.marks.filter((id) => s.store[id])
       if (k === 'chars') f.cursor = Math.min(f.cursor, s.store[f.id].text.length)
+      if (k === 'calendar') {
+        f.at ??= slotOf(s.now)
+        if (f.sel && !s.store[f.id].items.includes(f.sel)) f.sel = null
+      }
     }
   }
   if (!s.panes[s.active]) s.active = Object.keys(s.panes)[0]
@@ -1112,7 +1483,7 @@ function copyStore(store) {
 // key: { key, shift, alt, ctrl }
 export function press(state, k) {
   const { undo: u, redo: r, store, ...rest } = state
-  const s = { ...structuredClone(rest), store: copyStore(store), undo: u, redo: r, msg: '', _dirty: null, handled: true }
+  const s = { ...structuredClone(rest), store: copyStore(store), undo: u, redo: r, msg: '', now: k.now ?? state.now, _dirty: null, handled: true }
   const media = { MediaPlayPause: 1, MediaTrackNext: 1, MediaTrackPrevious: 1 }
   if (media[k.key]) {
     if (k.key === 'MediaPlayPause' && s.player.id) s.player.playing = !s.player.playing
@@ -1146,6 +1517,14 @@ export function applyRemote(state, objects, gone = []) {
 }
 
 export const say = (state, msg, extra = {}) => ({ ...state, msg, ...extra })
+
+// A send that never reached the ship: the draft is yours again.
+export function unsend(state, id) {
+  const o = state.store[id]
+  if (!o?.$sending) return state
+  const { $sending, ...rest } = o
+  return { ...state, store: { ...state.store, [id]: rest } }
+}
 
 // Open something in a tile of its own, to watch the agent work on it.
 export function watch(state, id) {

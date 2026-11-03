@@ -1,7 +1,7 @@
 import { diff } from '../src/sync.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { init, press, frame, items, titleOf, kind, targetLabel, completions, range, tick, viewActions, visibleSize, syncPlayer, applyRemote } from '../src/engine.js'
+import { init, press, frame, items, titleOf, kind, targetLabel, completions, menuEntries, rootMenu, CONSEQUENTIAL, range, tick, viewActions, visibleSize, syncPlayer, applyRemote } from '../src/engine.js'
 import { seedStore } from '../src/data.js'
 import { withMedia } from '../src/media.js'
 
@@ -197,16 +197,16 @@ test('r repeats the last verb on a new target', () => {
 })
 
 test('crop needs a region, and a region crops without leaving the photo', () => {
-  let s = type(init(), 'l sp sp sp C')
+  let s = type(init(), 'l sp sp sp X')
   assert.equal(find(s, 'Lisbon tram').crop, null)
-  s = type(s, 'S l l j C')
+  s = type(s, 'S l l j X')
   const c = find(s, 'Lisbon tram').crop
   assert.ok(c && c.w > 0 && c.h > 0)
   assert.equal(kind(s, frame(s)), 'photo')
 })
 
 test('crop maps correctly after a rotate', () => {
-  let s = type(init(), 'l sp sp sp f r g S l j C')
+  let s = type(init(), 'l sp sp sp f r g S l j X')
   const c = find(s, 'Lisbon tram').crop
   // Top left of a clockwise-rotated picture is its bottom left corner.
   assert.equal(c.x, 0)
@@ -288,7 +288,7 @@ test('music moves to the next track on its own', () => {
 
 test('home cannot be cut', () => {
   const s = type(init(), 'x')
-  assert.equal(items(s, frame(s)).length, 8)
+  assert.equal(items(s, frame(s)).length, 10)
 })
 
 test('h and l step through photos, and hjkl only resize a region in progress', () => {
@@ -319,7 +319,7 @@ test('views list their actions with live keys', () => {
   const labels = (s) => viewActions(s).map(([k, l]) => `${k} ${l}`)
   assert.ok(labels(type(init(), 'l sp sp sp')).includes('r Rotate'))
   assert.ok(labels(type(init(), 'l l l sp sp')).includes('Space Pause'))
-  assert.ok(labels(type(init(), 'l sp sp sp')).includes('C Crop'))
+  assert.ok(labels(type(init(), 'l sp sp sp')).includes('X Crop'))
 })
 
 test('the real library replaces the sample media without touching the rest', () => {
@@ -357,22 +357,32 @@ test('a reorder falls back to writing the whole list', () => {
   assert.deepEqual(ops, [{ do: 'set', id: 'n', base: 1, fields: { items: ['b', 'a'] } }])
 })
 
-test('the inbox lists open proposals, and y approves through the ship', () => {
+test('the inbox lists open proposals, and A approves through the ship', () => {
   let s = init()
   s = applyRemote(s, [{ id: 'p1', type: 'proposal', status: 'open', intent: 'Tag these', actor: 'agent:a', ops: [] }])
   s = type(s, 'd')
   assert.equal(titleOf(s, frame(s).id), 'Inbox')
   assert.equal(items(s, frame(s)).length, 1)
-  s = type(s, 'sp y')
+  s = type(s, 'sp y r')
+  assert.deepEqual(s.out, [])
+  s = type(s, 'A')
   assert.deepEqual(s.out, [{ do: 'decide', id: 'p1', ok: true }])
+  s = type({ ...s, out: [] }, 'R')
+  assert.deepEqual(s.out, [{ do: 'decide', id: 'p1', ok: false }])
 })
 
-test('a learned tool appears as one key on what it applies to', () => {
+test('a learned tool sits behind the leader on what it applies to', () => {
   let s = init()
   s = applyRemote(s, [{ id: 'tool:t', type: 'tool', name: 'Warm up', key: 'B', appliesTo: 'photo' }])
   s = type(s, 'l sp sp sp')
-  assert.ok(viewActions(s).some(([k, l]) => k === 'B' && l === 'Warm up'))
+  assert.ok(viewActions(s).some(([k, l]) => k === ',' && l === 'Tools'))
   s = type(s, 'B')
+  assert.deepEqual(s.out, [])
+  s = type(s, ',')
+  assert.equal(s.mode, 'menu')
+  assert.ok(menuEntries(s).some((e) => e.key === 'B' && e.label === 'Warm up'))
+  s = type(s, 'B')
+  assert.equal(s.mode, 'normal')
   assert.equal(s.out[0].do, 'tool')
   assert.equal(s.out[0].id, 'tool:t')
 })
@@ -409,3 +419,84 @@ test('a clash on what you are in can be settled either way', () => {
   s = type(s, 'O')
   assert.deepEqual(s.out, [{ do: 'resolve', id, field: 'text', keep: true }])
 })
+
+const tool = (id, name, key, appliesTo = 'photo') => ({ id, type: 'tool', name, key, appliesTo })
+const onPhoto = (extra) => type(applyRemote(init(), extra), 'l sp sp sp ,')
+
+test('a tool can take any key, because it can only be reached behind the leader', () => {
+  let s = applyRemote(init(), [tool('tool:a', 'Rotate twice', 'r')])
+  s = type(s, 'l sp sp sp')
+  const rot = s.store[frame(s).id].rot
+  s = type(s, ', r')
+  assert.equal(s.out.at(-1).id, 'tool:a')
+  assert.equal(s.store[frame(s).id].rot, rot)
+  s = type({ ...s, out: [] }, 'r')
+  assert.deepEqual(s.out, [])
+  assert.equal(s.store[frame(s).id].rot, (rot + 90) % 360)
+})
+
+test('tools that want one key both stay reachable', () => {
+  const s = onPhoto([tool('tool:b', 'Blur', 'B'), tool('tool:a', 'Brighten', 'B'), tool('tool:c', 'Crisp')])
+  const keys = Object.fromEntries(menuEntries(s).map((e) => [e.label, e.key]))
+  assert.equal(keys.Brighten, 'B')
+  assert.equal(keys.Crisp, 'C')
+  assert.ok(keys.Blur && keys.Blur !== 'B' && keys.Blur !== 'C')
+  assert.equal(type(s, keys.Blur).out.at(-1).id, 'tool:b')
+})
+
+test('with every key taken a tool has none, and the bar still finds it', () => {
+  const many = [...Array(70).keys()].map((i) => tool(`tool:${String(i).padStart(2, '0')}`, `Task ${i}`))
+  let s = onPhoto(many)
+  const list = menuEntries(s)
+  assert.equal(list.length, 70)
+  assert.equal(new Set(list.filter((e) => e.key).map((e) => e.key)).size, 62)
+  const last = list.findLast((e) => !e.key)
+  assert.ok(last)
+  s = type(s, 'esc ;')
+  for (const c of last.label) s = press(s, { key: c })
+  assert.equal(completions(s)[0].run, last.run)
+  assert.equal(press(s, { key: 'Enter' }).out.at(-1).id, last.run.slice(5))
+})
+
+test('the leader says so when nothing applies', () => {
+  const s = type(init(), ',')
+  assert.equal(s.mode, 'normal')
+  assert.match(s.msg, /No tools/)
+})
+
+test('approval keys mean nothing anywhere but where they approve', () => {
+  const views = {
+    home: 'esc', 'photo grid': 'p', 'photo album': 'p sp', photo: 'p sp sp', 'note list': 'n', note: 'n sp', characters: 'n sp sp',
+    music: 'm sp', track: 'm sp sp', movies: 'w', movie: 'w sp', people: 'e', inbox: 'd', tools: 'D', info: 'p sp I',
+  }
+  const proposal = { id: 'p1', type: 'proposal', intent: 'x', actor: 'a', ops: [] }
+  const base = applyRemote(init(), [{ ...proposal, status: 'done' }, tool('tool:any', 'Anything', 'A', '*')])
+  // A draft message may use A to send: same key, same meaning.
+  const allowed = (e, o) => e.key === 'A' && e.label === 'Send' && o.type === 'message' && o.status === 'draft'
+  for (const [name, keys] of Object.entries(views)) {
+    const s = type(base, keys)
+    const o = s.store[frame(s).id]
+    for (const e of rootMenu(s).filter((x) => CONSEQUENTIAL.has(x.key))) assert.ok(allowed(e, o), `${e.key} in ${name}`)
+    for (const c of CONSEQUENTIAL) assert.deepEqual(type(s, c).out, [], `${c} acts in ${name}`)
+  }
+  const open = type(applyRemote(base, [{ ...proposal, status: 'open' }]), 'd sp')
+  assert.deepEqual(rootMenu(open).filter((e) => CONSEQUENTIAL.has(e.key)).map((e) => e.label), ['Approve', 'Reject'])
+  const done = applyRemote(open, [{ ...proposal, status: 'done' }])
+  assert.deepEqual(rootMenu(done).filter((e) => CONSEQUENTIAL.has(e.key)), [])
+})
+
+test('C and M open their apps from anywhere, and are nothing else', () => {
+  const s = type(init(), 'p sp sp')
+  assert.ok(!rootMenu(s).some((e) => e.key === 'C' || e.key === 'M'))
+  assert.equal(frame(type(s, 'C')).id, 'calendar')
+  assert.equal(frame(type(s, 'M')).id, 'messages')
+})
+
+test('the two versions of a clash use O and V', () => {
+  let s = type(init(), 'n sp')
+  const id = items(s, frame(s))[0]
+  s = applyRemote(s, [{ ...s.store[id], $clashes: [{ field: 'text', theirs: 'yours', actor: 'human', seq: 3 }] }])
+  s = type(s, 'sp V')
+  assert.deepEqual(s.out, [{ do: 'resolve', id, field: 'text', keep: false }])
+})
+

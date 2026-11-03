@@ -26,7 +26,9 @@
 <li><strong>Works, seen in Brave on the live ship:</strong> Home, notebooks and notes, and an agent request that became a proposal. Seen earlier on a test ship with sample data: History, undo, Trash, clash resolution, proposals, typing that survives a reload, and both command bar and notice designs (chosen from the command bar).
 <li><strong>Works on two test ships with 16,000 objects:</strong> a client ship with its own host, offline both ways, conflicts, reactions, revert and purge (<code>scripts/store-two-ship-test.sh</code>, <code>ui/scripts/client-test.py</code>).
 <li><strong>Data:</strong> 246 notes in 9 notebooks: the Obsidian vault <code>new</code> as of 2026-11-01, and the rest from the export of 2026-10-20. Rerunning <code>ui/scripts/import-notes.mjs</code> adds new files but does not update notes already imported.
-<li><strong>Not built:</strong> Calendar, Files, Messages and Contacts surfaces. Those agents hold 0 events, 0 contacts and 0 messages on the live ship; its files stay in <code>%files</code>.
+<li><strong>Calendar (2026-11-02):</strong> a week of half-hour slots, in the engine and tested with key-driven scenarios. Events are objects in <code>%store</code>, not the old <code>%calendar</code> agent. Changing a repeating event changes every repeat; there are no per-occurrence exceptions and no all-day events.</li>
+<li><strong>Messages:</strong> built in <code>ui/</code>, delivered by the <code>%messages</code> agent through <code>ui/server/messages.mjs</code>. Tested against a stub of its API; delivery between two real ships is not proven yet. Group conversations have no surface.</li>
+<li><strong>Not built:</strong> Files and Contacts surfaces. Those agents hold 0 contacts on the live ship; its files stay in <code>%files</code>.
 <li><strong>Not done:</strong> no client ship on the laptop or phone yet.
 <li><strong>Unexplained:</strong> the old <code>%notes</code> agent on the live comet is empty, though this file says 242 notes were imported on 2026-10-20. The journal shows no wipe after that import. The export on here-nor-there is intact and is what was imported.
 </ul>
