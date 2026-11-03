@@ -1,10 +1,12 @@
 {
-  // Static files, plus worker.js for movie byte ranges. No other bindings, and
-  // nothing that can reach a ship.
+  // Static files, plus worker.js for movie byte ranges and the live agent
+  // (OPENROUTER_API_KEY is a secret). Nothing here can reach a ship.
   "name": "locus",
   "main": "worker.js",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "preview_urls": false,
-  "assets": { "directory": "dist", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/media/movie/*"] }
+  "assets": { "directory": "dist", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/media/movie/*", "/api/*"] },
+  "ratelimits": [{ "name": "PER_VISITOR", "namespace_id": "4401", "simple": { "limit": 8, "period": 60 } }],
+  "kv_namespaces": [{ "binding": "BUDGET", "id": "3673af2098384fa8aa8a1cbf5241249e" }]
 }

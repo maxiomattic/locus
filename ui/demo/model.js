@@ -1,6 +1,5 @@
-// The demo's agent has no model behind it, so nobody's key pays for strangers and
-// nothing typed leaves the browser. These rules stand in for one: same prompt,
-// same answer shape. Everything after them (proposals, approval, learning a tool
+// The scripted stand-in for the demo's live model (live-model.js), used when the
+// Worker's limits say no. Same prompt, same answer shape. Everything after them (proposals, approval, learning a tool
 // on the second run) is the real agent in server/agent.mjs.
 const HELP = 'This demo’s agent is a short script, not a live model. Select something and try “rotate this”, “tag this blue”, “rename this to …” or “trash this”, or ask “make a note called …”, “how many photos” or “add a to-do …” on a note.'
 

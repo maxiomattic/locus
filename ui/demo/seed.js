@@ -8,14 +8,14 @@ import { messageSetup } from '../server/messages.mjs'
 const welcomeText = [
   ['h', 'Welcome to Locus'],
   ['p', 'Locus is a personal computer that keeps everything as one kind of thing: objects in a store you own. Notes, photos, music, movies and people are all objects, and apps are only ways of looking at them.'],
-  ['p', 'This is a working copy running entirely in your browser, with invented sample data. Nothing you do leaves this page, and Reset at the top puts it back.'],
+  ['p', 'This is a working copy running entirely in your browser, with invented sample data. Only what you ask the agent leaves this page, and Reset at the top puts it back.'],
   ['h', 'A short tour'],
   ['p', 'Locus is built for the keyboard. On a phone, use the buttons at the bottom: you can browse everything, but asking the agent needs a keyboard. Press Esc to go back, then h j k l to move and Space to open. Press f any time to see what you can do here.'],
   ['todo', 'Press p for Photos, open an album, and press r on a photo to rotate it', false],
   ['todo', 'Press z to undo it', false],
   ['todo', 'Select a photo with s, press ; and ask “rotate this”. The change waits in the Inbox: press d, Space to open it, then A to approve', false],
-  ['todo', 'Do the same thing twice and the agent offers a tool, which then runs with no agent at all (press D to list them, or , on a photo)', false],
-  ['p', 'The agent here is a short script, so it costs nothing and sends nothing anywhere. The rest is the real interface.'],
+  ['todo', 'Do the same thing twice and the agent offers a tool, which then runs with no agent at all (press D to list them; on a photo they show up as one-key actions)', false],
+  ['p', 'The agent is a live model, GPT-6 Luna. A request sends the agent’s prompt (your request, what you selected and the names of notes and collections) to OpenRouter. Past a small limit, a short script answers instead.'],
 ]
 
 const extras = [

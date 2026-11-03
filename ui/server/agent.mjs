@@ -2,6 +2,7 @@
 // anything: it reads what it is shown and answers with operations, which go to
 // the ship as a proposal. What it does twice becomes a tool that runs without it.
 import { spawn } from 'node:child_process'
+import { TOOL_KEYS } from '../src/engine.js'
 
 const STOP = new Set('a an and the this that these those it them my to of on in for please all with me can you i'.split(' '))
 export const norm = (t) => t.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOP.has(w))
@@ -80,14 +81,13 @@ export function signature(ops, selection, objs) {
   }))].sort().join('|')
 }
 
-const FREE = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
-
-// Tools sit behind t, so a key only has to differ from other tools' keys. With
-// none left a tool has no key, and the command bar still finds it by name.
+// A tool's key is one the interface never uses for anything else, and differs
+// from other tools' keys. With none left a tool has no key, and is still listed
+// and found by name in the command bar.
 function freeKey(name, tools) {
   const used = new Set(tools.map((t) => t.key))
   const letters = name.replace(/[^a-z0-9]/gi, '')
-  return [...letters.toUpperCase(), ...letters.toLowerCase(), ...FREE].find((c) => !used.has(c))
+  return [...letters.toUpperCase(), ...letters.toLowerCase(), ...TOOL_KEYS].find((c) => TOOL_KEYS.includes(c) && !used.has(c))
 }
 
 // How a value came from what was there before, across every example seen.
@@ -238,7 +238,7 @@ Answer with one JSON object and nothing else: {"program":[...]}. It must produce
       param: made.param,
       examples: [{ args: { selection: [] }, expect: b.selection.length ? [] : asKinds(b.ops) }],
     }
-    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key ? `t ${fields.key}` : 'by name'}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
+    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key ? `key ${fields.key}` : 'by name'}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
     return true
   }
 

@@ -43,7 +43,8 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 .tilehead { display: flex; align-items: baseline; gap: 1.5rem; }
 .title { flex: 0 1 auto; min-width: 8rem; margin: 0; padding: .1rem .75rem .25rem; font-size: .84rem; font-weight: 400; color: var(--mist); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.active .title { color: var(--paper); }
-.actions { flex: 1; min-width: 0; display: flex; justify-content: flex-end; gap: 1.1rem; padding-right: .75rem; font-size: .84rem; color: var(--mist); white-space: nowrap; overflow: hidden; }
+.actions { flex: 1; min-width: 0; display: flex; justify-content: flex-end; gap: 1.1rem; padding-right: .75rem; font-size: .84rem; color: var(--mist); flex-wrap: wrap; row-gap: .3rem; }
+.action { white-space: nowrap; }
 .action kbd { margin-right: .35rem; }
 .action.off { opacity: .5; }
 .action.off kbd { color: var(--mist); }

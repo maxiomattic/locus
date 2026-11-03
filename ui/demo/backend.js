@@ -3,6 +3,7 @@
 import { createAgent } from '../server/agent.mjs'
 import { createShip } from './ship.js'
 import { demoModel } from './model.js'
+import { liveModel } from './live-model.js'
 import { demoOps } from './seed.js'
 import { createMessages } from '../server/messages.mjs'
 import { fakeMessages } from './messages.js'
@@ -17,7 +18,7 @@ export function createBackend(saved, save) {
     if (code !== 200) throw new Error(data.error ?? 'refused')
     return method === 'POST' ? data : data
   }
-  const agent = createAgent({ call, model: demoModel })
+  const agent = createAgent({ call, model: liveModel(demoModel) })
   const messages = createMessages({ call, api: fakeMessages() })
   return { ship, agent, messages }
 }

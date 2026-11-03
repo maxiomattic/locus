@@ -219,8 +219,8 @@ test('Esc clears a selection, then leaves the calendar', () => {
 test('tools and the agent act on the event under the cursor', () => {
   let s = week([ev('a', 'One', when(11, 9), when(11, 10))])
   s = applyRemote(s, [{ id: 'tool:t', type: 'tool', name: 'Prep', key: 'B', appliesTo: 'event' }])
-  assert.ok(viewActions(s).some(([k, l]) => k === 't' && l === 'Tools'))
-  s = type(s, 't B')
+  assert.ok(viewActions(s).some(([k, l]) => k === 'B' && l === 'Prep'))
+  s = type(s, 'B')
   assert.deepEqual(s.out[0].selection, ['a'])
   s = press(s, { key: ';' })
   s = type(s, 'xyzzy ent')
@@ -236,7 +236,7 @@ test('a selects the week', () => {
 
 test('t comes back to today, and g G reach the ends of the week', () => {
   let s = week()
-  s = type(s, 'L L u')
+  s = type(s, 'L L t')
   assert.equal(frame(s).at, NOW)
   s = type(s, 'g')
   assert.equal(frame(s).at, when(9, 9))

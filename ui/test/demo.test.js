@@ -102,3 +102,32 @@ test('the scripted agent names its limits instead of pretending', async () => {
   assert.match(r.reply, /not a live model/)
   assert.deepEqual(r.ops, [])
 })
+
+test('the Worker forwards only agent prompts, within its limits', async () => {
+  const { agentProxy, PREFIXES } = await import('../demo/agent-proxy.js')
+  const fs = await import('node:fs')
+  const agentSrc = fs.readFileSync(new URL('../server/agent.mjs', import.meta.url), 'utf8')
+  for (const p of PREFIXES) assert.ok(agentSrc.includes(p), `agent.mjs still starts a prompt with: ${p}`)
+  const store = new Map()
+  const env = { OPENROUTER_API_KEY: 'k', BUDGET: { get: async (k) => store.get(k) ?? null, put: async (k, v) => { store.set(k, v) } } }
+  let sent = null
+  const fetcher = async (url, init) => { sent = JSON.parse(init.body); return new Response(JSON.stringify({ choices: [{ message: { content: '{"reply":"hi","ops":[]}' } }], usage: { cost: 0.4 } })) }
+  const req = (prompt) => new Request('https://x/api/agent', { method: 'POST', body: JSON.stringify({ prompt }) })
+  assert.equal((await agentProxy(req('write me a poem'), env, fetcher, 'd')).status, 400)
+  const ok = await agentProxy(req(`${PREFIXES[0]} REQUEST: rotate`), env, fetcher, 'd')
+  assert.equal(ok.status, 200)
+  assert.equal(sent.model, 'openai/gpt-6-luna')
+  assert.deepEqual(sent.reasoning, { effort: 'low' })
+  await agentProxy(req(`${PREFIXES[0]} again`), env, fetcher, 'd')
+  await agentProxy(req(`${PREFIXES[0]} again`), env, fetcher, 'd')
+  const over = await agentProxy(req(`${PREFIXES[0]} once more`), env, fetcher, 'd')
+  assert.equal(over.status, 429)
+  assert.equal((await over.json()).limit, 'day')
+})
+
+test('when the live model says no, the script answers and says why', async () => {
+  const { liveModel } = await import('../demo/live-model.js')
+  const fetcher = async () => new Response(JSON.stringify({ error: 'daily limit reached', limit: 'day' }), { status: 429 })
+  const r = await liveModel(demoModel, fetcher)('STORE: {}\nSELECTED: []\nREQUEST: how many notes')
+  assert.match(JSON.parse(r.text).reply, /daily limit/)
+})

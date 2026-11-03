@@ -4,7 +4,7 @@ import { seedStore } from './data.js'
 import { SLOT, addDays, dayName, dayStart, occurrences, occursIn, retime, slotOf, timeName, weekStart, whenName } from './calendar.js'
 
 export const CELLS = { x: 12, y: 8 }
-export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.tfnpmwedDCM;/ '])
+export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.npmwedDCM;/ '])
 // These commit something that can't be taken back with a keystroke. They are
 // never reused for anything else, so muscle memory can't fire one by accident.
 export const CONSEQUENTIAL = new Set([...'AR'])
@@ -28,7 +28,6 @@ export function init(store = seedStore(), now = Date.now() / 1000) {
     active: 'p1',
     paneSeq: 1,
     mode: 'normal',
-    menuPath: [],
     bar: { text: '', i: 0 },
     typing: null,
     held: null,
@@ -183,7 +182,7 @@ export function rootMenu(s) {
   const k = kind(s, f)
   const out = []
   if (k === 'calendar') {
-    out.push({ key: 'u', label: 'Today', run: 'today' })
+    out.push({ key: 't', label: 'Today', run: 'today' })
     if (targets(s, f).length) {
       out.push({ key: '<', label: 'Shorten', run: 'endLess' }, { key: '>', label: 'Lengthen', run: 'endMore' }, { key: 'y', label: 'Repeat', run: 'repeat' })
     }
@@ -195,7 +194,7 @@ export function rootMenu(s) {
     if (photos.some((id) => s.store[id].crop)) out.push({ key: 'u', label: 'Remove crop', run: 'uncrop' })
   }
   if (k === 'blocks' && targets(s, f).some((id) => !s.store[id].ref)) {
-    out.push({ key: 'y', label: 'To-do', run: 'kindT' }, { key: 'b', label: 'Heading', run: 'kindH' }, { key: 'q', label: 'Paragraph', run: 'kindP' })
+    out.push({ key: 't', label: 'To-do', run: 'kindT' }, { key: 'b', label: 'Heading', run: 'kindH' }, { key: 'q', label: 'Paragraph', run: 'kindP' })
   }
   if ((k === 'list' || k === 'grid') && !s.store[f.id].fixed) {
     out.push({ key: 'y', label: 'Sort by name', run: 'sortName' }, { key: 'Y', label: 'Reverse order', run: 'sortReverse' })
@@ -213,18 +212,21 @@ export function rootMenu(s) {
   if (s.store[f.id]?.$clashes?.length) {
     out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'V', label: 'Keep this version', run: 'keepMine' })
   }
-  const tools = toolEntries(s)
-  if (tools.length) out.push({ key: 't', label: 'Tools', children: tools })
   out.push({ key: 'I', label: 'Info', run: 'info' })
   out.push({ key: 'T', label: 'Open in a new tile', run: 'newTile' })
+  out.push(...toolEntries(s))
   return out
 }
 
-// Tools the agent has learned live behind t so they can never take a key from
-// the interface, and there is room for as many as get learned. Two tools that
-// apply here may want one key: the first by id keeps it, the rest take another,
-// and past the last free key a tool is still reachable by name in the bar.
-const TOOL_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
+// Keys the interface's own commands use in some view. A learned tool never takes
+// one of these or a reserved key, so a key means one thing wherever it shows.
+// Two tools that apply here may want one key: the first by id keeps it, the rest
+// take another, and past the last free key a tool is still listed, and found by
+// name in the bar.
+export const COMMAND_KEYS = new Set([...'tubqyYrXIOVTP<>'])
+export const TOOL_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
+  .filter((c) => !RESERVED.has(c) && !COMMAND_KEYS.has(c) && !CONSEQUENTIAL.has(c))
+export const toolKeyOk = (c) => TOOL_KEYS.includes(c)
 
 function toolEntries(s) {
   const f = frame(s)
@@ -237,18 +239,18 @@ function toolEntries(s) {
     .sort((a, b) => (a.id < b.id ? -1 : 1))
   const keys = new Map()
   const used = new Set()
-  for (const o of tools) if (o.key && !used.has(o.key)) { keys.set(o.id, o.key); used.add(o.key) }
+  for (const o of tools) if (o.key && toolKeyOk(o.key) && !used.has(o.key)) { keys.set(o.id, o.key); used.add(o.key) }
   for (const o of tools) {
     if (keys.has(o.id)) continue
     const letters = o.name.replace(/[^a-z0-9]/gi, '')
-    const key = [...letters.toUpperCase(), ...letters.toLowerCase(), ...TOOL_KEYS].find((c) => !used.has(c))
+    const key = [...letters.toUpperCase(), ...letters.toLowerCase(), ...TOOL_KEYS].find((c) => toolKeyOk(c) && !used.has(c))
     if (key) { keys.set(o.id, key); used.add(key) }
   }
   return tools.map((o) => ({ key: keys.get(o.id), label: o.name, run: `tool:${o.id}` }))
 }
 
-// What this view can do, with the keys that do it. Menu actions come straight
-// from rootMenu, so a label can't disagree with what the key runs.
+// What this view can do, with the keys that do it, always on screen. Commands
+// come straight from rootMenu, so a label can't disagree with what the key runs.
 export function viewActions(s) {
   const f = frame(s)
   const k = kind(s, f)
@@ -271,24 +273,15 @@ export function viewActions(s) {
     on.push(['Space', playerOf(s, f).playing ? 'Pause' : 'Play'],
       ['h l', 'Seek'], ['H L', big], ['j k', 'Volume'], ['S', o.type === 'movie' ? 'Mark clip' : 'Mark part'])
   }
-  const menu = rootMenu(s).filter((e) => !['I', 'T'].includes(e.key)).map((e) => [e.key, e.label, e.off])
+  const menu = rootMenu(s).map((e) => [e.key ?? '', e.label, e.off])
   return [...on, ...menu]
 }
 
-export function menuEntries(s) {
-  let m = rootMenu(s)
-  for (const key of s.menuPath) m = m.find((e) => e.key === key)?.children ?? []
-  return m
-}
-
-function leaves(m) {
-  return m.flatMap((e) => (e.children ? leaves(e.children).map((c) => ({ ...c, label: `${e.label}: ${c.label}` })) : [e]))
-}
 
 export function completions(s) {
   const q = s.bar.text.trim().toLowerCase()
   const commands = [
-    ...leaves(rootMenu(s)).filter((e) => !e.off),
+    ...rootMenu(s).filter((e) => !e.off),
     { label: 'Go home', run: 'home' },
     { label: 'Close tile', run: 'closeTile' },
     { label: 'Undo', run: 'undo' },
@@ -1317,11 +1310,10 @@ function typeKey(s, k) {
   return true
 }
 
-// ---------- Bar, find and menu input ----------
+// ---------- Bar and find input ----------
 
 function runCommand(s, c) {
   s.mode = 'normal'
-  s.menuPath = []
   if (c.open) {
     open(s, c.open)
     return
@@ -1374,19 +1366,6 @@ function findKey(s, k) {
   if (kd === 'calendar' && f.filter && !items(s, f).includes(underCursor(s, f)?.id)) hop(s, f, 1)
 }
 
-function menuKey(s, k) {
-  if (k.key === 'Escape') {
-    if (s.menuPath.length > 1) s.menuPath = s.menuPath.slice(0, -1)
-    else { s.menuPath = []; s.mode = 'normal' }
-    return
-  }
-  const e = menuEntries(s).find((x) => x.key === k.key)
-  if (!e) return
-  if (e.children) { s.menuPath = [...s.menuPath, e.key]; return }
-  if (e.off) { s.msg = 'Mark a region first: press S, then move.'; return }
-  runCommand(s, e)
-}
-
 // ---------- Key dispatch ----------
 
 function normalKey(s, k) {
@@ -1418,16 +1397,6 @@ function normalKey(s, k) {
     case '.':
       if (s.last) runVerb(s, s.last)
       else s.msg = 'No verb to repeat yet.'
-      return true
-    case 'f':
-      s.mode = 'menu'
-      s.menuPath = []
-      return true
-    case 't':
-      if (rootMenu(s).some((e) => e.key === 't')) {
-        s.mode = 'menu'
-        s.menuPath = ['t']
-      } else s.msg = 'No tools work on this. D lists them all.'
       return true
     case 'n': case 'p': case 'm': case 'w': case 'e': case 'd': case 'D': case 'C': case 'M':
       launch(s, k.key)
@@ -1495,7 +1464,6 @@ export function press(state, k) {
   } else if (s.mode === 'typing') s.handled = typeKey(s, k)
   else if (s.mode === 'bar') barKey(s, k)
   else if (s.mode === 'find') findKey(s, k)
-  else if (s.mode === 'menu') menuKey(s, k)
   else s.handled = normalKey(s, k)
   if (s._dirty) {
     s.undo = [...s.undo, { store: state.store, label: s._dirty }].slice(-200)

@@ -1,7 +1,7 @@
 import { diff } from '../src/sync.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { init, press, frame, items, titleOf, kind, targetLabel, completions, menuEntries, rootMenu, CONSEQUENTIAL, range, tick, viewActions, visibleSize, syncPlayer, applyRemote } from '../src/engine.js'
+import { init, press, frame, items, titleOf, kind, targetLabel, completions, rootMenu, TOOL_KEYS, CONSEQUENTIAL, range, tick, viewActions, visibleSize, syncPlayer, applyRemote } from '../src/engine.js'
 import { seedStore } from '../src/data.js'
 import { withMedia } from '../src/media.js'
 
@@ -213,14 +213,15 @@ test('crop maps correctly after a rotate', () => {
   assert.equal(c.y + c.h, 800)
 })
 
-test('app actions take one key, and the menu uses the same letters', () => {
+test('app actions take one key and are all listed on screen', () => {
   let s = type(init(), 'sp sp j b')
   assert.equal(s.mode, 'normal')
   assert.equal(s.store[items(s, frame(s))[1]].style, 'h')
-  s = type(s, 'f y')
+  assert.ok(viewActions(s).some(([k, l]) => k === 't' && l === 'To-do'))
+  s = type(s, 't')
   assert.equal(s.mode, 'normal')
   assert.equal(s.store[items(s, frame(s))[1]].style, 'todo')
-  s = type(s, 'f esc')
+  s = type(s, 'f')
   assert.equal(s.mode, 'normal')
 })
 
@@ -371,16 +372,13 @@ test('the inbox lists open proposals, and A approves through the ship', () => {
   assert.deepEqual(s.out, [{ do: 'decide', id: 'p1', ok: false }])
 })
 
-test('a learned tool sits behind the leader on what it applies to', () => {
+test('a learned tool is listed with its key on what it applies to', () => {
   let s = init()
   s = applyRemote(s, [{ id: 'tool:t', type: 'tool', name: 'Warm up', key: 'B', appliesTo: 'photo' }])
-  s = type(s, 'l sp sp sp')
-  assert.ok(viewActions(s).some(([k, l]) => k === 't' && l === 'Tools'))
-  s = type(s, 'B')
-  assert.deepEqual(s.out, [])
-  s = type(s, 't')
-  assert.equal(s.mode, 'menu')
-  assert.ok(menuEntries(s).some((e) => e.key === 'B' && e.label === 'Warm up'))
+  s = type(s, 'n')
+  assert.deepEqual(type(s, 'B').out, [])
+  s = type(s, 'p sp sp')
+  assert.ok(viewActions(s).some(([k, l]) => k === 'B' && l === 'Warm up'))
   s = type(s, 'B')
   assert.equal(s.mode, 'normal')
   assert.equal(s.out[0].do, 'tool')
@@ -421,47 +419,52 @@ test('a clash on what you are in can be settled either way', () => {
 })
 
 const tool = (id, name, key, appliesTo = 'photo') => ({ id, type: 'tool', name, key, appliesTo })
-const onPhoto = (extra) => type(applyRemote(init(), extra), 'l sp sp sp t')
+const onPhoto = (extra) => type(applyRemote(init(), extra), 'l sp sp sp')
+const toolsOn = (s) => rootMenu(s).filter((e) => e.run?.startsWith('tool:'))
 
-test('a tool can take any key, because it can only be reached behind the leader', () => {
+test('a tool never takes a key the interface uses for something else', () => {
   let s = applyRemote(init(), [tool('tool:a', 'Rotate twice', 'r')])
   s = type(s, 'l sp sp sp')
   const rot = s.store[frame(s).id].rot
-  s = type(s, 't r')
-  assert.equal(s.out.at(-1).id, 'tool:a')
-  assert.equal(s.store[frame(s).id].rot, rot)
-  s = type({ ...s, out: [] }, 'r')
+  const [t] = toolsOn(s)
+  assert.ok(TOOL_KEYS.includes(t.key))
+  for (const c of 'rthjklsaioxcvzAR;/') assert.ok(!TOOL_KEYS.includes(c), c)
+  s = type(s, 'r')
   assert.deepEqual(s.out, [])
   assert.equal(s.store[frame(s).id].rot, (rot + 90) % 360)
+  s = type(s, t.key)
+  assert.equal(s.out.at(-1).id, 'tool:a')
 })
 
 test('tools that want one key both stay reachable', () => {
   const s = onPhoto([tool('tool:b', 'Blur', 'B'), tool('tool:a', 'Brighten', 'B'), tool('tool:c', 'Crisp')])
-  const keys = Object.fromEntries(menuEntries(s).map((e) => [e.label, e.key]))
+  const keys = Object.fromEntries(toolsOn(s).map((e) => [e.label, e.key]))
   assert.equal(keys.Brighten, 'B')
-  assert.equal(keys.Crisp, 'C')
-  assert.ok(keys.Blur && keys.Blur !== 'B' && keys.Blur !== 'C')
+  assert.ok(keys.Crisp && TOOL_KEYS.includes(keys.Crisp))
+  assert.ok(keys.Blur && new Set(Object.values(keys)).size === 3)
   assert.equal(type(s, keys.Blur).out.at(-1).id, 'tool:b')
 })
 
 test('with every key taken a tool has none, and the bar still finds it', () => {
   const many = [...Array(70).keys()].map((i) => tool(`tool:${String(i).padStart(2, '0')}`, `Task ${i}`))
   let s = onPhoto(many)
-  const list = menuEntries(s)
+  const list = toolsOn(s)
   assert.equal(list.length, 70)
-  assert.equal(new Set(list.filter((e) => e.key).map((e) => e.key)).size, 62)
+  assert.equal(new Set(list.filter((e) => e.key).map((e) => e.key)).size, TOOL_KEYS.length)
   const last = list.findLast((e) => !e.key)
   assert.ok(last)
-  s = type(s, 'esc ;')
+  s = type(s, ';')
   for (const c of last.label) s = press(s, { key: c })
   assert.equal(completions(s)[0].run, last.run)
   assert.equal(press(s, { key: 'Enter' }).out.at(-1).id, last.run.slice(5))
 })
 
-test('the leader says so when nothing applies', () => {
-  const s = type(init(), 't')
-  assert.equal(s.mode, 'normal')
-  assert.match(s.msg, /No tools/)
+test('there is no menu key or tools leader', () => {
+  for (const c of 'ft') {
+    const s = type(init(), c)
+    assert.equal(s.mode, 'normal')
+    assert.deepEqual(s.out, [])
+  }
 })
 
 test('approval keys mean nothing anywhere but where they approve', () => {

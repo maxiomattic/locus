@@ -1,7 +1,10 @@
 // Static assets ignore Range, and a video can't seek without it. This serves a
-// byte range of a movie and does nothing else; everything else never reaches it.
+// byte range of a movie, and passes the agent's prompts to the live model.
+import { agentProxy } from './agent-proxy.js'
+
 export default {
   async fetch(req, env) {
+    if (new URL(req.url).pathname === '/api/agent') return agentProxy(req, env)
     const res = await env.ASSETS.fetch(new Request(req.url))
     const headers = new Headers(res.headers)
     headers.set('Accept-Ranges', 'bytes')

@@ -11,7 +11,7 @@
 <p><strong>Live:</strong> <a href="https://locus.careride.workers.dev">locus.careride.workers.dev</a>, a Cloudflare Worker serving <code>ui/demo/</code>.</p>
 <ul>
 <li>It runs the real interface and agent in the visitor's browser. <code>demo/ship.js</code> is a JavaScript port of <code>%store</code>, so there is no ship, host or tunnel behind it, and it cannot reach the Surface or any real data. Each visitor's copy stays in their browser.</li>
-<li>The agent's model is a short script (<code>demo/model.js</code>). Proposals, approval and tool learning are the real code.</li>
+<li>The agent's model is GPT-6 Luna at low effort, through OpenRouter, called by the Worker (<code>demo/agent-proxy.js</code>) with the key as a Worker secret. It only forwards prompts shaped like the agent's, at most 8 a minute per visitor and $1 or 400 calls a day; past that, the scripted <code>demo/model.js</code> answers and says so. Proposals, approval and tool learning are the real code.</li>
 <li>Photos and movies are CC0 or public domain, re-encoded to drop metadata, and movies have no audio. Sources are on <code>/credits.html</code>. The media files are not in git: <code>demo/scripts/prepare-media.py</code> builds them from the raw downloads in <code>~/locus-demo-media</code> on the Surface.</li>
 <li>Not in the demo: replication, reactions, and sound in Music, which has no audio player yet.</li>
 <li>Deploy: <code>npx vite build --config demo/vite.config.js</code> from <code>ui/</code>, then <code>wrangler deploy --config wrangler.jsonc</code> from <code>ui/demo/</code>.</li>

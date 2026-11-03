@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   init, press, tick, point, setCols, frame, kind, items, titleOf, targetLabel,
-  menuEntries, completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
+  completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
   applyRemote, say, watch, pref, pointAt, unsend,
 } from './engine.js'
 import { addDays, dayName, dayStart, lanes, minuteOfDay, occurrences, weekStart, whenName } from './calendar.js'
@@ -92,18 +92,9 @@ function Bar({ s }) {
           {s.bar.text && !list.length && <span className="hint">Enter asks the agent</span>}
         </span>
       )}
-      {s.mode === 'menu' && (
-        <span className="line">
-          {menuEntries(s).map((e) => (
-            <span key={e.key ?? e.label} className={e.off ? 'entry off' : 'entry'}>
-              {e.key && <kbd>{e.key}</kbd>}{e.label}{e.children ? '…' : ''}
-            </span>
-          ))}
-        </span>
-      )}
       {s.mode === 'find' && <span className="line"><span className="input">/{f.filter}<i className="caret" /></span></span>}
       {s.mode === 'typing' && <span className="line hint">{s.typing?.note ? `${s.typing.note} ` : ''}Typing. Esc to stop.</span>}
-      {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || 'f for the menu, ; to type a command or ask the agent'}</span>}
+      {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || '; to type a command or ask the agent'}</span>}
     </header>
   )
 }
@@ -173,7 +164,7 @@ function Tile({ s, pane, set }) {
         {active && s.mode === 'normal' && (
           <span className="actions">
             {viewActions(s).map(([key, label, off]) => (
-              <span key={key + label} className={off ? 'action off' : 'action'}><kbd>{key}</kbd>{label}</span>
+              <span key={key + label} className={off ? 'action off' : 'action'}>{key && <kbd>{key}</kbd>}{label}</span>
             ))}
           </span>
         )}
@@ -306,7 +297,7 @@ function ToolView({ o }) {
     <article className="info">
       <dl>
         <div><dt>Name</dt><dd>{o.name}</dd></div>
-        <div><dt>Key</dt><dd>{o.key ? <kbd>t {o.key}</kbd> : 'By name, from the command bar'}</dd></div>
+        <div><dt>Key</dt><dd>{o.key ? <kbd>{o.key}</kbd> : 'By name, from the command bar'}</dd></div>
         <div><dt>Works on</dt><dd>{o.appliesTo}</dd></div>
         <div><dt>Runs</dt><dd>{o.uses ?? 0}, with no model calls</dd></div>
         <div><dt>Version</dt><dd>{o.version ?? 1}</dd></div>
@@ -325,7 +316,7 @@ function Row({ s, id }) {
     return <><span className="grow"><Title s={s} id={id} /></span><span className="grow dim">{last?.text ?? ''}</span><span className="dim">{o.unread ? `${o.unread} new` : o.peer || 'No ship yet'}</span></>
   }
   if (o.type === 'proposal') return <><span className="grow">{o.intent}</span><span className="dim">{(o.ops ?? []).length} changes</span></>
-  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim">{o.key && <kbd>t {o.key}</kbd>} {o.uses ?? 0} runs</span></>
+  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim">{o.key && <kbd>{o.key}</kbd>} {o.uses ?? 0} runs</span></>
   if (o.type === 'track') return <><span className="grow">{o.title}</span><span className="dim">{s.player.id === id ? (s.player.playing ? 'Playing' : 'Paused') : clock(o.dur)}</span></>
   const sub = o.type === 'note' ? `${o.items.length} ${o.items.length === 1 ? 'block' : 'blocks'}` : ''
   return <><span className="grow"><Title s={s} id={id} /></span><span className="dim">{sub}</span></>
