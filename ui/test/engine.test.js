@@ -217,7 +217,7 @@ test('app actions take one key, and the menu uses the same letters', () => {
   let s = type(init(), 'sp sp j b')
   assert.equal(s.mode, 'normal')
   assert.equal(s.store[items(s, frame(s))[1]].style, 'h')
-  s = type(s, 'f t')
+  s = type(s, 'f y')
   assert.equal(s.mode, 'normal')
   assert.equal(s.store[items(s, frame(s))[1]].style, 'todo')
   s = type(s, 'f esc')
@@ -375,10 +375,10 @@ test('a learned tool sits behind the leader on what it applies to', () => {
   let s = init()
   s = applyRemote(s, [{ id: 'tool:t', type: 'tool', name: 'Warm up', key: 'B', appliesTo: 'photo' }])
   s = type(s, 'l sp sp sp')
-  assert.ok(viewActions(s).some(([k, l]) => k === ',' && l === 'Tools'))
+  assert.ok(viewActions(s).some(([k, l]) => k === 't' && l === 'Tools'))
   s = type(s, 'B')
   assert.deepEqual(s.out, [])
-  s = type(s, ',')
+  s = type(s, 't')
   assert.equal(s.mode, 'menu')
   assert.ok(menuEntries(s).some((e) => e.key === 'B' && e.label === 'Warm up'))
   s = type(s, 'B')
@@ -421,13 +421,13 @@ test('a clash on what you are in can be settled either way', () => {
 })
 
 const tool = (id, name, key, appliesTo = 'photo') => ({ id, type: 'tool', name, key, appliesTo })
-const onPhoto = (extra) => type(applyRemote(init(), extra), 'l sp sp sp ,')
+const onPhoto = (extra) => type(applyRemote(init(), extra), 'l sp sp sp t')
 
 test('a tool can take any key, because it can only be reached behind the leader', () => {
   let s = applyRemote(init(), [tool('tool:a', 'Rotate twice', 'r')])
   s = type(s, 'l sp sp sp')
   const rot = s.store[frame(s).id].rot
-  s = type(s, ', r')
+  s = type(s, 't r')
   assert.equal(s.out.at(-1).id, 'tool:a')
   assert.equal(s.store[frame(s).id].rot, rot)
   s = type({ ...s, out: [] }, 'r')
@@ -459,7 +459,7 @@ test('with every key taken a tool has none, and the bar still finds it', () => {
 })
 
 test('the leader says so when nothing applies', () => {
-  const s = type(init(), ',')
+  const s = type(init(), 't')
   assert.equal(s.mode, 'normal')
   assert.match(s.msg, /No tools/)
 })

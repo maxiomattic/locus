@@ -306,7 +306,7 @@ function ToolView({ o }) {
     <article className="info">
       <dl>
         <div><dt>Name</dt><dd>{o.name}</dd></div>
-        <div><dt>Key</dt><dd>{o.key ? <kbd>, {o.key}</kbd> : 'By name, from the command bar'}</dd></div>
+        <div><dt>Key</dt><dd>{o.key ? <kbd>t {o.key}</kbd> : 'By name, from the command bar'}</dd></div>
         <div><dt>Works on</dt><dd>{o.appliesTo}</dd></div>
         <div><dt>Runs</dt><dd>{o.uses ?? 0}, with no model calls</dd></div>
         <div><dt>Version</dt><dd>{o.version ?? 1}</dd></div>
@@ -325,7 +325,7 @@ function Row({ s, id }) {
     return <><span className="grow"><Title s={s} id={id} /></span><span className="grow dim">{last?.text ?? ''}</span><span className="dim">{o.unread ? `${o.unread} new` : o.peer || 'No ship yet'}</span></>
   }
   if (o.type === 'proposal') return <><span className="grow">{o.intent}</span><span className="dim">{(o.ops ?? []).length} changes</span></>
-  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim">{o.key && <kbd>, {o.key}</kbd>} {o.uses ?? 0} runs</span></>
+  if (o.type === 'tool') return <><span className="grow">{o.name}</span><span className="dim">{o.key && <kbd>t {o.key}</kbd>} {o.uses ?? 0} runs</span></>
   if (o.type === 'track') return <><span className="grow">{o.title}</span><span className="dim">{s.player.id === id ? (s.player.playing ? 'Playing' : 'Paused') : clock(o.dur)}</span></>
   const sub = o.type === 'note' ? `${o.items.length} ${o.items.length === 1 ? 'block' : 'blocks'}` : ''
   return <><span className="grow"><Title s={s} id={id} /></span><span className="dim">{sub}</span></>

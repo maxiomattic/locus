@@ -82,7 +82,7 @@ export function signature(ops, selection, objs) {
 
 const FREE = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
 
-// Tools sit behind , so a key only has to differ from other tools' keys. With
+// Tools sit behind t, so a key only has to differ from other tools' keys. With
 // none left a tool has no key, and the command bar still finds it by name.
 function freeKey(name, tools) {
   const used = new Set(tools.map((t) => t.key))
@@ -238,7 +238,7 @@ Answer with one JSON object and nothing else: {"program":[...]}. It must produce
       param: made.param,
       examples: [{ args: { selection: [] }, expect: b.selection.length ? [] : asKinds(b.ops) }],
     }
-    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key ? `, ${fields.key}` : 'by name'}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
+    await act({ do: 'propose', actor: 'agent:host', intent: `New tool: ${name} (${fields.key ? `t ${fields.key}` : 'by name'}), ${wrote}`, ops: [{ do: 'make', id, type: 'tool', fields }] })
     return true
   }
 

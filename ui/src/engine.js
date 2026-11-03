@@ -4,7 +4,7 @@ import { seedStore } from './data.js'
 import { SLOT, addDays, dayName, dayStart, occurrences, occursIn, retime, slotOf, timeName, weekStart, whenName } from './calendar.js'
 
 export const CELLS = { x: 12, y: 8 }
-export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.,fnpmwedDCM;/ '])
+export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.tfnpmwedDCM;/ '])
 // These commit something that can't be taken back with a keystroke. They are
 // never reused for anything else, so muscle memory can't fire one by accident.
 export const CONSEQUENTIAL = new Set([...'AR'])
@@ -183,7 +183,7 @@ export function rootMenu(s) {
   const k = kind(s, f)
   const out = []
   if (k === 'calendar') {
-    out.push({ key: 't', label: 'Today', run: 'today' })
+    out.push({ key: 'u', label: 'Today', run: 'today' })
     if (targets(s, f).length) {
       out.push({ key: '<', label: 'Shorten', run: 'endLess' }, { key: '>', label: 'Lengthen', run: 'endMore' }, { key: 'y', label: 'Repeat', run: 'repeat' })
     }
@@ -195,7 +195,7 @@ export function rootMenu(s) {
     if (photos.some((id) => s.store[id].crop)) out.push({ key: 'u', label: 'Remove crop', run: 'uncrop' })
   }
   if (k === 'blocks' && targets(s, f).some((id) => !s.store[id].ref)) {
-    out.push({ key: 't', label: 'To-do', run: 'kindT' }, { key: 'b', label: 'Heading', run: 'kindH' }, { key: 'q', label: 'Paragraph', run: 'kindP' })
+    out.push({ key: 'y', label: 'To-do', run: 'kindT' }, { key: 'b', label: 'Heading', run: 'kindH' }, { key: 'q', label: 'Paragraph', run: 'kindP' })
   }
   if ((k === 'list' || k === 'grid') && !s.store[f.id].fixed) {
     out.push({ key: 'y', label: 'Sort by name', run: 'sortName' }, { key: 'Y', label: 'Reverse order', run: 'sortReverse' })
@@ -214,13 +214,13 @@ export function rootMenu(s) {
     out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'V', label: 'Keep this version', run: 'keepMine' })
   }
   const tools = toolEntries(s)
-  if (tools.length) out.push({ key: ',', label: 'Tools', children: tools })
+  if (tools.length) out.push({ key: 't', label: 'Tools', children: tools })
   out.push({ key: 'I', label: 'Info', run: 'info' })
   out.push({ key: 'T', label: 'Open in a new tile', run: 'newTile' })
   return out
 }
 
-// Tools the agent has learned live behind , so they can never take a key from
+// Tools the agent has learned live behind t so they can never take a key from
 // the interface, and there is room for as many as get learned. Two tools that
 // apply here may want one key: the first by id keeps it, the rest take another,
 // and past the last free key a tool is still reachable by name in the bar.
@@ -1423,10 +1423,10 @@ function normalKey(s, k) {
       s.mode = 'menu'
       s.menuPath = []
       return true
-    case ',':
-      if (rootMenu(s).some((e) => e.key === ',')) {
+    case 't':
+      if (rootMenu(s).some((e) => e.key === 't')) {
         s.mode = 'menu'
-        s.menuPath = [',']
+        s.menuPath = ['t']
       } else s.msg = 'No tools work on this. D lists them all.'
       return true
     case 'n': case 'p': case 'm': case 'w': case 'e': case 'd': case 'D': case 'C': case 'M':
