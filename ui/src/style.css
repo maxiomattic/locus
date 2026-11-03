@@ -59,7 +59,8 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 
 .grid { display: grid; gap: 1.25rem; align-items: start; }
 .item { min-width: 0; position: relative; }
-.door { aspect-ratio: 3 / 2; display: flex; flex-direction: column; justify-content: flex-end; padding: .8rem 1rem; background: var(--slate); }
+.door { --accent: var(--mist); aspect-ratio: 3 / 2; display: flex; flex-direction: column; justify-content: flex-end; padding: .8rem 1rem; background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 22%, var(--slate)), var(--slate) 70%); border-top: 3px solid var(--accent); }
+.door .icon { width: 2.6rem; height: 2.6rem; margin-bottom: auto; color: var(--accent); }
 .door strong { font-size: 1.5rem; font-weight: 500; line-height: 1.15; }
 .door span { color: var(--mist); font-size: .85rem; }
 .frame { position: relative; display: flex; flex-direction: column; gap: .3rem; }
@@ -159,3 +160,14 @@ kbd { font: inherit; font-weight: 600; color: var(--focus); }
 }
 .floating { position: fixed; z-index: 5; top: 22vh; left: 50%; transform: translateX(-50%); width: min(44rem, 90vw); flex-wrap: wrap; white-space: normal; padding: 1rem 1.2rem; background: var(--deep); outline: 2px solid var(--focus); }
 .toast { position: fixed; z-index: 5; right: 1rem; bottom: 2.4rem; max-width: 28rem; padding: .5rem .9rem; background: var(--deep); outline: 2px solid var(--mark); }
+
+/* The grammar, kept beside the tiles until ? hides it. */
+.keys { flex: 0 0 15rem; margin-left: .4rem; padding: .5rem .9rem .9rem; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--slate) transparent; background: var(--deep); font-size: .78rem; line-height: 1.35; color: var(--mist); }
+.keyshead { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: .3rem; color: var(--paper); font-size: .84rem; }
+.keys h3 { margin: .55rem 0 .2rem; font-size: .7rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--paper); opacity: .7; }
+.keys dl { margin: 0; display: grid; gap: .12rem; }
+.keys dl div { display: grid; grid-template-columns: auto 1fr; gap: .6rem; }
+.keys dt, .keys dd { margin: 0; }
+.keys dt kbd { white-space: nowrap; }
+.keysnote { margin: .9rem 0 0; }
+@media (max-width: 52rem) { .keys { display: none; } }

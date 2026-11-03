@@ -1,8 +1,14 @@
 import './demo.css'
-import { install, reset } from './backend.js'
+import { install, reset, KEY } from './backend.js'
 
 install()
-document.getElementById('reset').addEventListener('click', reset)
+// Commands only the demo has, offered in the command bar.
+const first = !localStorage.getItem(KEY)
+window.locusExtra = {
+  start: first ? 'demo-welcome' : null,
+  commands: [{ label: 'Reset the demo', run: 'page:reset' }, { label: 'Credits', run: 'page:credits' }],
+  run: (what) => (what === 'reset' ? reset() : what === 'credits' ? location.assign('/credits.html') : null),
+}
 
 // Touch: the interface is keyboard-only, so these buttons press its keys and a tap
 // opens what it lands on.

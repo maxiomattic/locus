@@ -4,7 +4,7 @@ import { seedStore } from './data.js'
 import { SLOT, addDays, dayName, dayStart, occurrences, occursIn, retime, slotOf, timeName, weekStart, whenName } from './calendar.js'
 
 export const CELLS = { x: 12, y: 8 }
-export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.npmwedDCM;/ '])
+export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.npmwedDCM;/? '])
 // These commit something that can't be taken back with a keystroke. They are
 // never reused for anything else, so muscle memory can't fire one by accident.
 export const CONSEQUENTIAL = new Set([...'AR'])
@@ -282,6 +282,7 @@ export function completions(s) {
   const q = s.bar.text.trim().toLowerCase()
   const commands = [
     ...rootMenu(s).filter((e) => !e.off),
+    { label: 'Keys: the grammar', name: 'Keys help grammar', run: 'help' },
     { label: 'Go home', run: 'home' },
     { label: 'Close tile', run: 'closeTile' },
     { label: 'Undo', run: 'undo' },
@@ -291,6 +292,7 @@ export function completions(s) {
     { label: 'Inbox', run: 'inbox' },
     { label: `Command bar: ${pref(s, 'bar') === 'line' ? 'floating' : 'in the top line'}`, run: 'toggleBar' },
     { label: `Notices: ${pref(s, 'notices') === 'line' ? 'toasts' : 'in the top line'}`, run: 'toggleNotices' },
+    ...(s.extra ?? []),
   ]
   const opens = Object.values(s.store)
     .filter((o) => o.title && o.id !== 'home' && !o.$trashed)
@@ -307,13 +309,17 @@ const dirty = (s, label) => { s._dirty = label }
 
 // Both versions of an open design question stay built. Prefs sync like any
 // other object, so a choice follows you across devices.
-const PREFS = { bar: 'line', notices: 'line' }
+const PREFS = { bar: 'line', notices: 'line', help: true }
 export const pref = (s, k) => s.store.prefs?.[k] ?? PREFS[k]
 function setPref(s, k, v) {
   s.store.prefs = { ...(s.store.prefs ?? { id: 'prefs', type: 'prefs' }), [k]: v }
 }
 
 const VERBS = {
+  help(s) {
+    setPref(s, 'help', !pref(s, 'help'))
+    return pref(s, 'help') ? '' : 'The key reference is hidden. ? brings it back.'
+  },
   toggleBar(s) {
     setPref(s, 'bar', pref(s, 'bar') === 'line' ? 'float' : 'line')
     return `The command bar is now ${pref(s, 'bar') === 'line' ? 'in the top line' : 'floating'}.`
@@ -575,6 +581,10 @@ const VERBS = {
 const REPEATABLE = new Set(['endLess', 'endMore', 'cut', 'copy', 'paste', 'rotate', 'kindP', 'kindH', 'kindT', 'uncrop'])
 
 function runVerb(s, name) {
+  if (name.startsWith('page:')) {
+    s.out.push({ do: 'page', what: name.slice(5) })
+    return
+  }
   if (name.startsWith('tool:')) {
     const id = name.slice(5)
     s.out.push({ do: 'tool', id, selection: selected(s) })
@@ -996,6 +1006,12 @@ function play(s, id, stack, from) {
   s.player.playing = true
 }
 
+// Start somewhere other than Home, such as the demo's welcome note.
+export function startAt(s, id) {
+  if (s.store[id]) open(s, id)
+  return s
+}
+
 function open(s, id, opts = {}) {
   const stack = s.panes[s.active].stack
   const o = s.store[id]
@@ -1405,6 +1421,7 @@ function normalKey(s, k) {
       s.mode = 'bar'
       s.bar = { text: '', i: 0 }
       return true
+    case '?': runVerb(s, 'help'); return true
     case '/':
       if (['photo', 'player'].includes(kind(s, frame(s)))) { s.msg = 'Nothing to find in here.'; return true }
       s.mode = 'find'

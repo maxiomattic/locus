@@ -105,7 +105,7 @@ const keys = note('Keys', [
   p('Tiles', 'h'),
   p('Alt+h j k l moves between tiles. Alt+q closes a tile.'),
 ])
-const notes = coll('Notes', 'list', [lisbon, reading, review], { accepts: 'note', newType: 'note' })
+const notes = coll('Notes', 'list', [lisbon, reading, review, keys], { accepts: 'note', newType: 'note' })
 
 // Calendar, around the week the store was made.
 const week = weekStart(Date.now() / 1000)
@@ -133,6 +133,6 @@ const inbox = coll('Inbox', 'list', [], { id: 'inbox', fixed: true, query: { typ
 const tools = coll('Tools', 'list', [], { id: 'tools', fixed: true, query: { type: 'tool' } })
 const trash = coll('Trash', 'list', [], { id: 'trash', fixed: true, query: { $trashed: true } })
 Object.entries({ n: notes, p: photos, m: music, w: movies, e: people, C: calendar, M: messages, d: inbox, D: tools }).forEach(([key, id]) => { s[id].launch = key })
-add({ id: 'home', type: 'collection', title: 'Home', layout: 'grid', fixed: true, items: [notes, photos, music, movies, people, inbox, tools, keys, calendar, messages] })
+add({ id: 'home', type: 'collection', title: 'Home', layout: 'grid', fixed: true, items: [notes, photos, music, movies, people, inbox, tools, calendar, messages] })
 
 export const seedStore = () => structuredClone(s)

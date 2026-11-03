@@ -8,7 +8,7 @@ import { demoOps } from './seed.js'
 import { createMessages } from '../server/messages.mjs'
 import { fakeMessages } from './messages.js'
 
-export const KEY = 'locus-demo-1'
+export const KEY = 'locus-demo-2'
 
 export function createBackend(saved, save) {
   const ship = createShip(saved, { save })

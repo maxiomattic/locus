@@ -58,5 +58,13 @@ for (const o of s.objects) {
   const text = SWAPS.reduce((t, [was, now]) => t.replace(was, now), o.fields.text)
   if (text !== o.fields.text) ops.push({ do: 'set', id: o.id, base: o.rev ?? 0, fields: { text } })
 }
+// The Keys note moved from Home into Notes; the key panel (?) took its place.
+const home = s.objects.find((o) => o.id === 'home')
+const notesColl = s.objects.find((o) => o.fields.launch === 'n')
+const keysId = s.objects.find((o) => o.type === 'note' && o.fields.title === 'Keys')?.id
+if (keysId && home?.fields.items.includes(keysId)) {
+  ops.push({ do: 'splice', id: 'home', field: 'items', del: [keysId], add: [] })
+  if (notesColl && !notesColl.fields.items.includes(keysId)) ops.push({ do: 'splice', id: notesColl.id, field: 'items', del: [], add: [{ after: notesColl.fields.items.at(-1) ?? null, val: keysId }] })
+}
 for (const op of messageSetup((fields) => ({ do: 'make', id: `type:${fields.name}`, type: 'type', fields }))) if (!has(op.id)) ops.push(op)
 if (ops.length) console.log(await fetch(`${url}/store/~/v1/do`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ do: 'batch', intent: 'upgrade', ops }) }).then((r) => r.text()))

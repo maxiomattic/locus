@@ -2,11 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   init, press, tick, point, setCols, frame, kind, items, titleOf, targetLabel,
   completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
-  applyRemote, say, watch, pref, pointAt, unsend,
+  applyRemote, say, watch, pref, pointAt, unsend, startAt,
 } from './engine.js'
 import { addDays, dayName, dayStart, lanes, minuteOfDay, occurrences, weekStart, whenName } from './calendar.js'
 import { describe } from './sync.js'
 import { Bars, Film, Photo, Poster } from './Art.jsx'
+import { ACCENT, Icon, iconFor } from './Icons.jsx'
+import { Keys } from './Keys.jsx'
 
 function toKey(e) {
   let key = e.key
@@ -18,8 +20,8 @@ function toKey(e) {
   return { key, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey, now: Date.now() / 1000 }
 }
 
-export function App({ store, sync }) {
-  const [s, show] = useState(() => init(store))
+export function App({ store, sync, extra }) {
+  const [s, show] = useState(() => startAt({ ...init(store), extra: extra?.commands }, extra?.start))
   const [net, setNet] = useState({ state: 'connecting', pending: 0, ship: '' })
   const latest = useRef(s)
   const set = useCallback((fn) => {
@@ -58,7 +60,7 @@ export function App({ store, sync }) {
     if (!s.out.length) return
     const out = s.out
     set((p) => ({ ...p, out: [] }))
-    out.forEach((e) => link.current?.send(e))
+    out.forEach((e) => (e.do === 'page' ? extra?.run(e.what) : link.current?.send(e)))
   }, [s.out, set])
 
   useEffect(() => { link.current?.changed() }, [s.store])
@@ -71,7 +73,7 @@ export function App({ store, sync }) {
   return (
     <div className="shell">
       <Bar s={s} />
-      <main className="tiles"><Layout s={s} t={s.layout} set={set} /></main>
+      <main className="tiles"><Layout s={s} t={s.layout} set={set} />{pref(s, 'help') && <Keys />}</main>
       <Status s={s} net={net} />
       {pref(s, 'notices') === 'toast' && s.mode === 'normal' && s.msg && <div className="toast">{s.msg}</div>}
     </div>
@@ -94,7 +96,7 @@ function Bar({ s }) {
       )}
       {s.mode === 'find' && <span className="line"><span className="input">/{f.filter}<i className="caret" /></span></span>}
       {s.mode === 'typing' && <span className="line hint">{s.typing?.note ? `${s.typing.note} ` : ''}Typing. Esc to stop.</span>}
-      {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || '; to type a command or ask the agent'}</span>}
+      {s.mode === 'normal' && <span className="line hint">{(pref(s, 'notices') === 'line' && s.msg) || '; to type a command or ask the agent, ? for keys'}</span>}
     </header>
   )
 }
@@ -214,7 +216,13 @@ function Card({ s, id }) {
     return <div className="frame"><Photo o={s.store[o.items[0]]} /><span className="cap"><Title s={s} id={id} /> <em>{count}</em></span></div>
   }
   if (o.artist) return <Poster seed={o.seed} title={<Title s={s} id={id} />} sub={o.artist} />
-  return <div className="door"><strong><Title s={s} id={id} /></strong>{count && <span>{count}</span>}</div>
+  const icon = o.type === 'collection' ? iconFor(o) : null
+  return (
+    <div className="door" style={icon ? { '--accent': ACCENT[o.launch] ?? 'var(--mist)' } : undefined}>
+      {icon && <Icon name={icon} />}
+      <strong><Title s={s} id={id} /></strong>{count && <span>{count}</span>}
+    </div>
+  )
 }
 
 // Albums run to thousands of photos, so only rows near the focus exist.

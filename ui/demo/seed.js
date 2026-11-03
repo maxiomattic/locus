@@ -8,9 +8,9 @@ import { messageSetup } from '../server/messages.mjs'
 const welcomeText = [
   ['h', 'Welcome to Locus'],
   ['p', 'Locus is a personal computer that keeps everything as one kind of thing: objects in a store you own. Notes, photos, music, movies and people are all objects, and apps are only ways of looking at them.'],
-  ['p', 'This is a working copy running entirely in your browser, with invented sample data. Only what you ask the agent leaves this page, and Reset at the top puts it back.'],
+  ['p', 'This is a working copy running entirely in your browser, with invented sample data. Only what you ask the agent leaves this page. To start over, press ; and choose Reset the demo.'],
   ['h', 'A short tour'],
-  ['p', 'Locus is built for the keyboard. On a phone, use the buttons at the bottom: you can browse everything, but asking the agent needs a keyboard. Press Esc to go back, then h j k l to move and Space to open. Press f any time to see what you can do here.'],
+  ['p', 'Locus is built for the keyboard. On a phone, use the buttons at the bottom: you can browse everything, but asking the agent needs a keyboard. Press Esc to go back, then h j k l to move and Space to open. The panel on the right lists the keys that work everywhere, and each view lists its own at its top right.'],
   ['todo', 'Press p for Photos, open an album, and press r on a photo to rotate it', false],
   ['todo', 'Press z to undo it', false],
   ['todo', 'Select a photo with s, press ; and ask “rotate this”. The change waits in the Inbox: press d, Space to open it, then A to approve', false],
@@ -43,7 +43,6 @@ const extras = [
 export function demoOps() {
   const store = withMedia(seedStore(), media)
   const notes = Object.values(store).find((o) => o.launch === 'n')
-  const home = store.home
   let n = 0
   const block = ([style, text, done]) => {
     const id = `demo-b${++n}`
@@ -52,7 +51,7 @@ export function demoOps() {
   }
   const note = (id, title, lines) => { store[id] = { id, type: 'note', title, items: lines.map(block) }; return id }
   notes.items.push(...extras.map(([title, lines], i) => note(`demo-note${i}`, title, lines)))
-  home.items.unshift(note('demo-welcome', 'Welcome', welcomeText))
+  notes.items.unshift(note('demo-welcome', 'Welcome', welcomeText))
 
   const ops = Object.values(store).map(({ id, type, ...fields }) => ({ do: 'make', id, type, fields }))
   const kind = (fields) => ({ do: 'make', id: `type:${fields.name}`, type: 'type', fields })

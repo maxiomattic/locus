@@ -102,7 +102,7 @@ test('o creates a sibling and starts typing', () => {
   assert.equal(s.mode, 'typing')
   s = type(s, 'Groceries ent')
   assert.equal(focused(s), 'Groceries')
-  assert.equal(find(s, 'Notes').items.length, 4)
+  assert.equal(find(s, 'Notes').items.length, 5)
 })
 
 test('Enter while typing a block makes the next block', () => {
@@ -289,7 +289,7 @@ test('music moves to the next track on its own', () => {
 
 test('home cannot be cut', () => {
   const s = type(init(), 'x')
-  assert.equal(items(s, frame(s)).length, 10)
+  assert.equal(items(s, frame(s)).length, 9)
 })
 
 test('h and l step through photos, and hjkl only resize a region in progress', () => {
