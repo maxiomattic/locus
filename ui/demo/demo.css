@@ -1,0 +1,15 @@
+.demo-bar { height: 1.6rem; display: flex; align-items: center; justify-content: center; gap: 1.25rem; padding: 0 .75rem; box-sizing: border-box; overflow: hidden; white-space: nowrap; background: #e8e2d4; color: #1b1f24; font: .8rem/1 system-ui, sans-serif; }
+.demo-bar a, .demo-bar button { all: unset; cursor: pointer; text-decoration: underline; }
+.demo-bar a:focus-visible, .demo-bar button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+html body #root { height: calc(100% - 1.6rem); }
+.demo-short, .demo-touch { display: none; }
+@media (max-width: 34rem) { .demo-long { display: none; } .demo-short { display: inline; } }
+@media (pointer: coarse) {
+  .demo-touch { display: flex; height: 3rem; background: #0c1220; }
+  .demo-touch button { all: unset; flex: 1; text-align: center; color: #e8e2d4; font: .8rem/3rem system-ui, sans-serif; }
+  .demo-touch button:active { background: #24304d; }
+  html body #root { height: calc(100% - 4.6rem); }
+}
+html, body, #root { overflow: hidden; }
+.shell { grid-template-columns: minmax(0, 1fr); }
+.status { overflow: hidden; }

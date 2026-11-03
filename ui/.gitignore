@@ -2,3 +2,4 @@ node_modules
 dist
 media-stock
 media-cache
+demo/public/media
