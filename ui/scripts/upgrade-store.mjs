@@ -38,5 +38,12 @@ if (!has('messages')) {
   const home = s.objects.find((o) => o.id === 'home')
   if (home) ops.push({ do: 'splice', id: 'home', field: 'items', del: [], add: [{ after: home.fields.items.at(-1) ?? null, val: 'messages' }] })
 }
+const keysFor = s.objects.find((o) => o.type === 'note' && o.fields.title === 'Keys')
+if (keysFor && !has('keys-messages')) {
+  const text = 'M opens Messages. o in a thread writes your draft, and Enter or Esc stops typing and keeps it. Enter never sends. A sends, the same key that approves a proposal. P sets who a thread is with. A sent message can’t be unsent.'
+  ops.push({ do: 'make', id: 'keys-messages-h', type: 'block', fields: { style: 'h', text: 'Messages' } })
+  ops.push({ do: 'make', id: 'keys-messages', type: 'block', fields: { style: 'p', text } })
+  ops.push({ do: 'splice', id: keysFor.id, field: 'items', del: [], add: [{ after: has('keys-calendar') ? 'keys-calendar' : keysFor.fields.items.at(-1) ?? null, val: 'keys-messages-h' }, { after: 'keys-messages-h', val: 'keys-messages' }] })
+}
 for (const op of messageSetup((fields) => ({ do: 'make', id: `type:${fields.name}`, type: 'type', fields }))) if (!has(op.id)) ops.push(op)
 if (ops.length) console.log(await fetch(`${url}/store/~/v1/do`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ do: 'batch', intent: 'upgrade', ops }) }).then((r) => r.text()))

@@ -282,3 +282,12 @@ test('the demo fake delivers nothing real and answers in script', async () => {
   assert.ok(id)
   assert.equal((await api('GET', '/conversations')).conversations[0].peer, '~nec')
 })
+
+test('naming a thread asks who it is with, on screen', () => {
+  let s = press(init(), { key: 'M' })
+  s = press(s, { key: 'o' })
+  s = press(s, { key: 'x' })
+  s = press(s, { key: 'Enter' })
+  assert.equal(s.typing.field, 'peer')
+  assert.match(s.typing.note, /Who is this with/)
+})

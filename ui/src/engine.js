@@ -392,7 +392,8 @@ const VERBS = {
   },
   setPeer(s) {
     startTyping(s, frame(s).id, 'peer')
-    return 'Type their ship, like ~sampel-palnet. Enter to finish.'
+    s.typing.note = 'Type their ship, like ~sampel-palnet. Enter to finish.'
+    return ''
   },
   cut(s) {
     const f = frame(s)
@@ -1298,7 +1299,7 @@ function typeKey(s, k) {
     if (o.type === 'thread' && t.field === 'title' && !o.peer) {
       startTyping(s, o.id, 'peer')
       s.typing.dirtied = true
-      s.msg = 'Who is this with? Type their ship, like ~sampel-palnet. Esc to leave it for later.'
+      s.typing.note = 'Who is this with? Type their ship, like ~sampel-palnet. Esc to leave it for later.'
       return true
     }
     const f = frame(s)

@@ -29,6 +29,7 @@
 <li><strong>Calendar (2026-11-02):</strong> a week of half-hour slots, in the engine and tested with key-driven scenarios. Events are objects in <code>%store</code>, not the old <code>%calendar</code> agent. Changing a repeating event changes every repeat; there are no per-occurrence exceptions and no all-day events.</li>
 <li><strong>Messages:</strong> built in <code>ui/</code>, delivered by the <code>%messages</code> agent through <code>ui/server/messages.mjs</code>. Tested against a stub of its API; delivery between two real ships is not proven yet. Group conversations have no surface.</li>
 <li><strong>Not built:</strong> Files and Contacts surfaces. Those agents hold 0 contacts on the live ship; its files stay in <code>%files</code>.
+<li><strong>Seen in a real browser on the live ship (2026-11-02):</strong> Calendar range to event and cut and paste re-timing; Messages draft, send and undo; Approve and Reject on real proposals. The only send was to the ship itself, so delivery between two ships is still unproven.
 <li><strong>Not done:</strong> no client ship on the laptop or phone yet.
 <li><strong>Unexplained:</strong> the old <code>%notes</code> agent on the live comet is empty, though this file says 242 notes were imported on 2026-10-20. The journal shows no wipe after that import. The export on here-nor-there is intact and is what was imported.
 </ul>
