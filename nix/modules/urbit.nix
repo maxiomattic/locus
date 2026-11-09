@@ -12,7 +12,9 @@ let
 
   # Vere -c fails if the target path already exists. The Disko mountpoint
   # /var/lib/urbit/pier is therefore the dataset, and the ship directory is
-  # a child of that mount (still on rpool/urbit/pier).
+  # a child of that mount (still on rpool/urbit/pier). Without ZFS
+  # (zfs.enable = false) the mountpoint is a plain directory and the dataset
+  # check is skipped.
   urbitStart = pkgs.writeShellApplication {
     name = "urbit-start";
     runtimeInputs = [
@@ -20,23 +22,34 @@ let
       pkgs.util-linux
       pkgs.coreutils
     ];
-    text = ''
-      mount=${lib.escapeShellArg cfg.pierMountpoint}
-      dataset=${lib.escapeShellArg pierDataset}
-      pier=${lib.escapeShellArg verePier}
+    text =
+      (
+        if cfg.zfs.enable then
+          ''
+            mount=${lib.escapeShellArg cfg.pierMountpoint}
+            dataset=${lib.escapeShellArg pierDataset}
+            pier=${lib.escapeShellArg verePier}
 
-      fstype=$(findmnt -n -o FSTYPE --target "$mount")
-      if [ "$fstype" != "zfs" ]; then
-        echo "urbit-start: $mount fstype is ''${fstype:-missing}; pier must live on ZFS ($dataset)" >&2
-        exit 1
-      fi
+            fstype=$(findmnt -n -o FSTYPE --target "$mount")
+            if [ "$fstype" != "zfs" ]; then
+              echo "urbit-start: $mount fstype is ''${fstype:-missing}; pier must live on ZFS ($dataset)" >&2
+              exit 1
+            fi
 
-      source=$(findmnt -n -o SOURCE --target "$mount")
-      if [ "$source" != "$dataset" ]; then
-        echo "urbit-start: $mount is $source, want $dataset" >&2
-        exit 1
-      fi
+            source=$(findmnt -n -o SOURCE --target "$mount")
+            if [ "$source" != "$dataset" ]; then
+              echo "urbit-start: $mount is $source, want $dataset" >&2
+              exit 1
+            fi
 
+          ''
+        else
+          ''
+            pier=${lib.escapeShellArg verePier}
+
+          ''
+      )
+      + ''
       extra=(
         -t
         --no-dock
@@ -233,14 +246,20 @@ in
 
     networking.firewall.allowedTCPPorts = [ urbitCfg.httpPort ];
 
+    # On ZFS, Disko mounts the pier dataset here. Without it, create the
+    # directory; ExecStartPre fixes its owner and mode as on ZFS.
+    systemd.tmpfiles.rules = lib.mkIf (!cfg.zfs.enable) [
+      "d ${cfg.pierMountpoint} 0750 urbit urbit -"
+    ];
+
     systemd.services.urbit = {
       description = "Locus Urbit ship";
       wantedBy = [ "multi-user.target" ];
       after = [
         "network-online.target"
         "local-fs.target"
-        "zfs-import.target"
-      ];
+      ]
+      ++ lib.optional cfg.zfs.enable "zfs-import.target";
       wants = [ "network-online.target" ];
       unitConfig.RequiresMountsFor = [ cfg.pierMountpoint ];
       serviceConfig = {
@@ -264,7 +283,7 @@ in
         # Hide /dev/zfs so the urbit user cannot zfs destroy. Do not use
         # PrivateDevices=true — Vere Clay unix-sync needs a normal /dev
         # (and |commit from a mounted desk fails without it).
-        InaccessiblePaths = [ "/dev/zfs" ];
+        InaccessiblePaths = lib.optional cfg.zfs.enable "/dev/zfs";
         PrivateDevices = false;
         ProtectKernelTunables = true;
         ProtectKernelModules = true;

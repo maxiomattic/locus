@@ -50,13 +50,29 @@
     {
       # Clan machines import these. CalDAV, Attic, and operator
       # accounts live in the separate personal NixOS flake — not here.
-      nixosModules.server =
+      nixosModules.server = {
+        imports = [
+          disko.nixosModules.disko
+          ./nix/modules/server.nix
+          self.nixosModules.packageDefaults
+        ];
+      };
+      nixosModules.default = self.nixosModules.server;
+
+      # The services alone (ship, gateway, desk deploy) with no disk layout,
+      # for a host whose disk Locus does not own, such as a non-NixOS host
+      # run with system-manager. Set locus.server.zfs.enable = false there.
+      nixosModules.services = {
+        imports = [
+          ./nix/modules/services.nix
+          self.nixosModules.packageDefaults
+        ];
+      };
+
+      # This flake's packages as the modules' defaults.
+      nixosModules.packageDefaults =
         { pkgs, lib, ... }:
         {
-          imports = [
-            disko.nixosModules.disko
-            ./nix/modules/server.nix
-          ];
           locus.server.gateway.package =
             lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.locus-gateway;
           # Every Locus server serves the browser app at /app/ out of the box.
@@ -75,7 +91,6 @@
             }
           );
         };
-      nixosModules.default = self.nixosModules.server;
 
       # `nix flake new -t github:maxiomattic/locus#server <dir>`: the host flake
       # for a new clan server. See docs/install.html.
