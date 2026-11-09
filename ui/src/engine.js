@@ -2,12 +2,11 @@
 // Every key press is press(state, key) -> new state, so tests can drive it.
 import { seedStore } from './data.js'
 import { SLOT, addDays, dayName, dayStart, occurrences, occursIn, retime, slotOf, timeName, weekStart, whenName } from './calendar.js'
+import { MOTIONS, TOOL_KEYS, VIEW, isLaunch, keysOf, lookup } from './keymap.js'
+
+export { COMMAND_KEYS, CONSEQUENTIAL, RESERVED, TOOL_KEYS } from './keymap.js'
 
 export const CELLS = { x: 12, y: 8 }
-export const RESERVED = new Set([...'hjklHJKLgGsSaioxcvzZ.npmwedDCM;/? '])
-// These commit something that can't be taken back with a keystroke. They are
-// never reused for anything else, so muscle memory can't fire one by accident.
-export const CONSEQUENTIAL = new Set([...'AR'])
 const NOTHING = 'Nothing selected here. Press Esc to act on this item from its list.'
 
 let nextId = 0
@@ -177,55 +176,52 @@ function typeTargets(s, type) {
 
 // ---------- Menu and commands ----------
 
+const entry = (run, label, extra) => ({ key: VIEW[run], label, run, ...extra })
+
 export function rootMenu(s) {
   const f = frame(s)
   const k = kind(s, f)
   const out = []
   if (k === 'calendar') {
-    out.push({ key: 't', label: 'Today', run: 'today' })
+    out.push(entry('today', 'Today'))
     if (targets(s, f).length) {
-      out.push({ key: '<', label: 'Shorten', run: 'endLess' }, { key: '>', label: 'Lengthen', run: 'endMore' }, { key: 'y', label: 'Repeat', run: 'repeat' })
+      out.push(entry('endLess', 'Shorten'), entry('endMore', 'Lengthen'), entry('repeat', 'Repeat'))
     }
   }
   const photos = typeTargets(s, 'photo')
   if (photos.length) {
-    out.push({ key: 'r', label: 'Rotate', run: 'rotate' })
-    if (k === 'photo') out.push({ key: 'X', label: 'Crop', run: 'crop', off: !range(s, f) })
-    if (photos.some((id) => s.store[id].crop)) out.push({ key: 'u', label: 'Remove crop', run: 'uncrop' })
+    out.push(entry('rotate', 'Rotate'))
+    if (k === 'photo') out.push(entry('crop', 'Crop', { off: !range(s, f) }))
+    if (photos.some((id) => s.store[id].crop)) out.push(entry('uncrop', 'Remove crop'))
   }
   if (k === 'blocks' && targets(s, f).some((id) => !s.store[id].ref)) {
-    out.push({ key: 't', label: 'To-do', run: 'kindT' }, { key: 'b', label: 'Heading', run: 'kindH' }, { key: 'q', label: 'Paragraph', run: 'kindP' })
+    out.push(entry('kindT', 'To-do'), entry('kindH', 'Heading'), entry('kindP', 'Paragraph'))
   }
   if ((k === 'list' || k === 'grid') && !s.store[f.id].fixed) {
-    out.push({ key: 'y', label: 'Sort by name', run: 'sortName' }, { key: 'Y', label: 'Reverse order', run: 'sortReverse' })
+    out.push(entry('sortName', 'Sort by name'), entry('sortReverse', 'Reverse order'))
   }
   if (k === 'proposal' && s.store[f.id].status === 'open') {
-    out.push({ key: 'A', label: 'Approve', run: 'approve' }, { key: 'R', label: 'Reject', run: 'reject' })
+    out.push(entry('approve', 'Approve'), entry('reject', 'Reject'))
   }
   if (k === 'thread') {
     const m = messageTarget(s, f)
-    if (m) out.push({ key: 'A', label: m.status === 'failed' ? 'Send again' : 'Send', run: 'send' })
-    out.push({ key: 'P', label: 'Set ship', run: 'setPeer' })
+    if (m) out.push(entry('send', m.status === 'failed' ? 'Send again' : 'Send'))
+    out.push(entry('setPeer', 'Set ship'))
   }
-  if (k === 'history' && s.history.length) out.push({ key: 'u', label: 'Undo this change', run: 'revert' })
-  if (s.store[f.id]?.id === 'trash' && k === 'list' && items(s, f).length) out.push({ key: 'u', label: 'Restore', run: 'restore' })
+  if (k === 'history' && s.history.length) out.push(entry('revert', 'Undo this change'))
+  if (s.store[f.id]?.id === 'trash' && k === 'list' && items(s, f).length) out.push(entry('restore', 'Restore'))
   if (s.store[f.id]?.$clashes?.length) {
-    out.push({ key: 'O', label: 'Keep the other version', run: 'keepTheirs' }, { key: 'V', label: 'Keep this version', run: 'keepMine' })
+    out.push(entry('keepTheirs', 'Keep the other version'), entry('keepMine', 'Keep this version'))
   }
-  out.push({ key: 'I', label: 'Info', run: 'info' })
-  out.push({ key: 'T', label: 'Open in a new tile', run: 'newTile' })
+  out.push(entry('info', 'Info'))
+  out.push(entry('newTile', 'Open in a new tile'))
   out.push(...toolEntries(s))
   return out
 }
 
-// Keys the interface's own commands use in some view. A learned tool never takes
-// one of these or a reserved key, so a key means one thing wherever it shows.
 // Two tools that apply here may want one key: the first by id keeps it, the rest
 // take another, and past the last free key a tool is still listed, and found by
 // name in the bar.
-export const COMMAND_KEYS = new Set([...'tubqyYrXIOVTP<>'])
-export const TOOL_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789']
-  .filter((c) => !RESERVED.has(c) && !COMMAND_KEYS.has(c) && !CONSEQUENTIAL.has(c))
 export const toolKeyOk = (c) => TOOL_KEYS.includes(c)
 
 function toolEntries(s) {
@@ -257,21 +253,22 @@ export function viewActions(s) {
   const o = s.store[f.id]
   const on = {
     calendar: targets(s, f).length
-      ? [['Space', 'Open'], ['i', 'Rename'], ['s', 'Select']]
-      : [['o', 'New'], ['S', range(s, f) ? 'Finish time' : 'Select time']],
-    grid: [['Space', 'Open'], ['s', 'Select'], ['o', 'New']],
-    list: [['Space', 'Open'], ['s', 'Select'], ['o', 'New']],
-    blocks: [['Space', 'Open'], ['i', 'Edit'], ['o', 'New line']],
-    thread: [['o', 'Write'], ['s', 'Select'], ['c', 'Copy']],
-    chars: [['S', 'Select'], ['i', 'Type']],
+      ? [[keysOf('activate'), 'Open'], [keysOf('edit'), 'Rename'], [keysOf('mark'), 'Select']]
+      : [[keysOf('create'), 'New'], [keysOf('range'), range(s, f) ? 'Finish time' : 'Select time']],
+    grid: [[keysOf('activate'), 'Open'], [keysOf('mark'), 'Select'], [keysOf('create'), 'New']],
+    list: [[keysOf('activate'), 'Open'], [keysOf('mark'), 'Select'], [keysOf('create'), 'New']],
+    blocks: [[keysOf('activate'), 'Open'], [keysOf('edit'), 'Edit'], [keysOf('create'), 'New line']],
+    thread: [[keysOf('create'), 'Write'], [keysOf('mark'), 'Select'], [keysOf('copy'), 'Copy']],
+    chars: [[keysOf('range'), 'Select'], [keysOf('edit'), 'Type']],
     photo: f.extending
-      ? [['h j k l', 'Resize part'], ['S', 'Finish part']]
-      : [['h l', 'Previous, next'], ['S', 'Select part']],
+      ? [[keysOf('left', 'down', 'up', 'right'), 'Resize part'], [keysOf('range'), 'Finish part']]
+      : [[keysOf('left', 'right'), 'Previous, next'], [keysOf('range'), 'Select part']],
   }[k] ?? []
   if (k === 'player') {
     const big = o.type === 'movie' ? 'Chapter' : 'Track'
-    on.push(['Space', playerOf(s, f).playing ? 'Pause' : 'Play'],
-      ['h l', 'Seek'], ['H L', big], ['j k', 'Volume'], ['S', o.type === 'movie' ? 'Mark clip' : 'Mark part'])
+    on.push([keysOf('activate'), playerOf(s, f).playing ? 'Pause' : 'Play'],
+      [keysOf('left', 'right'), 'Seek'], [keysOf('bigLeft', 'bigRight'), big], [keysOf('down', 'up'), 'Volume'],
+      [keysOf('range'), o.type === 'movie' ? 'Mark clip' : 'Mark part'])
   }
   const menu = rootMenu(s).map((e) => [e.key ?? '', e.label, e.off])
   return [...on, ...menu]
@@ -777,19 +774,19 @@ function hop(s, f, dir) {
 }
 
 function moveCalendar(s, f, key) {
-  if (key === 'J') return hop(s, f, 1)
-  if (key === 'K') return hop(s, f, -1)
+  if (key === 'bigDown') return hop(s, f, 1)
+  if (key === 'bigUp') return hop(s, f, -1)
   f.sel = null
-  if (key === 'j' || key === 'k') {
-    const to = f.at + (key === 'j' ? SLOT : -SLOT)
+  if (key === 'down' || key === 'up') {
+    const to = f.at + (key === 'down' ? SLOT : -SLOT)
     if (dayStart(to) === dayStart(f.at)) f.at = to
     return
   }
   const week = weekStart(f.at)
   const to = {
-    h: addDays(f.at, -1), l: addDays(f.at, 1), H: addDays(f.at, -7), L: addDays(f.at, 7),
-    g: retime(f.at, f.at, week) + f.at - dayStart(f.at),
-    G: retime(f.at, f.at, addDays(week, 6)) + f.at - dayStart(f.at),
+    left: addDays(f.at, -1), right: addDays(f.at, 1), bigLeft: addDays(f.at, -7), bigRight: addDays(f.at, 7),
+    start: retime(f.at, f.at, week) + f.at - dayStart(f.at),
+    end: retime(f.at, f.at, addDays(week, 6)) + f.at - dayStart(f.at),
   }[key]
   if (to !== undefined) f.at = to
 }
@@ -909,20 +906,20 @@ function move(s, key) {
   if (k === 'grid') {
     const row = f.focus - (f.focus % cols)
     const to = {
-      h: f.focus - 1, l: f.focus + 1, j: f.focus + cols, k: f.focus - cols,
-      H: row, L: row + cols - 1, J: f.focus + cols * 3, K: f.focus - cols * 3, g: 0, G: n - 1,
+      left: f.focus - 1, right: f.focus + 1, down: f.focus + cols, up: f.focus - cols,
+      bigLeft: row, bigRight: row + cols - 1, bigDown: f.focus + cols * 3, bigUp: f.focus - cols * 3, start: 0, end: n - 1,
     }[key]
     return setFocus(s, f, k, to)
   }
   if (k === 'list' || k === 'info' || k === 'thread') {
-    const to = { j: f.focus + 1, k: f.focus - 1, J: f.focus + 5, K: f.focus - 5, g: 0, G: n - 1 }[key]
+    const to = { down: f.focus + 1, up: f.focus - 1, bigDown: f.focus + 5, bigUp: f.focus - 5, start: 0, end: n - 1 }[key]
     if (to !== undefined) setFocus(s, f, k, to)
     return
   }
   if (k === 'blocks') {
     const to = {
-      j: f.focus + 1, k: f.focus - 1, g: 0, G: n - 1,
-      J: () => nextHeading(s, f, 1), K: () => nextHeading(s, f, -1),
+      down: f.focus + 1, up: f.focus - 1, start: 0, end: n - 1,
+      bigDown: () => nextHeading(s, f, 1), bigUp: () => nextHeading(s, f, -1),
     }[key]
     if (to !== undefined) setFocus(s, f, k, typeof to === 'function' ? to() : to)
     return
@@ -931,25 +928,25 @@ function move(s, key) {
     const text = s.store[f.id].text
     const c = f.cursor
     const to = {
-      h: c - 1, l: c + 1, j: c + 60, k: c - 60, g: 0, G: text.length,
-      H: wordStep(text, c, -1), L: wordStep(text, c, 1),
-      J: sentenceStep(text, c, 1), K: sentenceStep(text, c, -1),
+      left: c - 1, right: c + 1, down: c + 60, up: c - 60, start: 0, end: text.length,
+      bigLeft: wordStep(text, c, -1), bigRight: wordStep(text, c, 1),
+      bigDown: sentenceStep(text, c, 1), bigUp: sentenceStep(text, c, -1),
     }[key]
     f.cursor = Math.max(0, Math.min(text.length, to))
     return
   }
   if (k === 'photo') {
     // There is no cursor on a photo. Moving goes to the next one, and only a
-    // region in progress gives hjkl something to resize.
+    // region in progress gives moving something to resize.
     if (!f.extending) {
-      if ('hHlL'.includes(key)) return stepSibling(s, f, 'lL'.includes(key) ? 1 : -1)
-      if ('jkJK'.includes(key)) return
+      if (['left', 'bigLeft', 'right', 'bigRight'].includes(key)) return stepSibling(s, f, key === 'right' || key === 'bigRight' ? 1 : -1)
+      if (['down', 'up', 'bigDown', 'bigUp'].includes(key)) return
     }
-    const big = key === 'J' || key === 'K' ? 3 : 1
-    const dx = { h: -1, l: 1 }[key] ?? 0
-    const dy = { k: -1, j: 1, K: -1, J: 1 }[key] ?? 0
-    if (key === 'g') f.cell = { x: 0, y: 0 }
-    else if (key === 'G') f.cell = { x: CELLS.x - 1, y: CELLS.y - 1 }
+    const big = key === 'bigDown' || key === 'bigUp' ? 3 : 1
+    const dx = { left: -1, right: 1 }[key] ?? 0
+    const dy = { up: -1, down: 1, bigUp: -1, bigDown: 1 }[key] ?? 0
+    if (key === 'start') f.cell = { x: 0, y: 0 }
+    else if (key === 'end') f.cell = { x: CELLS.x - 1, y: CELLS.y - 1 }
     else {
       f.cell = {
         x: Math.max(0, Math.min(CELLS.x - 1, f.cell.x + dx)),
@@ -961,16 +958,16 @@ function move(s, key) {
   if (k === 'player') {
     const o = s.store[f.id]
     const t = playerOf(s, f).t
-    if (key === 'h') seek(s, f, t - 5)
-    if (key === 'l') seek(s, f, t + 5)
-    if (key === 'g') seek(s, f, 0)
-    if (key === 'G') seek(s, f, o.dur)
-    if (key === 'j') s.player.volume = Math.max(0, s.player.volume - 5)
-    if (key === 'k') s.player.volume = Math.min(100, s.player.volume + 5)
-    if (key === 'J') s.player.volume = Math.max(0, s.player.volume - 20)
-    if (key === 'K') s.player.volume = Math.min(100, s.player.volume + 20)
-    if (key === 'H' || key === 'L') {
-      const dir = key === 'L' ? 1 : -1
+    if (key === 'left') seek(s, f, t - 5)
+    if (key === 'right') seek(s, f, t + 5)
+    if (key === 'start') seek(s, f, 0)
+    if (key === 'end') seek(s, f, o.dur)
+    if (key === 'down') s.player.volume = Math.max(0, s.player.volume - 5)
+    if (key === 'up') s.player.volume = Math.min(100, s.player.volume + 5)
+    if (key === 'bigDown') s.player.volume = Math.max(0, s.player.volume - 20)
+    if (key === 'bigUp') s.player.volume = Math.min(100, s.player.volume + 20)
+    if (key === 'bigLeft' || key === 'bigRight') {
+      const dir = key === 'bigRight' ? 1 : -1
       if (o.type === 'movie') {
         const starts = o.chapters.map((c) => c[1])
         const to = dir > 0 ? starts.find((x) => x > t) : starts.findLast((x) => x < t - 3)
@@ -1089,26 +1086,26 @@ function back(s) {
 function select(s, key) {
   const f = frame(s)
   const k = kind(s, f)
-  if (k === 'calendar' && key === 'a') {
+  if (k === 'calendar' && key === 'all') {
     const week = weekStart(f.at)
     f.marks = [...new Set(occurrences(calendarEvents(s, f), week, addDays(week, 7)).map((o) => o.id))]
     clearRange(f)
     return
   }
-  if (k === 'calendar' && key === 's') {
+  if (k === 'calendar' && key === 'mark') {
     const id = underCursor(s, f)?.id
     if (!id) { s.msg = 'No event here. S selects time.'; return }
     f.marks = f.marks.includes(id) ? f.marks.filter((x) => x !== id) : [...f.marks, id]
     return
   }
-  if (key === 'a') {
+  if (key === 'all') {
     if (isList(k)) { f.marks = [...items(s, f)]; clearRange(f); return }
     if (k === 'chars') { f.anchor = 0; f.head = Math.max(0, s.store[f.id].text.length - 1); f.extending = false; return }
     if (k === 'photo') { f.anchor = { x: 0, y: 0 }; f.head = { x: CELLS.x - 1, y: CELLS.y - 1 }; f.extending = false; return }
     if (k === 'player' && s.player.id === f.id) { f.anchor = 0; f.head = s.store[f.id].dur; f.extending = false }
     return
   }
-  if (key === 's' && isList(k)) {
+  if (key === 'mark' && isList(k)) {
     const id = items(s, f)[f.focus]
     if (!id) return
     f.marks = f.marks.includes(id) ? f.marks.filter((x) => x !== id) : [...f.marks, id]
@@ -1189,9 +1186,9 @@ function focusTile(s, key) {
   const e = 1e-6
   const hit = Object.entries(rs).filter(([id, r]) => {
     if (id === s.active) return false
-    if (key === 'h') return r.x + r.w <= me.x + e && r.y < mid.y && r.y + r.h > mid.y
-    if (key === 'l') return r.x >= me.x + me.w - e && r.y < mid.y && r.y + r.h > mid.y
-    if (key === 'k') return r.y + r.h <= me.y + e && r.x < mid.x && r.x + r.w > mid.x
+    if (key === 'left') return r.x + r.w <= me.x + e && r.y < mid.y && r.y + r.h > mid.y
+    if (key === 'right') return r.x >= me.x + me.w - e && r.y < mid.y && r.y + r.h > mid.y
+    if (key === 'up') return r.y + r.h <= me.y + e && r.x < mid.x && r.x + r.w > mid.x
     return r.y >= me.y + me.h - e && r.x < mid.x && r.x + r.w > mid.x
   })
   if (hit[0]) s.active = hit[0][0]
@@ -1384,58 +1381,50 @@ function findKey(s, k) {
 
 // ---------- Key dispatch ----------
 
+// Commands in keymap.js that aren't motions or verbs.
+const GRAMMAR = {
+  activate,
+  back,
+  edit,
+  create,
+  mark: (s) => select(s, 'mark'),
+  range: (s) => select(s, 'range'),
+  all: (s) => select(s, 'all'),
+  tileLeft: (s) => focusTile(s, 'left'),
+  tileDown: (s) => focusTile(s, 'down'),
+  tileUp: (s) => focusTile(s, 'up'),
+  tileRight: (s) => focusTile(s, 'right'),
+  repeat(s) {
+    if (s.last) runVerb(s, s.last)
+    else s.msg = 'No verb to repeat yet.'
+  },
+  bar(s) {
+    s.mode = 'bar'
+    s.bar = { text: '', i: 0 }
+  },
+  find(s) {
+    if (['photo', 'player'].includes(kind(s, frame(s)))) { s.msg = 'Nothing to find in here.'; return }
+    s.mode = 'find'
+    frame(s).filter = ''
+  },
+}
+
 function normalKey(s, k) {
-  if (k.alt) {
-    if ('hjkl'.includes(k.key)) { focusTile(s, k.key); return true }
-    if (k.key === 'q') { s.msg = closeTile(s); return true }
-    return false
+  const c = lookup(k)
+  if (c) {
+    if (MOTIONS.has(c)) move(s, c)
+    else if (GRAMMAR[c]) GRAMMAR[c](s)
+    else runVerb(s, c)
+    return true
   }
-  if (k.ctrl) return false
-  switch (k.key) {
-    case 'h': case 'j': case 'k': case 'l':
-    case 'H': case 'J': case 'K': case 'L':
-    case 'g': case 'G':
-      move(s, k.key)
-      return true
-    case ' ':
-      if (k.shift) s.msg = newTile(s)
-      else activate(s)
-      return true
-    case 'Escape': back(s); return true
-    case 's': case 'S': case 'a': select(s, k.key); return true
-    case 'i': edit(s); return true
-    case 'o': create(s); return true
-    case 'x': runVerb(s, 'cut'); return true
-    case 'c': runVerb(s, 'copy'); return true
-    case 'v': runVerb(s, 'paste'); return true
-    case 'z': runVerb(s, 'undo'); return true
-    case 'Z': runVerb(s, 'redo'); return true
-    case '.':
-      if (s.last) runVerb(s, s.last)
-      else s.msg = 'No verb to repeat yet.'
-      return true
-    case 'n': case 'p': case 'm': case 'w': case 'e': case 'd': case 'D': case 'C': case 'M':
-      launch(s, k.key)
-      return true
-    case ';':
-      s.mode = 'bar'
-      s.bar = { text: '', i: 0 }
-      return true
-    case '?': runVerb(s, 'help'); return true
-    case '/':
-      if (['photo', 'player'].includes(kind(s, frame(s)))) { s.msg = 'Nothing to find in here.'; return true }
-      s.mode = 'find'
-      frame(s).filter = ''
-      return true
-    default: {
-      // App actions are one key. The menu only lists them.
-      const e = rootMenu(s).find((x) => x.key === k.key)
-      if (!e) return false
-      if (e.off) s.msg = 'Mark a region first: press S, then move.'
-      else runCommand(s, e)
-      return true
-    }
-  }
+  if (k.alt || k.ctrl) return false
+  if (isLaunch(k.key)) { launch(s, k.key); return true }
+  // App actions are one key. The menu only lists them.
+  const e = rootMenu(s).find((x) => x.key === k.key)
+  if (!e) return false
+  if (e.off) s.msg = 'Mark a region first: press S, then move.'
+  else runCommand(s, e)
+  return true
 }
 
 function settle(s) {
