@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploy desk/ to a REAL ship: copy it into the mounted %locus desk, |commit,
 # |install if the desk is not installed yet, and wait for every agent in
-# desk/desk.bill to serve /<agent>/openapi.json.
+# desk/desk.bill to serve /<agent>/openapi.json (or, for an agent with no
+# openapi.json, to run).
 #
 # Safe for ships with data. It never nukes, never uninstalls, never wipes a
 # mount and never creates notes, files or other records. Agents keep their
@@ -132,11 +133,33 @@ else
   install_poke
 fi
 
+# An agent with no app/<agent>/openapi.json (such as %store, which answers
+# every unauthenticated request with 401) has nothing to poll over HTTP;
+# wait for Gall to report it running instead.
+wait_running() {
+  local a=$1 tries=$2 _
+  echo "waiting for %$a to run (no openapi.json)"
+  for _ in $(seq 1 "$tries"); do
+    if agent_running "$a"; then
+      echo "%$a is running"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "%$a is not running" >&2
+  journalctl -u urbit -n 80 --no-pager >&2 || true
+  return 1
+}
+
 failed=0
 for a in "${AGENTS[@]}"; do
   tries=300
   [ "$a" = notes ] && tries=600
-  wait_openapi "/$a/openapi.json" "%$a" "$tries" || failed=1
+  if [ -f "$DESK_SRC/app/$a/openapi.json" ]; then
+    wait_openapi "/$a/openapi.json" "%$a" "$tries" || failed=1
+  else
+    wait_running "$a" "$tries" || failed=1
+  fi
 done
 if [ "$failed" = 1 ]; then
   echo "some agents are not serving; nothing was uninstalled or wiped. See journalctl -u urbit." >&2
