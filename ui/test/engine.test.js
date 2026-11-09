@@ -503,3 +503,44 @@ test('the two versions of a clash use O and V', () => {
   assert.deepEqual(s.out, [{ do: 'resolve', id, field: 'text', keep: false }])
 })
 
+
+test('arrow keys move like hjkl', () => {
+  const arrow = { h: 'ArrowLeft', j: 'ArrowDown', k: 'ArrowUp', l: 'ArrowRight' }
+  const go = (s, c, extra) => press(s, { key: arrow[c], ...extra })
+  let s = init()
+  s = go(s, 'l')
+  assert.equal(focused(s), 'Photos')
+  s = go(s, 'j')
+  assert.equal(focused(s), 'Inbox')
+  s = go(go(s, 'k'), 'h')
+  assert.equal(focused(s), 'Notes')
+  assert.equal(frame(go(init(), 'l', { shift: true })).focus, frame(type(init(), 'L')).focus)
+  assert.notEqual(frame(go(init(), 'l', { shift: true })).focus, frame(go(init(), 'l')).focus)
+  const tiles = type(init(), 'S-sp')
+  assert.equal(go(tiles, 'h', { alt: true }).active, type(tiles, 'A-h').active)
+  assert.notEqual(go(tiles, 'h', { alt: true }).active, tiles.active)
+})
+
+test('arrow keys still move the caret while typing', () => {
+  let s = type(init(), 'n sp sp i')
+  assert.equal(s.mode, 'typing')
+  const { pos } = s.typing
+  const focus = frame(s).focus
+  s = press(s, { key: 'ArrowLeft' })
+  assert.equal(s.mode, 'typing')
+  assert.equal(frame(s).focus, focus)
+  assert.equal(s.typing.pos, Math.max(0, pos - 1))
+})
+
+test('Enter opens things like Space, and still ends typing', () => {
+  const opened = type(init(), 'ent')
+  assert.equal(frame(opened).id, frame(type(init(), 'sp')).id)
+  assert.notEqual(frame(opened).id, 'home')
+  let s = type(init(), 'n sp sp i')
+  assert.equal(s.mode, 'typing')
+  const line = s.typing.objId
+  s = type(s, 'ent')
+  assert.notEqual(s.typing?.objId, line)
+  assert.equal(s.mode, 'typing')
+  assert.equal(frame(s).id, frame(type(init(), 'n sp')).id)
+})

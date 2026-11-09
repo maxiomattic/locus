@@ -32,6 +32,9 @@ test('lookup follows the modifiers', () => {
   assert.equal(lookup({ key: 'h', alt: true }), 'tileLeft')
   assert.equal(lookup({ key: 'x', alt: true }), null)
   assert.equal(lookup({ key: 'h', ctrl: true }), null)
+  assert.equal(lookup({ key: 'ArrowLeft' }), 'left')
+  assert.equal(lookup({ key: 'ArrowLeft', shift: true }), 'bigLeft')
+  assert.equal(lookup({ key: 'ArrowLeft', alt: true }), 'tileLeft')
   assert.equal(lookup({ key: 'constructor' }), null)
   assert.equal(lookup({ key: 'n' }), null)
 })
@@ -44,8 +47,8 @@ test('every motion has a key', () => {
 
 test('the ? panel lists these keys', () => {
   assert.deepEqual(HELP, [
-    ['Move', [['h j k l', 'left, down, up, right'], ['H J K L', 'a big step'], ['g G', 'start, end'], ['/', 'find here']]],
-    ['In and out', [['Space', 'open, play, tick'], ['Esc', 'back'], ['⇧ Space', 'open in a new tile']]],
+    ['Move', [['h j k l', 'left, down, up, right'], ['← ↓ ↑ →', 'the same, with ⇧ and Alt too'], ['H J K L', 'a big step'], ['g G', 'start, end'], ['/', 'find here']]],
+    ['In and out', [['Space Enter', 'open, play, tick'], ['Esc', 'back'], ['⇧ Space', 'open in a new tile']]],
     ['Select', [['s', 'mark one'], ['S', 'start a range'], ['a', 'all']]],
     ['Verbs', [['i', 'edit'], ['o', 'new'], ['x', 'cut'], ['c', 'copy'], ['v', 'paste'], ['z Z', 'undo, redo'], ['.', 'repeat']]],
     ['Apps', [['n', 'Notes'], ['p', 'Photos'], ['m', 'Music'], ['w', 'Movies'], ['e', 'People'], ['C', 'Calendar'], ['M', 'Messages'], ['d', 'Inbox'], ['D', 'Tools']]],

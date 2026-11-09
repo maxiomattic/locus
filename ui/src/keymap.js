@@ -16,12 +16,20 @@ export const NORMAL = {
   i: 'edit', o: 'create',
   x: 'cut', c: 'copy', v: 'paste', z: 'undo', Z: 'redo', '.': 'repeat',
   ';': 'bar', '?': 'help', '/': 'find',
+  ArrowLeft: 'left', ArrowDown: 'down', ArrowUp: 'up', ArrowRight: 'right',
+  Enter: 'activate',
 }
 
 // Checked before NORMAL when Shift is held. A shifted letter is its own key above.
-export const SHIFT = { ' ': 'newTile' }
+export const SHIFT = {
+  ' ': 'newTile',
+  ArrowLeft: 'bigLeft', ArrowDown: 'bigDown', ArrowUp: 'bigUp', ArrowRight: 'bigRight',
+}
 
-export const ALT = { h: 'tileLeft', j: 'tileDown', k: 'tileUp', l: 'tileRight', q: 'closeTile' }
+export const ALT = {
+  h: 'tileLeft', j: 'tileDown', k: 'tileUp', l: 'tileRight', q: 'closeTile',
+  ArrowLeft: 'tileLeft', ArrowDown: 'tileDown', ArrowUp: 'tileUp', ArrowRight: 'tileRight',
+}
 
 // Each opens the Home item whose launch field is that key.
 export const LAUNCH = {
@@ -85,12 +93,13 @@ const row = (commands, what) => [keysOf(...commands.split(' ')), what]
 export const HELP = [
   ['Move', [
     row('left down up right', 'left, down, up, right'),
+    ['← ↓ ↑ →', 'the same, with ⇧ and Alt too'],
     row('bigLeft bigDown bigUp bigRight', 'a big step'),
     row('start end', 'start, end'),
     row('find', 'find here'),
   ]],
   ['In and out', [
-    row('activate', 'open, play, tick'),
+    [`${keysOf('activate')} Enter`, 'open, play, tick'],
     row('back', 'back'),
     [`⇧ ${keysIn(SHIFT, 'newTile')}`, 'open in a new tile'],
   ]],
