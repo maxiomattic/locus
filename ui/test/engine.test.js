@@ -1,7 +1,7 @@
 import { diff } from '../src/sync.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { init, press, frame, items, titleOf, kind, targetLabel, completions, rootMenu, TOOL_KEYS, CONSEQUENTIAL, range, tick, viewActions, visibleSize, syncPlayer, applyRemote } from '../src/engine.js'
+import { init, press, frame, items, titleOf, kind, targetLabel, completions, rootMenu, TOOL_KEYS, CONSEQUENTIAL, range, tick, viewActions, visibleSize, syncPlayer, applyRemote, contents } from '../src/engine.js'
 import { seedStore } from '../src/data.js'
 import { withMedia } from '../src/media.js'
 
@@ -364,6 +364,8 @@ test('the inbox lists open proposals, and A approves through the ship', () => {
   s = type(s, 'd')
   assert.equal(titleOf(s, frame(s).id), 'Inbox')
   assert.equal(items(s, frame(s)).length, 1)
+  assert.deepEqual(contents(s, s.store.inbox), ['p1'])
+  assert.deepEqual(contents(s, s.store.inbox), items(s, frame(s)))
   s = type(s, 'sp y r')
   assert.deepEqual(s.out, [])
   s = type(s, 'A')

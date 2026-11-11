@@ -75,12 +75,14 @@ function backlinks(s, id) {
 export function items(s, f) {
   if (f.view === 'info') return backlinks(s, f.id)
   if (f.view === 'history') return s.history.map((e) => e.seq)
-  const o = s.store[f.id]
-  const list = o.query ? matching(s, o.query) : o.items
+  const list = contents(s, s.store[f.id])
   if (!list) return []
   const q = f.filter.toLowerCase()
   return q ? list.filter((id) => titleOf(s, id).toLowerCase().includes(q)) : list
 }
+
+// What a collection holds, whether it keeps a list or runs a query.
+export const contents = (s, o) => (o.query ? matching(s, o.query) : o.items)
 
 // A collection with a query is a View: derived, never stored.
 function matching(s, q) {

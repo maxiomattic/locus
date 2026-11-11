@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   init, press, tick, point, setCols, frame, kind, items, titleOf, targetLabel,
   completions, range, clock, playerOf, visibleSize, viewActions, syncPlayer, CELLS,
-  applyRemote, say, watch, pref, pointAt, unsend, startAt,
+  applyRemote, say, watch, pref, pointAt, unsend, startAt, contents,
 } from './engine.js'
 import { addDays, dayName, dayStart, lanes, minuteOfDay, occurrences, weekStart, whenName } from './calendar.js'
 import { describe } from './sync.js'
@@ -209,11 +209,12 @@ function Empty({ f, children }) {
 
 function Card({ s, id }) {
   const o = s.store[id]
-  const count = o.items ? `${o.items.length} ${o.items.length === 1 ? 'item' : 'items'}` : null
+  const held = contents(s, o)
+  const count = held ? `${held.length} ${held.length === 1 ? 'item' : 'items'}` : null
   if (o.type === 'photo') return <div className="frame"><Photo o={o} /><span className="cap">{o.title}</span></div>
   if (o.type === 'movie') return <Poster seed={o.seed} src={o.src} title={<Title s={s} id={id} />} sub={clock(o.dur)} />
-  if (o.type === 'collection' && o.items[0] && s.store[o.items[0]].type === 'photo') {
-    return <div className="frame"><Photo o={s.store[o.items[0]]} /><span className="cap"><Title s={s} id={id} /> <em>{count}</em></span></div>
+  if (o.type === 'collection' && held[0] && s.store[held[0]].type === 'photo') {
+    return <div className="frame"><Photo o={s.store[held[0]]} /><span className="cap"><Title s={s} id={id} /> <em>{count}</em></span></div>
   }
   if (o.artist) return <Poster seed={o.seed} title={<Title s={s} id={id} />} sub={o.artist} />
   const icon = o.type === 'collection' ? iconFor(o) : null
@@ -583,7 +584,8 @@ function Info({ s, f, active, pick }) {
   if (o.type === 'event') rows.push(['When', whenName(o.start, o.end)], ['Repeats', o.repeat ?? 'No'])
   if (o.type === 'photo') rows.push(['Rotation', `${o.rot} degrees`], ['Cropped', o.crop ? 'Yes' : 'No'])
   if (o.author) rows.push(['Photographer', o.author], ['License', o.license])
-  if (o.items) rows.push(['Contains', `${o.items.length}`])
+  const held = contents(s, o)
+  if (held) rows.push(['Contains', `${held.length}`])
   return (
     <div className="info">
       <dl>{rows.map(([a, b]) => <div key={a}><dt>{a}</dt><dd>{b}</dd></div>)}</dl>
