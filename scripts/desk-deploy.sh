@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploy desk/ to a REAL ship: copy it into the mounted %locus desk, |commit,
 # |install if the desk is not installed yet, and wait for every agent in
-# desk/desk.bill to serve /<agent>/openapi.json.
+# desk/desk.bill to serve /<agent>/openapi.json (or, for an agent without
+# one, to answer on its own path).
 #
 # Safe for ships with data. It never nukes, never uninstalls, never wipes a
 # mount and never creates notes, files or other records. Agents keep their
@@ -136,7 +137,11 @@ failed=0
 for a in "${AGENTS[@]}"; do
   tries=300
   [ "$a" = notes ] && tries=600
-  wait_openapi "/$a/openapi.json" "%$a" "$tries" || failed=1
+  if [ -f "$ROOT/desk/app/$a/openapi.json" ]; then
+    wait_openapi "/$a/openapi.json" "%$a" "$tries" || failed=1
+  else
+    wait_bound "/$a/~/v1/state" "%$a" "$tries" || failed=1
+  fi
 done
 if [ "$failed" = 1 ]; then
   echo "some agents are not serving; nothing was uninstalled or wiped. See journalctl -u urbit." >&2

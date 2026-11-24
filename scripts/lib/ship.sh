@@ -217,6 +217,26 @@ agent_desk() {
   [ -z "$out" ] || printf '%s\n' "$out"
 }
 
+# For an agent with no public openapi.json (%store answers 401 to every
+# request without a login): it is up once its own handler answers, 200 or 401.
+# Eyre redirects to its login page (307) while nothing is bound to the path.
+wait_bound() {
+  local path=$1 name=$2 tries=${3:-150}
+  local i code
+  echo "waiting for $name HTTP (bound)"
+  for i in $(seq 1 "$tries"); do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$EYRE_URL$path" || true)"
+    if [ "$code" = "200" ] || [ "$code" = "401" ]; then
+      echo "$name is answering $path ($code)"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "$name did not come up on $path" >&2
+  journalctl -u urbit -n 80 --no-pager >&2 || true
+  return 1
+}
+
 wait_openapi() {
   local path=$1 name=$2 tries=${3:-150}
   local i
